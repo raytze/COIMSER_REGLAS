@@ -1,0 +1,8 @@
+TIPO;NOMBRE;LARGO;ANCHO;ESP_MIN;ESP_MAX;NOTA
+FORMATO;1500x6000;6000;1500;0;999;formato comercial
+FORMATO;1200x2400;2400;1200;0;999;formato comercial
+PARAMETRO;SEPARACION;5;;;;mm entre piezas (plasma) hasta ESPESOR_GRUESO
+PARAMETRO;SEPARACION_GRUESO;10;;;;mm entre piezas en planchas mas gruesas
+PARAMETRO;ESPESOR_GRUESO;12;;;;mm
+PARAMETRO;BORDE;10;;;;mm libres en el borde de cada plancha
+PARAMETRO;RETAZO_MINIMO;300;;;;mm: lado menor para guardar un sobrante como retazo

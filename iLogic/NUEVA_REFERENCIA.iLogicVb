@@ -1,0 +1,665 @@
+' =====================================================================
+'  NUEVA_REFERENCIA  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Piezas y ensambles de REFERENCIA guardados DENTRO de la carpeta de la obra.
+'  Una referencia no se numera, no sale en listas, corte, plasma ni planos (se oculta).
+'
+'   1) SKELETON nuevo   -> <ensamble>\Referencias\<ENSAMBLE>-SK-01.ipt
+'                          fijo en el origen, BOM = Referencia, lo editas en el sitio
+'                          (boceto 3D / planos de trabajo para Frame Generator o layout)
+'   2) TRAER un archivo -> REFERENCIAS\EQUIPOS\<COD>-REF-<NOMBRE>       (equipo existente)
+'                          REFERENCIAS\EXISTENTE\<COD>-REF-EXIST-<NOMBRE> (estructura existente)
+'                          .ipt  : copia
+'                          .iam / .stp / .step : SIMPLIFICADO (una sola pieza, liviano)
+'                                                o COMPLETO (ensamble, sus piezas en una subcarpeta)
+'                          el STEP original se guarda en ...\ORIGINALES
+'   3) CONVERTIR un componente ya puesto (pieza o ensamble) en referencia: lo pasa a la
+'      carpeta que le toca con el nombre que le toca y el ensamble queda apuntando ahi.
+'      El archivo original NO se borra (avisa su ruta).
+'
+'  Escribe: REFERENCIA = SI, TIPO_REFERENCIA (SKELETON / EQUIPO / EXISTENTE), PROYECTO,
+'           COD_PROYECTO, PLANTA (skeleton), ORIGEN (archivo de donde vino). Quita MARCA.
+'  El skeleton no se crea en el ensamble GENERAL: abre la fase o el conjunto.
+'  Argumentos (pruebas): silencioso, accion=skeleton|traer|convertir,
+'     tipo=SKELETON|EQUIPO|EXISTENTE, archivo=<ruta>, nombre=<nombre>,
+'     modo=SIMPLIFICADO|COMPLETO, objeto=<nombre de ocurrencia o de archivo>
+' =====================================================================
+Imports System.Collections.Generic
+
+Sub Main()
+    Dim top As AssemblyDocument = Nothing
+    Try
+        top = TryCast(ThisDoc.Document, AssemblyDocument)
+    Catch
+    End Try
+    If top Is Nothing Then top = TryCast(ThisApplication.ActiveDocument, AssemblyDocument)
+    If top Is Nothing Then
+        MessageBox.Show("Abre el ensamble (.iam) de la fase o del conjunto y ejecuta la regla desde ahi.", "NUEVA_REFERENCIA")
+        Exit Sub
+    End If
+    ' si estas editando un subensamble en el sitio, la referencia va ahi
+    Dim destino As AssemblyDocument = top
+    Try
+        If ThisApplication.ActiveDocument Is top AndAlso ThisApplication.ActiveEditDocument.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then destino = CType(ThisApplication.ActiveEditDocument, AssemblyDocument)
+    Catch
+    End Try
+    silencioso = RuleArguments.Exists("silencioso")
+    If destino.FullFileName = "" Then
+        MessageBox.Show("Guarda primero el ensamble para saber en que obra va la referencia.", "NUEVA_REFERENCIA")
+        Exit Sub
+    End If
+    obra = CarpetaObra(destino)
+    If obra = "" Then
+        MessageBox.Show("No encuentro la carpeta de la obra (_OBRA.txt) encima de:" & vbCrLf & destino.FullFileName & vbCrLf & vbCrLf & "Las referencias solo se crean dentro de una obra hecha con NUEVO_PROYECTO.", "NUEVA_REFERENCIA")
+        Exit Sub
+    End If
+    codObra = Primero(UProp(destino, "COD_PROYECTO"), UProp(top, "COD_PROYECTO"), LeerObra("CODIGO")).ToUpper()
+    proyObra = Primero(UProp(destino, "PROYECTO"), UProp(top, "PROYECTO"), LeerObra("NOMBRE")).ToUpper()
+    If codObra = "" Then codObra = "OBRA"
+
+    Dim accion As String = Arg("accion").ToLower()
+    If accion = "" Then
+        Dim ops As New List(Of String)
+        ops.Add("1 - Skeleton nuevo (boceto para Frame Generator / layout)")
+        ops.Add("2 - Traer un equipo o archivo existente (.ipt .iam .stp .step)")
+        ops.Add("3 - Convertir en referencia un componente ya puesto")
+        Dim op As String = InputListBox("Que referencia quieres?" & vbCrLf & "Obra: " & obra, ops, ops(0), "NUEVA_REFERENCIA", "Referencia")
+        If op Is Nothing OrElse op = "" Then Exit Sub
+        accion = If(op.StartsWith("1"), "skeleton", If(op.StartsWith("2"), "traer", "convertir"))
+    End If
+    Select Case accion
+        Case "skeleton"
+            NuevoSkeleton(destino)
+        Case "traer"
+            Traer(destino)
+        Case "convertir"
+            Convertir(top)
+        Case Else
+            MessageBox.Show("accion desconocida: " & accion, "NUEVA_REFERENCIA")
+    End Select
+    If bitacora.Length > 0 Then
+        Try
+            System.IO.File.WriteAllText(System.IO.Path.Combine(obra, "_ultima_referencia.txt"), Now.ToString("yyyy-MM-dd HH:mm") & vbCrLf & bitacora.ToString())
+        Catch
+        End Try
+        Aviso(bitacora.ToString())
+    End If
+End Sub
+
+Private silencioso As Boolean
+Private obra As String = ""
+Private codObra As String = ""
+Private proyObra As String = ""
+Private bitacora As New System.Text.StringBuilder
+
+' ===================== 1) skeleton nuevo =====================
+Sub NuevoSkeleton(destino As AssemblyDocument)
+    If EsGeneral(destino) Then
+        MessageBox.Show(NomSin(destino) & " es el ensamble GENERAL de la obra." & vbCrLf & "El skeleton se crea dentro de la FASE (ej. " & codObra & "-EE.iam) o del CONJUNTO que lo usa.", "NUEVA_REFERENCIA")
+        Exit Sub
+    End If
+    Dim carpeta As String = CarpetaDe(destino, "SKELETON")
+    System.IO.Directory.CreateDirectory(carpeta)
+    Dim ruta As String = SiguienteSK(carpeta, NomSin(destino), ".ipt")
+    Dim p As PartDocument = CType(ThisApplication.Documents.Add(DocumentTypeEnum.kPartDocumentObject, BuscarPlantilla(), False), PartDocument)
+    p.PropertySets.Item("Design Tracking Properties").Item("Description").Value = "SKELETON " & NomSin(destino)
+    Marcar(p, "SKELETON", "", destino)
+    p.SaveAs(ruta, False)
+    Dim occ As ComponentOccurrence = Insertar(destino, ruta)
+    p.Close(True)
+    bitacora.AppendLine("Skeleton creado: " & ruta)
+    bitacora.AppendLine("Fijo en el origen de " & NomSin(destino) & ", BOM = Referencia, sin marca.")
+    bitacora.AppendLine("Dibuja el boceto 3D (o planos/ejes de trabajo) y luego inserta perfiles con Frame Generator sobre sus aristas.")
+    bitacora.AppendLine("Guarda el ensamble.")
+    If Not silencioso AndAlso occ IsNot Nothing Then
+        Try
+            occ.Edit()
+        Catch
+        End Try
+    End If
+End Sub
+
+' ===================== 2) traer archivo existente =====================
+Sub Traer(destino As AssemblyDocument)
+    Dim src As String = Arg("archivo")
+    If src = "" Then
+        If silencioso Then Exit Sub
+        Dim ofd As New OpenFileDialog
+        ofd.Title = "Equipo o modelo existente a traer como REFERENCIA"
+        ofd.Filter = "Modelos (*.ipt;*.iam;*.stp;*.step)|*.ipt;*.iam;*.stp;*.step|Todos (*.*)|*.*"
+        If ofd.ShowDialog() <> DialogResult.OK Then Exit Sub
+        src = ofd.FileName
+    End If
+    If Not System.IO.File.Exists(src) Then
+        MessageBox.Show("No existe: " & src, "NUEVA_REFERENCIA")
+        Exit Sub
+    End If
+    Dim ext As String = System.IO.Path.GetExtension(src).ToLower()
+    If ext <> ".ipt" AndAlso ext <> ".iam" AndAlso ext <> ".stp" AndAlso ext <> ".step" Then
+        MessageBox.Show("Formato no soportado: " & ext & vbCrLf & "Usa .ipt, .iam, .stp o .step.", "NUEVA_REFERENCIA")
+        Exit Sub
+    End If
+
+    Dim tipo As String = PedirTipo(False, "")
+    If tipo = "" Then Exit Sub
+    Dim nombre As String = Arg("nombre")
+    If nombre = "" AndAlso Not silencioso Then nombre = InputBox("Nombre corto de la referencia (sin espacios, ej. CHANCADORA_C120):", "NUEVA_REFERENCIA", Limpio(System.IO.Path.GetFileNameWithoutExtension(src)))
+    If nombre Is Nothing Then Exit Sub
+    nombre = Limpio(nombre)
+    If nombre = "" Then nombre = Limpio(System.IO.Path.GetFileNameWithoutExtension(src))
+
+    Dim modo As String = "COMPLETO"
+    If ext <> ".ipt" Then
+        modo = Arg("modo").ToUpper()
+        If modo = "" Then
+            Dim ms As New List(Of String)
+            ms.Add("SIMPLIFICADO - una sola pieza (liviano, recomendado para equipos grandes)")
+            ms.Add("COMPLETO - ensamble con todas sus piezas")
+            Dim r As String = InputListBox("Como lo traigo?" & vbCrLf & System.IO.Path.GetFileName(src), ms, ms(0), "NUEVA_REFERENCIA", "Modo")
+            If r Is Nothing OrElse r = "" Then Exit Sub
+            modo = r.Split(" "c)(0)
+        End If
+        If modo <> "SIMPLIFICADO" Then modo = "COMPLETO"
+    End If
+
+    Dim carpeta As String = CarpetaDe(destino, tipo)
+    System.IO.Directory.CreateDirectory(carpeta)
+    Dim baseNom As String = Unico(carpeta, codObra & "-REF-" & If(tipo = "EXISTENTE", "EXIST-", "") & nombre)
+
+    ' el original de un STEP se guarda para trazabilidad
+    If ext = ".stp" OrElse ext = ".step" Then
+        Dim orig As String = System.IO.Path.Combine(carpeta, "ORIGINALES")
+        System.IO.Directory.CreateDirectory(orig)
+        Try
+            System.IO.File.Copy(src, System.IO.Path.Combine(orig, System.IO.Path.GetFileName(src)), True)
+        Catch
+        End Try
+    End If
+
+    Dim ruta As String = ""
+    Try
+        If ext = ".ipt" Then
+            ruta = TraerIpt(src, carpeta, baseNom)
+        ElseIf ext = ".iam" Then
+            If modo = "SIMPLIFICADO" Then
+                ruta = Simplificar(src, carpeta, baseNom)
+            Else
+                ruta = TraerIamCompleto(src, carpeta, baseNom)
+            End If
+        Else
+            ruta = TraerStep(src, carpeta, baseNom, modo = "SIMPLIFICADO")
+        End If
+    Catch ex As Exception
+        MessageBox.Show("No se pudo traer " & System.IO.Path.GetFileName(src) & ":" & vbCrLf & ex.Message, "NUEVA_REFERENCIA")
+        Exit Sub
+    End Try
+    If ruta = "" Then Exit Sub
+
+    Dim d As Document = ThisApplication.Documents.Open(ruta, False)
+    Marcar(d, tipo, src, destino)
+    d.Save2(False)
+    Insertar(destino, ruta)
+    bitacora.AppendLine("Referencia " & tipo & " (" & If(ext = ".ipt", "copia", modo) & "): " & ruta)
+    bitacora.AppendLine("Origen: " & src)
+    bitacora.AppendLine("Insertada fija en el origen de " & NomSin(destino) & " con BOM = Referencia: muevela a su posicion (libera Fijo).")
+    bitacora.AppendLine("No se numera ni sale en los planos. Guarda el ensamble.")
+End Sub
+
+Function TraerIpt(src As String, carpeta As String, baseNom As String) As String
+    Dim ruta As String = System.IO.Path.Combine(carpeta, baseNom & ".ipt")
+    Dim yaAbierto As Boolean = EstaAbierto(src)
+    Dim d As Document = ThisApplication.Documents.Open(src, False)
+    d.SaveAs(ruta, True)
+    If Not yaAbierto Then d.Close(True)
+    Return ruta
+End Function
+
+' Ensamble -> una sola pieza (contraccion / shrinkwrap) sin vinculo al original
+Function Simplificar(srcIam As String, carpeta As String, baseNom As String) As String
+    Dim ruta As String = System.IO.Path.Combine(carpeta, baseNom & ".ipt")
+    Dim p As PartDocument = CType(ThisApplication.Documents.Add(DocumentTypeEnum.kPartDocumentObject, BuscarPlantilla(), False), PartDocument)
+    Dim scs As ShrinkwrapComponents = p.ComponentDefinition.ReferenceComponents.ShrinkwrapComponents
+    Dim sd As ShrinkwrapDefinition = scs.CreateDefinition(srcIam)
+    Try
+        sd.DeriveStyle = DerivedComponentStyleEnum.kDeriveAsSingleBodyNoSeams
+    Catch
+    End Try
+    Try
+        sd.RemoveInternalParts = True
+    Catch
+    End Try
+    Dim sc As ShrinkwrapComponent = Nothing
+    Try
+        sc = scs.Add(sd)
+    Catch
+        sd.DeriveStyle = DerivedComponentStyleEnum.kDeriveAsMultipleBodies
+        sc = scs.Add(sd)
+    End Try
+    Try
+        sc.BreakLinkToFile()
+    Catch ex As Exception
+        bitacora.AppendLine("Aviso: no se pudo cortar el vinculo con " & srcIam & " (" & ex.Message & ")")
+    End Try
+    p.PropertySets.Item("Design Tracking Properties").Item("Description").Value = baseNom
+    p.SaveAs(ruta, False)
+    p.Close(True)
+    Return ruta
+End Function
+
+' Ensamble completo: sus piezas (las que estan fuera de la obra) se copian a <carpeta>\<baseNom>\
+Function TraerIamCompleto(src As String, carpeta As String, baseNom As String) As String
+    Dim abiertos As New List(Of String)
+    For Each x As Document In ThisApplication.Documents
+        abiertos.Add(x.FullFileName.ToLower())
+    Next
+    If abiertos.Contains(src.ToLower()) Then
+        MessageBox.Show(System.IO.Path.GetFileName(src) & " esta abierto en Inventor." & vbCrLf & "Cierralo y vuelve a correr la regla (o usa la opcion 3 si ya esta puesto en tu ensamble).", "NUEVA_REFERENCIA")
+        Return ""
+    End If
+    Dim d As AssemblyDocument = CType(ThisApplication.Documents.Open(src, False), AssemblyDocument)
+    For Each x As Document In d.AllReferencedDocuments
+        If abiertos.Contains(x.FullFileName.ToLower()) Then
+            d.Close(True)
+            MessageBox.Show(System.IO.Path.GetFileName(x.FullFileName) & " (parte de " & System.IO.Path.GetFileName(src) & ") esta abierto en Inventor." & vbCrLf & "Cierra los archivos del equipo y vuelve a correr la regla.", "NUEVA_REFERENCIA")
+            Return ""
+        End If
+    Next
+    Dim ruta As String = System.IO.Path.Combine(carpeta, baseNom & ".iam")
+    MoverArbol(d, ruta, System.IO.Path.Combine(carpeta, baseNom), baseNom)
+    d.Close(True)
+    Return ruta
+End Function
+
+Function TraerStep(src As String, carpeta As String, baseNom As String, simple As Boolean) As String
+    Dim tr As TranslatorAddIn = CType(ThisApplication.ApplicationAddIns.ItemById("{90AF7F40-0C01-11D5-8E83-0010B541CD80}"), TranslatorAddIn)
+    Dim ctx As TranslationContext = ThisApplication.TransientObjects.CreateTranslationContext()
+    ctx.Type = IOMechanismEnum.kFileBrowseIOMechanism
+    Dim op As NameValueMap = ThisApplication.TransientObjects.CreateNameValueMap()
+    Dim dm As DataMedium = ThisApplication.TransientObjects.CreateDataMedium()
+    dm.FileName = src
+    Dim hayOp As Boolean = tr.HasOpenOptions(dm, ctx, op)
+    ' nada se guarda solo: Inventor dejaria las piezas en la raiz del espacio de trabajo
+    Pon(op, "SaveComponentDuringLoad", False)
+    Pon(op, "EnableSaveComponentDuringLoad", False)
+    Pon(op, "ImportAASP", simple)
+    Pon(op, "ImportAASPIndex", 0)
+    Pon(op, "ImportSurface", False)
+    Pon(op, "ImportWire", False)
+    Pon(op, "ImportPoint", False)
+    Pon(op, "ImportGraphicalPMI", False)
+    Pon(op, "AssociativeImport", False)
+    Dim obj As Object = Nothing
+    tr.Open(dm, ctx, op, obj)
+    Dim d As Document = CType(obj, Document)
+    Dim ruta As String
+    If d.DocumentType = DocumentTypeEnum.kPartDocumentObject Then
+        ruta = System.IO.Path.Combine(carpeta, baseNom & ".ipt")
+        d.SaveAs(ruta, False)
+    Else
+        ruta = System.IO.Path.Combine(carpeta, baseNom & ".iam")
+        MoverArbol(d, ruta, System.IO.Path.Combine(carpeta, baseNom), baseNom)
+    End If
+    d.Close(True)
+    Return ruta
+End Function
+
+' Guarda con nombre nuevo (en memoria) el ensamble y sus piezas que no son de la obra ni de libreria:
+' primero las piezas, luego los subensambles, al final el ensamble. El ensamble queda apuntando a las copias.
+Sub MoverArbol(d As Document, rutaNueva As String, subcarpeta As String, baseNom As String)
+    Dim lista As New List(Of Document)
+    For Each x As Document In d.AllReferencedDocuments
+        If MoverEste(x, subcarpeta) Then lista.Add(x)
+    Next
+    lista.Sort(AddressOf PorProfundidad)
+    If lista.Count > 0 Then System.IO.Directory.CreateDirectory(subcarpeta)
+    Dim n As Integer = 0
+    Dim usados As New List(Of String)
+    For Each x As Document In lista
+        n += 1
+        Dim ext As String = If(x.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject, ".iam", ".ipt")
+        Dim nom As String = Limpio(System.IO.Path.GetFileNameWithoutExtension(x.FullFileName))
+        If nom = "" Then nom = Limpio(x.DisplayName)
+        Dim r As String = System.IO.Path.Combine(subcarpeta, baseNom & "-" & n.ToString("000") & " " & nom & ext)
+        x.SaveAs(r, False)
+    Next
+    d.SaveAs(rutaNueva, False)
+End Sub
+
+Function MoverEste(x As Document, subcarpeta As String) As Boolean
+    Dim r As String = x.FullFileName.ToLower()
+    If r.StartsWith(subcarpeta.ToLower()) Then Return False
+    If r.Contains("\content center files\") OrElse r.Contains("\librerias\") Then Return False
+    Try
+        If x.DocumentType = DocumentTypeEnum.kPartDocumentObject AndAlso CType(x, PartDocument).ComponentDefinition.IsContentMember Then Return False
+    Catch
+    End Try
+    ' una pieza de la propia obra (no referencia) se deja donde esta
+    If r <> "" AndAlso r.StartsWith(obra.ToLower() & "\") AndAlso Not r.Contains("\referencias\") Then Return False
+    Return True
+End Function
+
+Function PorProfundidad(a As Document, b As Document) As Integer
+    Return Profundidad(a, 0).CompareTo(Profundidad(b, 0))
+End Function
+
+Function Profundidad(d As Document, nivel As Integer) As Integer
+    If nivel > 30 OrElse d.DocumentType <> DocumentTypeEnum.kAssemblyDocumentObject Then Return 0
+    Dim m As Integer = 0
+    For Each x As Document In d.ReferencedDocuments
+        Dim p As Integer = 1 + Profundidad(x, nivel + 1)
+        If p > m Then m = p
+    Next
+    Return m
+End Function
+
+' ===================== 3) convertir un componente ya puesto =====================
+Sub Convertir(top As AssemblyDocument)
+    Dim occ As ComponentOccurrence = Nothing
+    Dim nomObj As String = Arg("objeto")
+    If nomObj <> "" Then
+        occ = BuscarOcc(top.ComponentDefinition.Occurrences, nomObj.ToLower())
+        If occ Is Nothing Then
+            MessageBox.Show("No encuentro el componente " & nomObj, "NUEVA_REFERENCIA")
+            Exit Sub
+        End If
+    Else
+        Try
+            occ = CType(ThisApplication.CommandManager.Pick(SelectionFilterEnum.kAssemblyOccurrenceFilter, "Selecciona el componente que sera REFERENCIA (Esc = cancelar)"), ComponentOccurrence)
+        Catch
+        End Try
+        If occ Is Nothing Then Exit Sub
+    End If
+    Dim nat As ComponentOccurrence = occ
+    If TypeOf occ Is ComponentOccurrenceProxy Then nat = CType(occ, ComponentOccurrenceProxy).NativeObject
+    Dim padre As AssemblyDocument = CType(nat.Parent.Document, AssemblyDocument)
+    Dim d As Document = Nothing
+    Try
+        d = nat.Definition.Document
+    Catch
+    End Try
+    If d Is Nothing Then
+        MessageBox.Show(occ.Name & " es un componente virtual: no tiene archivo.", "NUEVA_REFERENCIA")
+        Exit Sub
+    End If
+    Dim actual As String = d.FullFileName
+    Dim rl As String = actual.ToLower()
+    Dim esCC As Boolean = False
+    Try
+        If d.DocumentType = DocumentTypeEnum.kPartDocumentObject Then esCC = CType(d, PartDocument).ComponentDefinition.IsContentMember
+    Catch
+    End Try
+    If esCC OrElse rl.Contains("\content center files\") OrElse rl.Contains("\librerias\") Then
+        MessageBox.Show(occ.Name & " es de libreria / Content Center: no se convierte." & vbCrLf & "Si es un equipo comprado usa INSERTAR_EQUIPO.", "NUEVA_REFERENCIA")
+        Exit Sub
+    End If
+    If UProp(d, "EQUIPO").ToUpper() = "SI" Then
+        If MessageBox.Show(occ.Name & " esta declarado como EQUIPO suministrado (INSERTAR_EQUIPO)." & vbCrLf & "Convertirlo en referencia lo saca de la lista y del TAG. Continuar?", "NUEVA_REFERENCIA", MessageBoxButtons.YesNo) <> DialogResult.Yes Then Exit Sub
+    End If
+
+    Dim sinSolidos As Boolean = False
+    If d.DocumentType = DocumentTypeEnum.kPartDocumentObject Then
+        Try
+            sinSolidos = (CType(d, PartDocument).ComponentDefinition.SurfaceBodies.Count = 0)
+        Catch
+        End Try
+    End If
+    Dim tipo As String = PedirTipo(True, If(sinSolidos, "SKELETON", "EQUIPO"))
+    If tipo = "" Then Exit Sub
+    If tipo = "SKELETON" AndAlso EsGeneral(padre) Then
+        MessageBox.Show(occ.Name & " esta en el ensamble GENERAL. Un skeleton va dentro de la fase o del conjunto que lo usa.", "NUEVA_REFERENCIA")
+        Exit Sub
+    End If
+
+    Dim padreLimpio As Boolean = Not padre.Dirty
+    Dim carpeta As String = CarpetaDe(padre, tipo)
+    Dim ext As String = System.IO.Path.GetExtension(actual).ToLower()
+    Dim yaEsta As Boolean = (System.IO.Path.GetDirectoryName(actual).ToLower() = carpeta.ToLower())
+    If Not yaEsta Then
+        System.IO.Directory.CreateDirectory(carpeta)
+        Dim nueva As String
+        If tipo = "SKELETON" Then
+            nueva = SiguienteSK(carpeta, NomSin(padre), ext)
+        Else
+            Dim nombre As String = Arg("nombre")
+            If nombre = "" AndAlso Not silencioso Then nombre = InputBox("Nombre corto de la referencia:", "NUEVA_REFERENCIA", Limpio(System.IO.Path.GetFileNameWithoutExtension(actual)))
+            If nombre Is Nothing Then Exit Sub
+            nombre = Limpio(nombre)
+            If nombre = "" Then nombre = Limpio(System.IO.Path.GetFileNameWithoutExtension(actual))
+            nueva = System.IO.Path.Combine(carpeta, Unico(carpeta, codObra & "-REF-" & If(tipo = "EXISTENTE", "EXIST-", "") & nombre) & ext)
+        End If
+        If d.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+            Dim bn As String = System.IO.Path.GetFileNameWithoutExtension(nueva)
+            MoverArbol(d, nueva, System.IO.Path.Combine(carpeta, bn), bn)
+        Else
+            d.SaveAs(nueva, False)
+        End If
+        bitacora.AppendLine(occ.Name & " -> " & nueva)
+        bitacora.AppendLine("El archivo original no se borro y ya no lo usa este ensamble: " & actual)
+    Else
+        bitacora.AppendLine(occ.Name & ": ya estaba en " & carpeta)
+    End If
+    Marcar(d, tipo, If(yaEsta, "", actual), padre)
+    Try
+        nat.BOMStructure = BOMStructureEnum.kReferenceBOMStructure
+    Catch
+    End Try
+    d.Save2(False)
+    bitacora.AppendLine("Tipo " & tipo & ", BOM = Referencia, sin marca: no se numera ni sale en los planos.")
+    If padreLimpio Then
+        Try
+            padre.Save2(False)
+            bitacora.AppendLine(NomSin(padre) & " guardado (ya apunta a la referencia).")
+        Catch ex As Exception
+            bitacora.AppendLine("Guarda " & NomSin(padre) & " (" & ex.Message & ")")
+        End Try
+    Else
+        bitacora.AppendLine("Guarda " & NomSin(padre) & ": tenia otros cambios sin guardar y no lo guarde yo.")
+    End If
+End Sub
+
+Function BuscarOcc(occs As Object, nom As String) As ComponentOccurrence
+    For Each o As ComponentOccurrence In occs
+        Dim f As String = ""
+        Try
+            f = System.IO.Path.GetFileName(o.Definition.Document.FullFileName).ToLower()
+        Catch
+        End Try
+        If o.Name.ToLower() = nom OrElse f = nom OrElse System.IO.Path.GetFileNameWithoutExtension(f) = nom Then Return o
+        If o.DefinitionDocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+            Dim r As ComponentOccurrence = BuscarOcc(o.SubOccurrences, nom)
+            If r IsNot Nothing Then Return r
+        End If
+    Next
+    Return Nothing
+End Function
+
+' ===================== comunes =====================
+Sub Marcar(d As Document, tipo As String, origen As String, ctx As Document)
+    EscribirProp(d, "REFERENCIA", "SI")
+    EscribirProp(d, "TIPO_REFERENCIA", tipo)
+    If proyObra <> "" Then EscribirProp(d, "PROYECTO", proyObra)
+    EscribirProp(d, "COD_PROYECTO", codObra)
+    If tipo = "SKELETON" AndAlso UProp(ctx, "PLANTA") <> "" AndAlso Not EsGeneral(ctx) Then EscribirProp(d, "PLANTA", UProp(ctx, "PLANTA").ToUpper())
+    If origen <> "" Then EscribirProp(d, "ORIGEN", origen)
+    Dim mk As String = UProp(d, "MARCA")
+    If mk <> "" Then
+        EscribirProp(d, "MARCA_ANTERIOR", mk)
+        EscribirProp(d, "MARCA", "")
+        bitacora.AppendLine("Tenia la marca " & mk & ": se quita (al renumerar TEKLA la da de baja).")
+    End If
+    Try
+        d.PropertySets.Item("Design Tracking Properties").Item("Part Number").Value = System.IO.Path.GetFileNameWithoutExtension(d.FullFileName)
+    Catch
+    End Try
+    Try
+        If d.DocumentType = DocumentTypeEnum.kPartDocumentObject Then
+            CType(d, PartDocument).ComponentDefinition.BOMStructure = BOMStructureEnum.kReferenceBOMStructure
+        ElseIf d.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+            CType(d, AssemblyDocument).ComponentDefinition.BOMStructure = BOMStructureEnum.kReferenceBOMStructure
+        End If
+    Catch
+    End Try
+End Sub
+
+Function Insertar(destino As AssemblyDocument, ruta As String) As ComponentOccurrence
+    Dim occ As ComponentOccurrence = destino.ComponentDefinition.Occurrences.Add(ruta, ThisApplication.TransientGeometry.CreateMatrix())
+    Try
+        occ.Grounded = True
+    Catch
+    End Try
+    Try
+        occ.BOMStructure = BOMStructureEnum.kReferenceBOMStructure
+    Catch
+    End Try
+    Return occ
+End Function
+
+Function PedirTipo(conSkeleton As Boolean, def As String) As String
+    Dim t As String = Arg("tipo").ToUpper()
+    If t <> "" Then Return t
+    If silencioso Then Return If(def = "", "EQUIPO", def)
+    Dim l As New List(Of String)
+    If conSkeleton Then l.Add("SKELETON - boceto / layout de la fase o del conjunto")
+    l.Add("EQUIPO - equipo existente o del fabricante (solo para ver)")
+    l.Add("EXISTENTE - estructura existente / levantamiento")
+    Dim d0 As String = l(0)
+    For Each x As String In l
+        If def <> "" AndAlso x.StartsWith(def) Then d0 = x
+    Next
+    Dim r As String = InputListBox("Tipo de referencia:", l, d0, "NUEVA_REFERENCIA", "Tipo")
+    If r Is Nothing OrElse r = "" Then Return ""
+    Return r.Split(" "c)(0)
+End Function
+
+' Skeleton: junto al ensamble que lo usa. Equipo / existente: carpeta REFERENCIAS de la obra.
+Function CarpetaDe(ens As Document, tipo As String) As String
+    If tipo = "SKELETON" Then Return System.IO.Path.Combine(System.IO.Path.GetDirectoryName(ens.FullFileName), NomSin(ens), "Referencias")
+    Return System.IO.Path.Combine(obra, "REFERENCIAS", If(tipo = "EXISTENTE", "EXISTENTE", "EQUIPOS"))
+End Function
+
+Function SiguienteSK(carpeta As String, base As String, ext As String) As String
+    Dim n As Integer = 1
+    Do
+        Dim r As String = System.IO.Path.Combine(carpeta, base & "-SK-" & n.ToString("00") & ext)
+        If Not System.IO.File.Exists(r) AndAlso Not System.IO.File.Exists(System.IO.Path.ChangeExtension(r, If(ext = ".ipt", ".iam", ".ipt"))) Then Return r
+        n += 1
+    Loop
+End Function
+
+Function Unico(carpeta As String, base As String) As String
+    Dim b As String = base
+    Dim n As Integer = 1
+    Do While System.IO.File.Exists(System.IO.Path.Combine(carpeta, b & ".ipt")) OrElse System.IO.File.Exists(System.IO.Path.Combine(carpeta, b & ".iam")) OrElse System.IO.Directory.Exists(System.IO.Path.Combine(carpeta, b))
+        n += 1
+        b = base & "-" & n.ToString("00")
+    Loop
+    Return b
+End Function
+
+Function EstaAbierto(ruta As String) As Boolean
+    For Each x As Document In ThisApplication.Documents
+        If x.FullFileName.ToLower() = ruta.ToLower() Then Return True
+    Next
+    Return False
+End Function
+
+Function EsGeneral(d As Document) As Boolean
+    Return UProp(d, "TIPO_ENSAMBLE").ToUpper() = "GENERAL"
+End Function
+
+Function NomSin(d As Document) As String
+    Return System.IO.Path.GetFileNameWithoutExtension(d.FullFileName)
+End Function
+
+' Mayusculas, sin tildes ni espacios: solo A-Z 0-9 - _
+Function Limpio(s As String) As String
+    If s Is Nothing Then Return ""
+    Dim t As String = s.Normalize(System.Text.NormalizationForm.FormD)
+    Dim sb As New System.Text.StringBuilder
+    For Each c As Char In t
+        If Char.GetUnicodeCategory(c) = System.Globalization.UnicodeCategory.NonSpacingMark Then Continue For
+        If (c >= "A"c AndAlso c <= "Z"c) OrElse (c >= "a"c AndAlso c <= "z"c) OrElse (c >= "0"c AndAlso c <= "9"c) OrElse c = "-"c Then
+            sb.Append(c)
+        ElseIf sb.Length > 0 AndAlso sb(sb.Length - 1) <> "_"c Then
+            sb.Append("_"c)
+        End If
+    Next
+    Return sb.ToString().Trim("_"c).ToUpper()
+End Function
+
+Sub Pon(m As NameValueMap, k As String, v As Object)
+    Try
+        m.Remove(k)
+    Catch
+    End Try
+    m.Add(k, v)
+End Sub
+
+Function CarpetaObra(d As Document) As String
+    Dim x As String = System.IO.Path.GetDirectoryName(d.FullFileName)
+    For i As Integer = 0 To 8
+        If x Is Nothing OrElse x = "" Then Exit For
+        If System.IO.File.Exists(System.IO.Path.Combine(x, "_OBRA.txt")) Then Return x
+        x = System.IO.Path.GetDirectoryName(x)
+    Next
+    Return ""
+End Function
+
+Function LeerObra(clave As String) As String
+    Try
+        For Each ln As String In System.IO.File.ReadAllLines(System.IO.Path.Combine(obra, "_OBRA.txt"))
+            If ln.ToUpper().StartsWith(clave.ToUpper() & "=") Then Return ln.Substring(clave.Length + 1).Trim()
+        Next
+    Catch
+    End Try
+    Return ""
+End Function
+
+Function BuscarPlantilla() As String
+    Dim raiz As String = ThisApplication.FileOptions.TemplatesPath
+    Try
+        For Each f As String In System.IO.Directory.GetFiles(raiz, "Standard (mm).ipt", System.IO.SearchOption.AllDirectories)
+            Return f
+        Next
+        For Each f As String In System.IO.Directory.GetFiles(raiz, "Standard*.ipt", System.IO.SearchOption.AllDirectories)
+            Return f
+        Next
+    Catch
+    End Try
+    Return ThisApplication.FileManager.GetTemplateFile(DocumentTypeEnum.kPartDocumentObject)
+End Function
+
+Function Primero(ParamArray v() As String) As String
+    For Each s As String In v
+        If s IsNot Nothing AndAlso s.Trim() <> "" Then Return s.Trim()
+    Next
+    Return ""
+End Function
+
+Function Arg(n As String) As String
+    Try
+        If RuleArguments.Exists(n) Then Return CStr(RuleArguments.Value(n))
+    Catch
+    End Try
+    Return ""
+End Function
+
+Function UProp(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Inventor User Defined Properties").Item(n).Value).Trim()
+    Catch
+        Return ""
+    End Try
+End Function
+
+Sub EscribirProp(d As Document, n As String, v As String)
+    Dim ps As PropertySet = d.PropertySets.Item("Inventor User Defined Properties")
+    Try
+        ps.Item(n).Value = v
+    Catch
+        ps.Add(v, n)
+    End Try
+End Sub
+
+Sub Aviso(t As String)
+    If Not silencioso Then MessageBox.Show(t, "NUEVA_REFERENCIA")
+End Sub

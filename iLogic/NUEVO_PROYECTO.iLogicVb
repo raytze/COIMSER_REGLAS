@@ -1,0 +1,172 @@
+' =====================================================================
+'  NUEVO_PROYECTO  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Crea una obra nueva dentro del espacio de trabajo de Vault (VAULT\PROYECTOS):
+'
+'   VAULT\PROYECTOS\2026-001 ANTAPACCAY\
+'      ANT-GENERAL.iam        ensamble general: contiene las plantas (solo para ver el todo)
+'      ANT-EE.iam             una por planta: aqui se trabaja (INICIAR_CONJUNTO, NUEVA_PIEZA,
+'      ANT-AEE.iam            TEKLA_NUMERACION, GENERAR_PLANOS se corren en cada planta)
+'      REFERENCIAS\           esqueletos
+'      PLANOS\  PLASMA\  REPORTES\
+'
+'  Los archivos llevan el CODIGO corto de la obra (ANT-...) para que sus nombres no se repitan
+'  con los de otras obras en Vault; INICIAR_CONJUNTO sigue la cadena (ANT-EE-SP-001...).
+'  Propiedades en cada ensamble: PROYECTO, COD_PROYECTO, NRO_PROYECTO, CLIENTE, PLANTA,
+'  TIPO_ENSAMBLE (GENERAL / PLANTA) y FASE_NUMERACION = 1.
+'  Se ejecuta con cualquier archivo abierto (o uno nuevo vacio).
+'  Argumentos: nombre=, codigo=, plantas=EE,AEE, cliente=, raiz=<carpeta>, silencioso
+' =====================================================================
+Imports System.Collections.Generic
+Imports System.Text.RegularExpressions
+
+Sub Main()
+    silencioso = RuleArguments.Exists("silencioso")
+    ' ---------- carpeta de obras: espacio de trabajo del proyecto .ipj ----------
+    Dim raiz As String = Arg("raiz")
+    If raiz = "" Then
+        Try
+            raiz = ThisApplication.DesignProjectManager.ActiveDesignProject.WorkspacePath
+        Catch
+        End Try
+    End If
+    If raiz = "" OrElse Not System.IO.Directory.Exists(raiz) Then
+        MessageBox.Show("No encuentro la carpeta de obras (espacio de trabajo del proyecto COIMSER.ipj)." & vbCrLf & "Activa COIMSER.ipj en Inventor.", "NUEVO_PROYECTO")
+        Exit Sub
+    End If
+
+    ' ---------- datos de la obra ----------
+    Dim nombre As String = Arg("nombre")
+    If nombre = "" Then nombre = InputBox("Nombre de la obra (ej. ANTAPACCAY):", "NUEVO_PROYECTO", "")
+    nombre = Limpio(nombre).ToUpper()
+    If nombre = "" Then Exit Sub
+    Dim codigo As String = Arg("codigo")
+    If codigo = "" Then
+        Dim sug As String = Regex.Replace(nombre, "[^A-Z0-9]", "")
+        If sug.Length > 3 Then sug = sug.Substring(0, 3)
+        codigo = InputBox("Codigo corto de la obra para los nombres de archivo (2 a 5 letras):", "NUEVO_PROYECTO", sug)
+    End If
+    codigo = Regex.Replace(codigo.ToUpper(), "[^A-Z0-9]", "")
+    If codigo = "" Then Exit Sub
+    Dim plantasTxt As String = Arg("plantas")
+    If plantasTxt = "" Then plantasTxt = InputBox("Plantas / areas de la obra, separadas por coma (ej. EE, AEE, EBP):", "NUEVO_PROYECTO", "EE")
+    Dim plantas As New List(Of String)
+    For Each p As String In plantasTxt.Split(","c, ";"c, " "c)
+        Dim q As String = Regex.Replace(p.ToUpper(), "[^A-Z0-9]", "")
+        If q <> "" AndAlso Not plantas.Contains(q) Then plantas.Add(q)
+    Next
+    If plantas.Count = 0 Then Exit Sub
+    Dim cliente As String = Arg("cliente")
+    If cliente = "" AndAlso Not silencioso Then cliente = InputBox("Cliente (opcional):", "NUEVO_PROYECTO", "")
+
+    ' ---------- controles: nombre y codigo no repetidos ----------
+    Dim anio As String = DateTime.Now.Year.ToString()
+    Dim n As Integer = 0
+    For Each d As String In System.IO.Directory.GetDirectories(raiz)
+        Dim nd As String = System.IO.Path.GetFileName(d)
+        Dim m As Match = Regex.Match(nd, "^(\d{4})-(\d{3})\s+(.*)$")
+        If Not m.Success Then Continue For
+        If m.Groups(3).Value.Trim().ToUpper() = nombre Then
+            MessageBox.Show("Ya existe la obra " & nd & ".", "NUEVO_PROYECTO")
+            Exit Sub
+        End If
+        If System.IO.File.Exists(System.IO.Path.Combine(d, codigo & "-GENERAL.iam")) Then
+            MessageBox.Show("El codigo " & codigo & " ya lo usa la obra " & nd & ". Elige otro.", "NUEVO_PROYECTO")
+            Exit Sub
+        End If
+        If m.Groups(1).Value = anio Then n = Math.Max(n, CInt(m.Groups(2).Value))
+    Next
+    Dim nro As String = anio & "-" & (n + 1).ToString("000")
+    Dim carpeta As String = System.IO.Path.Combine(raiz, nro & " " & nombre)
+    For Each sd As String In New String() {"", "REFERENCIAS", "PLANOS", "PLANOS\PLASMA", "PLANOS\REPORTES"}
+        System.IO.Directory.CreateDirectory(System.IO.Path.Combine(carpeta, sd))
+    Next
+
+    ' ---------- ensambles de planta ----------
+    Dim plantilla As String = ThisApplication.FileManager.GetTemplateFile(DocumentTypeEnum.kAssemblyDocumentObject)
+    Dim rutas As New List(Of String)
+    For Each pl As String In plantas
+        Dim ruta As String = System.IO.Path.Combine(carpeta, codigo & "-" & pl & ".iam")
+        Dim a As AssemblyDocument = CType(ThisApplication.Documents.Add(DocumentTypeEnum.kAssemblyDocumentObject, plantilla, False), AssemblyDocument)
+        Datos(a, nombre, codigo, nro, cliente)
+        EscribirProp(a, "PLANTA", pl)
+        EscribirProp(a, "TIPO_ENSAMBLE", "PLANTA")
+        EscribirProp(a, "FASE_NUMERACION", "1")
+        a.PropertySets.Item("Design Tracking Properties").Item("Part Number").Value = codigo & "-" & pl
+        a.PropertySets.Item("Design Tracking Properties").Item("Description").Value = "PLANTA " & pl
+        a.SaveAs(ruta, False)
+        a.Close(True)
+        rutas.Add(ruta)
+    Next
+
+    ' ---------- ensamble general con las plantas ----------
+    Dim gRuta As String = System.IO.Path.Combine(carpeta, codigo & "-GENERAL.iam")
+    Dim g As AssemblyDocument = CType(ThisApplication.Documents.Add(DocumentTypeEnum.kAssemblyDocumentObject, plantilla, Not silencioso), AssemblyDocument)
+    Datos(g, nombre, codigo, nro, cliente)
+    EscribirProp(g, "TIPO_ENSAMBLE", "GENERAL")
+    g.PropertySets.Item("Design Tracking Properties").Item("Part Number").Value = codigo & "-GENERAL"
+    g.PropertySets.Item("Design Tracking Properties").Item("Description").Value = "OBRA " & nombre
+    Dim mat As Matrix = ThisApplication.TransientGeometry.CreateMatrix()
+    For Each r As String In rutas
+        Dim oc As ComponentOccurrence = g.ComponentDefinition.Occurrences.Add(r, mat)
+        oc.Grounded = True
+    Next
+    g.SaveAs(gRuta, False)
+
+    Dim msg As String = "Obra creada: " & carpeta & vbCrLf & vbCrLf & _
+        "  " & codigo & "-GENERAL.iam   (ver todo)" & vbCrLf
+    For Each r As String In rutas
+        msg &= "  " & System.IO.Path.GetFileName(r) & vbCrLf
+    Next
+    msg &= vbCrLf & "Trabaja en el ensamble de cada planta: abrelo y usa INICIAR_CONJUNTO," & vbCrLf & _
+        "NUEVA_PIEZA, TEKLA_NUMERACION y GENERAR_PLANOS ahi."
+    Try
+        System.IO.File.WriteAllText(System.IO.Path.Combine(carpeta, "_OBRA.txt"), _
+            "NRO=" & nro & vbCrLf & "NOMBRE=" & nombre & vbCrLf & "CODIGO=" & codigo & vbCrLf & _
+            "CLIENTE=" & cliente & vbCrLf & "PLANTAS=" & String.Join(",", plantas) & vbCrLf & _
+            "CREADA=" & DateTime.Now.ToString("yyyy-MM-dd HH:mm") & " " & System.Environment.UserName & vbCrLf)
+    Catch
+    End Try
+    If silencioso Then
+        g.Close(True)
+    Else
+        MessageBox.Show(msg, "NUEVO_PROYECTO")
+    End If
+End Sub
+
+Private silencioso As Boolean
+
+Sub Datos(d As Document, nombre As String, codigo As String, nro As String, cliente As String)
+    EscribirProp(d, "PROYECTO", nombre)
+    EscribirProp(d, "COD_PROYECTO", codigo)
+    EscribirProp(d, "NRO_PROYECTO", nro)
+    If cliente <> "" Then EscribirProp(d, "CLIENTE", cliente)
+    Try
+        d.PropertySets.Item("Design Tracking Properties").Item("Project").Value = nombre
+    Catch
+    End Try
+End Sub
+
+Sub EscribirProp(d As Document, n As String, v As String)
+    Dim ps As PropertySet = d.PropertySets.Item("Inventor User Defined Properties")
+    Try
+        ps.Item(n).Value = v
+    Catch
+        ps.Add(v, n)
+    End Try
+End Sub
+
+Function Limpio(s As String) As String
+    If s Is Nothing Then Return ""
+    For Each c As Char In System.IO.Path.GetInvalidFileNameChars()
+        s = s.Replace(c, " "c)
+    Next
+    Return Regex.Replace(s.Trim(), "\s+", " ")
+End Function
+
+Function Arg(n As String) As String
+    Try
+        If RuleArguments.Exists(n) Then Return CStr(RuleArguments.Value(n))
+    Catch
+    End Try
+    Return ""
+End Function

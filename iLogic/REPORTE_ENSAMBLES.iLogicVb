@@ -1,0 +1,641 @@
+' =====================================================================
+'  REPORTE_ENSAMBLES  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Reporte de ensambles (conjuntos) de un ensamble numerado con TEKLA_NUMERACION:
+'   - Excel  PLANOS\REPORTES\<PLANTA>-<ENSAMBLE>-REPORTE_ENSAMBLES.xlsx
+'       RESUMEN : por conjunto -> cant., peso perfiles, peso planchas, peso y AREA
+'                 SUPERFICIAL (pintura) unitarios y totales + total de la planta
+'       DETALLE : cada conjunto con sus perfiles y planchas (marca, perfil, long.,
+'                 material, cant./conjunto, peso, area, archivo) con formulas
+'   - Si existe el plano  PLANOS\<PLANTA>-<ENSAMBLE>-FAB.idw  inserta/actualiza la
+'     hoja "REPORTE DE ENSAMBLES" (detras de la disposicion general) con la tabla
+'     RESUMEN ENLAZADA al Excel.
+'  Area = superficie total de las piezas (todas las caras) en m2. Perneria no incluida.
+'  Argumentos opcionales: silencioso, idw=NO
+' =====================================================================
+
+Sub Main()
+    Dim asm As AssemblyDocument = TryCast(ThisDoc.Document, AssemblyDocument)
+    If asm Is Nothing Then
+        MessageBox.Show("Ejecuta la regla desde el ensamble general (.iam).", NOMBRE_REGLA)
+        Exit Sub
+    End If
+    ' ensamble GENERAL de la obra (NUEVO_PROYECTO): las reglas se corren en cada planta
+    Try
+        If CStr(asm.PropertySets.Item("Inventor User Defined Properties").Item("TIPO_ENSAMBLE").Value).ToUpper() = "GENERAL" Then
+            MessageBox.Show("Este es el ensamble GENERAL de la obra." & vbCrLf & "Abre el ensamble de la planta (ej. ANT-EE.iam) y ejecuta la regla ahi.", "REPORTE_ENSAMBLES")
+            Exit Sub
+        End If
+    Catch
+    End Try
+    silencioso = RuleArguments.Exists("silencioso")
+    Dim nombre As String = System.IO.Path.GetFileNameWithoutExtension(asm.FullFileName)
+    Dim dirPlanos As String = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(asm.FullFileName), "PLANOS")
+    Dim carpeta As String = System.IO.Path.Combine(dirPlanos, "REPORTES")
+    Try
+        planta = UProp(asm, "PLANTA")
+        proy = UProp(asm, "PROYECTO")
+        If planta = "" Then planta = "XX"
+        System.IO.Directory.CreateDirectory(carpeta)
+        Recorrer(asm.ComponentDefinition.Occurrences)
+
+        ' contenido directo de cada conjunto y del ensamble principal
+        Dim topP As New Dictionary(Of String, Integer)
+        Dim topC As New Dictionary(Of String, Integer)
+        Contar(asm.ComponentDefinition.Occurrences, topP, topC)
+        For Each mk As String In conjOrden
+            Dim pc As New Dictionary(Of String, Integer)
+            Dim sc As New Dictionary(Of String, Integer)
+            Contar(CType(conjDoc(mk), AssemblyDocument).ComponentDefinition.Occurrences, pc, sc)
+            dirP(mk) = pc
+            dirC(mk) = sc
+        Next
+
+        Dim wb As Object = NuevoLibro()
+        Dim wsR As Object = Hoja(wb, "RESUMEN")
+        Dim wsD As Object = Hoja(wb, "DETALLE")
+
+        ' ---------- DETALLE ----------
+        Dim r As Integer = 1
+        Fila(wsD, r, "REPORTE DE ENSAMBLES - PESO Y AREA DE PINTURA")
+        Estilo(wsD, r, 1, 1, True, -1)
+        wsD.Cells(r, 1).Font.Size = 14
+        r = r + 1
+        Fila(wsD, r, "PROYECTO: " & proy, Nothing, "PLANTA: " & planta, Nothing, "ENSAMBLE: " & nombre, Nothing, Nothing, "FECHA: " & DateTime.Now.ToString("dd/MM/yyyy HH:mm"))
+        r = r + 2
+        Dim filaTotC As New Dictionary(Of String, Integer)   ' fila del total unitario de cada conjunto
+        Dim bloques As New List(Of String)(conjOrden)
+        If topP.Count > 0 Then bloques.Add("*SUELTAS*")
+        For Each mk As String In bloques
+            Dim pc As Dictionary(Of String, Integer)
+            Dim sc As Dictionary(Of String, Integer)
+            Dim titulo As String
+            If mk = "*SUELTAS*" Then
+                pc = topP
+                sc = New Dictionary(Of String, Integer)
+                titulo = "PIEZAS SUELTAS (directas en " & nombre & ")"
+            Else
+                pc = dirP(mk)
+                sc = dirC(mk)
+                titulo = "CONJUNTO " & mk & "  -  " & DProp(conjDoc(mk), "Description") & "  -  CANT. EN PLANTA: " & cantConj(mk)
+            End If
+            Fila(wsD, r, titulo)
+            Estilo(wsD, r, 1, 11, True, RGB(31, 78, 121))
+            wsD.Range(wsD.Cells(r, 1), wsD.Cells(r, 11)).Font.Color = RGB(255, 255, 255)
+            r = r + 1
+            Fila(wsD, r, "MARCA", "TIPO", "PERFIL", "LONG. (mm)", "MATERIAL", "CANT./CONJ.", "PESO UNIT. (kg)", "PESO/CONJ. (kg)", "AREA UNIT. (m2)", "AREA/CONJ. (m2)", "ARCHIVO MODELO")
+            Estilo(wsD, r, 1, 11, True, RGB(221, 235, 247))
+            r = r + 1
+            Dim r0 As Integer = r
+            Dim marcas As New List(Of String)(pc.Keys)
+            marcas.Sort(AddressOf CompararTexto)
+            For Each pm As String In marcas
+                Dim inf() As Object = Info(pm)
+                Fila(wsD, r, pm, inf(I_NAT), inf(I_PERFIL), inf(I_LONG), inf(I_GRADO), pc(pm), inf(I_MASA), "=F" & r & "*G" & r, inf(I_AREA), "=F" & r & "*I" & r, inf(I_ARCH))
+                r = r + 1
+            Next
+            Dim subs As New List(Of String)(sc.Keys)
+            subs.Sort(AddressOf CompararTexto)
+            For Each sm As String In subs
+                Dim v() As Double = ValoresConj(sm)
+                Fila(wsD, r, sm, "SUBCONJUNTO", DProp(conjDoc(sm), "Description"), Nothing, Nothing, sc(sm), v(0) + v(1), "=F" & r & "*G" & r, v(2), "=F" & r & "*I" & r, System.IO.Path.GetFileName(conjDoc(sm).FullFileName))
+                r = r + 1
+            Next
+            Dim r1 As Integer = r - 1
+            Fila(wsD, r, If(mk = "*SUELTAS*", "TOTAL PIEZAS SUELTAS", "TOTAL POR CONJUNTO"), Nothing, Nothing, Nothing, Nothing, "=SUM(F" & r0 & ":F" & r1 & ")", Nothing, "=SUM(H" & r0 & ":H" & r1 & ")", Nothing, "=SUM(J" & r0 & ":J" & r1 & ")")
+            Estilo(wsD, r, 1, 11, True, RGB(242, 242, 242))
+            filaTotC(mk) = r
+            r = r + 1
+            If mk <> "*SUELTAS*" Then
+                Fila(wsD, r, "TOTAL x " & cantConj(mk) & " CONJUNTOS", Nothing, Nothing, Nothing, Nothing, Nothing, Nothing, "=H" & (r - 1) & "*" & cantConj(mk), Nothing, "=J" & (r - 1) & "*" & cantConj(mk))
+                Estilo(wsD, r, 1, 11, True, -1)
+                r = r + 1
+            End If
+            r = r + 1
+        Next
+        wsD.Range("D:D").NumberFormat = "0"
+        wsD.Range("G:H").NumberFormat = "0.00"
+        wsD.Range("I:J").NumberFormat = "0.000"
+        wsD.Columns("A:K").AutoFit()
+
+        ' ---------- RESUMEN (primera fila = titulos: es la tabla que va al plano) ----------
+        Fila(wsR, 1, "CONJUNTO", "DESCRIPCION", "CANT.", "PERFILES UNIT. (kg)", "PLANCHAS UNIT. (kg)", "PESO UNIT. (kg)", "PESO TOTAL (kg)", "AREA UNIT. (m2)", "AREA TOTAL (m2)")
+        Estilo(wsR, 1, 1, 9, True, RGB(221, 235, 247))
+        r = 2
+        Dim tops As New List(Of String)
+        For Each mk As String In conjOrden
+            If topC.ContainsKey(mk) Then tops.Add(mk)
+        Next
+        For Each mk As String In tops
+            Dim v() As Double = ValoresConj(mk)
+            Dim n As Integer = topC(mk)
+            Fila(wsR, r, mk, DProp(conjDoc(mk), "Description"), n, Math.Round(v(0), 2), Math.Round(v(1), 2), "=ROUND(D" & r & "+E" & r & ",2)", "=ROUND(C" & r & "*F" & r & ",2)", Math.Round(v(2), 3), "=ROUND(C" & r & "*H" & r & ",3)")
+            r = r + 1
+        Next
+        If topP.Count > 0 Then
+            Dim pf As Double = 0, pp As Double = 0, ar As Double = 0
+            For Each kv As KeyValuePair(Of String, Integer) In topP
+                Dim inf() As Object = Info(kv.Key)
+                If CStr(inf(I_NAT)) = "PERFIL" Then pf = pf + CDbl(inf(I_MASA)) * kv.Value Else pp = pp + CDbl(inf(I_MASA)) * kv.Value
+                ar = ar + CDbl(inf(I_AREA)) * kv.Value
+            Next
+            Fila(wsR, r, "SUELTAS", "PIEZAS SUELTAS", 1, Math.Round(pf, 2), Math.Round(pp, 2), "=ROUND(D" & r & "+E" & r & ",2)", "=ROUND(C" & r & "*F" & r & ",2)", Math.Round(ar, 3), "=ROUND(C" & r & "*H" & r & ",3)")
+            r = r + 1
+        End If
+        Fila(wsR, r, "TOTAL " & planta, "", "", "", "", "", "=ROUND(SUM(G2:G" & (r - 1) & "),2)", "", "=ROUND(SUM(I2:I" & (r - 1) & "),3)")
+        Estilo(wsR, r, 1, 9, True, RGB(242, 242, 242))
+        wsR.Range("D:G").NumberFormat = "0.00"
+        wsR.Range("H:I").NumberFormat = "0.000"
+        wsR.Columns("A:I").AutoFit()
+        Dim totPeso As Double = CDbl(wsR.Cells(r, 7).Value)
+        Dim totArea As Double = CDbl(wsR.Cells(r, 9).Value)
+
+        Dim ruta As String = System.IO.Path.Combine(carpeta, NomBase(planta, nombre) & "-REPORTE_ENSAMBLES.xlsx")
+        CerrarExcel(wb, ruta)
+
+        ' ---------- enlazar al plano ----------
+        Dim enIdw As String = ""
+        If Arg("idw").ToUpper() <> "NO" Then enIdw = EnlazarIdw(System.IO.Path.Combine(dirPlanos, NomBase(planta, nombre) & "-FAB.idw"), rutaXls)
+        Aviso("Reporte de ensambles " & planta & " - " & nombre & vbCrLf & "Peso total: " & totPeso.ToString("0.00") & " kg     Area de pintura: " & totArea.ToString("0.00") & " m2" & vbCrLf & rutaXls & vbCrLf & enIdw)
+    Catch ex As Exception
+        MatarExcel()
+        resumen.AppendLine("ERROR: " & ex.Message & vbCrLf & ex.StackTrace)
+        Aviso("Error en " & NOMBRE_REGLA & ": " & ex.Message)
+    Finally
+        Try
+            System.IO.File.WriteAllText(System.IO.Path.Combine(carpeta, NOMBRE_REGLA & ".log"), resumen.ToString())
+        Catch
+        End Try
+    End Try
+End Sub
+
+Private Const NOMBRE_REGLA As String = "REPORTE_ENSAMBLES"
+Private dirP As New Dictionary(Of String, Dictionary(Of String, Integer))
+Private dirC As New Dictionary(Of String, Dictionary(Of String, Integer))
+Private valC As New Dictionary(Of String, Double())
+
+' Contenido directo de un ensamble (atraviesa subensambles transparentes, se detiene en conjuntos)
+Sub Contar(occs As Object, pc As Dictionary(Of String, Integer), sc As Dictionary(Of String, Integer))
+    For Each occ As ComponentOccurrence In occs
+        If occ.Suppressed Then Continue For
+        Dim d As Document = Nothing
+        Dim bs As BOMStructureEnum = BOMStructureEnum.kDefaultBOMStructure
+        Try
+            d = occ.Definition.Document
+            bs = occ.BOMStructure
+        Catch
+            Continue For
+        End Try
+        If bs = BOMStructureEnum.kReferenceBOMStructure OrElse bs = BOMStructureEnum.kPurchasedBOMStructure Then Continue For
+        If UProp(d, "EQUIPO").ToUpper() = "SI" Then Continue For
+        Dim mk As String = UProp(d, "MARCA")
+        If d.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+            If mk <> "" AndAlso bs <> BOMStructureEnum.kPhantomBOMStructure Then
+                Sumar(sc, mk)
+            Else
+                Contar(occ.SubOccurrences, pc, sc)
+            End If
+        ElseIf mk <> "" Then
+            Sumar(pc, mk)
+        End If
+    Next
+End Sub
+
+' {peso perfiles, peso planchas/otros, area} de UN conjunto (recursivo)
+Function ValoresConj(mk As String) As Double()
+    If valC.ContainsKey(mk) Then Return valC(mk)
+    Dim v() As Double = {0, 0, 0}
+    For Each kv As KeyValuePair(Of String, Integer) In dirP(mk)
+        Dim inf() As Object = Info(kv.Key)
+        If CStr(inf(I_NAT)) = "PERFIL" Then v(0) = v(0) + CDbl(inf(I_MASA)) * kv.Value Else v(1) = v(1) + CDbl(inf(I_MASA)) * kv.Value
+        v(2) = v(2) + CDbl(inf(I_AREA)) * kv.Value
+    Next
+    For Each kv As KeyValuePair(Of String, Integer) In dirC(mk)
+        Dim s() As Double = ValoresConj(kv.Key)
+        v(0) = v(0) + s(0) * kv.Value
+        v(1) = v(1) + s(1) * kv.Value
+        v(2) = v(2) + s(2) * kv.Value
+    Next
+    valC(mk) = v
+    Return v
+End Function
+
+' Inserta / actualiza la hoja "REPORTE DE ENSAMBLES" con la tabla enlazada al Excel
+Function EnlazarIdw(rutaIdw As String, xls As String) As String
+    If Not System.IO.File.Exists(rutaIdw) Then Return "(no hay plano " & System.IO.Path.GetFileName(rutaIdw) & ": ejecuta GENERAR_PLANOS para insertar la tabla)"
+    Dim dwg As DrawingDocument = Nothing
+    Dim abierto As Boolean = False
+    For Each od As Document In ThisApplication.Documents
+        If String.Compare(od.FullFileName, rutaIdw, True) = 0 Then
+            dwg = od
+            abierto = True
+            Exit For
+        End If
+    Next
+    If dwg Is Nothing Then dwg = ThisApplication.Documents.Open(rutaIdw, False)
+    Dim sh As Sheet = Nothing
+    For Each s As Sheet In dwg.Sheets
+        If GetTag(s, "CLAVE") = "REP" Then
+            sh = s
+            Exit For
+        End If
+    Next
+    If sh Is Nothing Then
+        sh = dwg.Sheets.Add(DrawingSheetSizeEnum.kA3DrawingSheetSize, PageOrientationTypeEnum.kLandscapePageOrientation)
+        Try
+            If sh.Border IsNot Nothing Then sh.Border.Delete()
+            sh.AddBorder(dwg.BorderDefinitions.Item("COIMSER-A3-ZONAS"))
+        Catch
+        End Try
+        Try
+            If sh.TitleBlock Is Nothing Then sh.AddTitleBlock(dwg.TitleBlockDefinitions.Item("COIMSER-A3-ROTULO"))
+        Catch
+        End Try
+        sh.Name = "REPORTE DE ENSAMBLES"
+        SetTag(sh, "CLAVE", "REP")
+        ' detras de la primera hoja (disposicion general)
+        Try
+            Dim pane As BrowserPane = PanelModelo(dwg)
+            pane.Reorder(pane.GetBrowserNodeFromObject(dwg.Sheets.Item(1)), False, pane.GetBrowserNodeFromObject(sh))
+        Catch
+        End Try
+    End If
+    For i As Integer = sh.CustomTables.Count To 1 Step -1
+        sh.CustomTables.Item(i).Delete()
+    Next
+    For i As Integer = sh.DrawingNotes.GeneralNotes.Count To 1 Step -1
+        If GetTag(sh.DrawingNotes.GeneralNotes.Item(i), "NOTA") = "REP" Then sh.DrawingNotes.GeneralNotes.Item(i).Delete()
+    Next
+    Dim tb As CustomTable = sh.CustomTables.AddExcelTable(xls, ThisApplication.TransientGeometry.CreatePoint2d(2.5, 28.2), "REPORTE DE ENSAMBLES - PESO Y AREA DE PINTURA")
+    Dim nt As GeneralNote = sh.DrawingNotes.GeneralNotes.AddFitted(ThisApplication.TransientGeometry.CreatePoint2d(2.5, 7.4), "TABLA ENLAZADA A: " & System.IO.Path.GetFileName(xls) & vbCrLf & "AREA = SUPERFICIE TOTAL DE LAS PIEZAS (PINTURA). NO INCLUYE PERNERIA." & vbCrLf & "DETALLE POR PIEZA EN LA HOJA 'DETALLE' DEL EXCEL.")
+    SetTag(nt, "NOTA", "REP")
+    dwg.Save()
+    If Not abierto Then dwg.Close(True)
+    Return "Tabla enlazada en " & System.IO.Path.GetFileName(rutaIdw) & " (hoja REPORTE DE ENSAMBLES)"
+End Function
+
+Function GetTag(o As Object, n As String) As String
+    Try
+        Dim sets As AttributeSets = o.AttributeSets
+        If sets.NameIsUsed(ATR) Then
+            Dim a As AttributeSet = sets.Item(ATR)
+            If a.NameIsUsed(n) Then Return CStr(a.Item(n).Value)
+        End If
+    Catch
+    End Try
+    Return ""
+End Function
+
+Sub SetTag(o As Object, n As String, v As String)
+    Try
+        Dim sets As AttributeSets = o.AttributeSets
+        Dim a As AttributeSet
+        If sets.NameIsUsed(ATR) Then a = sets.Item(ATR) Else a = sets.Add(ATR)
+        If a.NameIsUsed(n) Then a.Item(n).Value = v Else a.Add(n, ValueTypeEnum.kStringType, v)
+    Catch
+    End Try
+End Sub
+
+
+' ===================== comun (REPORTE_ENSAMBLES / CUT_LIST) =====================
+Private planta As String = ""
+Private proy As String = ""
+Private silencioso As Boolean
+Private resumen As New System.Text.StringBuilder
+Private conjOrden As New List(Of String)
+Private conjDoc As New Dictionary(Of String, Document)
+Private cantConj As New Dictionary(Of String, Integer)
+Private partDoc As New Dictionary(Of String, Document)
+Private cantParte As New Dictionary(Of String, Integer)
+Private infoP As New Dictionary(Of String, Object())
+Private xl As Object = Nothing
+Private Const SM_SUBTYPE As String = "{9C464203-9BAE-11D3-8BAD-0060B0CE6BB4}"
+Private Const ATR As String = "COIMSER_PLANOS"
+' indices de infoP
+Private Const I_NAT As Integer = 0, I_PERFIL As Integer = 1, I_LONG As Integer = 2, I_GRADO As Integer = 3, I_MASA As Integer = 4
+Private Const I_AREA As Integer = 5, I_ESP As Integer = 6, I_LARGO As Integer = 7, I_ANCHO As Integer = 8, I_ARCH As Integer = 9, I_CONJ As Integer = 10
+
+' Recorre toda la planta: cantidades totales por marca (multiplicando niveles)
+Sub Recorrer(occs As Object)
+    For Each occ As ComponentOccurrence In occs
+        If occ.Suppressed Then Continue For
+        Dim d As Document = Nothing
+        Dim bs As BOMStructureEnum = BOMStructureEnum.kDefaultBOMStructure
+        Try
+            d = occ.Definition.Document
+            bs = occ.BOMStructure
+        Catch
+            Continue For
+        End Try
+        If bs = BOMStructureEnum.kReferenceBOMStructure OrElse bs = BOMStructureEnum.kPurchasedBOMStructure Then Continue For
+        If UProp(d, "EQUIPO").ToUpper() = "SI" Then Continue For
+        Dim mk As String = UProp(d, "MARCA")
+        If d.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+            If mk <> "" AndAlso bs <> BOMStructureEnum.kPhantomBOMStructure Then
+                Sumar(cantConj, mk)
+                If Not conjDoc.ContainsKey(mk) Then
+                    conjDoc(mk) = d
+                    conjOrden.Add(mk)
+                End If
+            End If
+            Recorrer(occ.SubOccurrences)
+        Else
+            If mk = "" Then
+                resumen.AppendLine("Sin marca (no entra al reporte): " & occ.Name)
+                Continue For
+            End If
+            Sumar(cantParte, mk)
+            If Not partDoc.ContainsKey(mk) Then partDoc(mk) = d
+        End If
+    Next
+End Sub
+
+Sub Sumar(dic As Dictionary(Of String, Integer), k As String)
+    If dic.ContainsKey(k) Then dic(k) = dic(k) + 1 Else dic(k) = 1
+End Sub
+
+' Datos de una marca (se calculan una vez)
+Function Info(mk As String) As Object()
+    If infoP.ContainsKey(mk) Then Return infoP(mk)
+    Dim d As Document = partDoc(mk)
+    Dim r(I_CONJ) As Object
+    Dim p As PartDocument = TryCast(d, PartDocument)
+    r(I_NAT) = Naturaleza(p)
+    r(I_PERFIL) = DProp(d, "Description")
+    r(I_LONG) = Num(UProp(d, "LONGITUD"))
+    r(I_GRADO) = UProp(d, "GRADO")
+    Dim masa As Double = Num(UProp(d, "PESO"))
+    Dim area As Double = 0
+    Try
+        Dim mp As MassProperties = p.ComponentDefinition.MassProperties
+        masa = mp.Mass
+        area = mp.Area / 10000.0
+    Catch
+    End Try
+    r(I_MASA) = masa
+    r(I_AREA) = area
+    r(I_ESP) = 0.0
+    r(I_LARGO) = 0.0
+    r(I_ANCHO) = 0.0
+    If CStr(r(I_NAT)) = "PLANCHA" OrElse CStr(r(I_NAT)) = "CHAPA PLEGADA" Then
+        Dim la As Double = 0, an As Double = 0
+        r(I_ESP) = Espesor(p)
+        DimPlancha(p, la, an)
+        r(I_LARGO) = la
+        r(I_ANCHO) = an
+    End If
+    r(I_ARCH) = System.IO.Path.GetFileName(d.FullFileName)
+    r(I_CONJ) = UProp(d, "CONJUNTO")
+    infoP(mk) = r
+    Return r
+End Function
+
+' PERFIL / PLANCHA / CHAPA PLEGADA / MECANICA / OTROS  (segun el codigo A0.61 de TEKLA_NUMERACION)
+Function Naturaleza(p As PartDocument) As String
+    If p Is Nothing Then Return "OTROS"
+    If EsDA(p) Then Return "MECANICA"          ' Design Accelerator: polea, engranaje, eje (nunca plancha)
+    If TieneParam(p, "G_L") OrElse TieneParam(p, "B_L") Then Return "PERFIL"
+    Dim cod As String = UProp(p, "CODIGO_PIEZA").ToLower()
+    If cod = "" Then cod = UProp(p, "CODIGO").ToLower()
+    If cod = "mq" Then Return "MECANICA"
+    If p.SubType = SM_SUBTYPE Then
+        Dim nb As Integer = 0
+        Try
+            nb = CType(p.ComponentDefinition, SheetMetalComponentDefinition).Bends.Count
+        Catch
+        End Try
+        If nb > 0 OrElse cod = "f" OrElse cod = "fp" Then Return "CHAPA PLEGADA"
+        Return "PLANCHA"
+    End If
+    Select Case cod
+        Case "n", "p", "b", "pp", "r"
+            Return "PLANCHA"
+        Case "f", "fp"
+            Return "CHAPA PLEGADA"
+        Case "g", "k", "ma", "mx", "me", "j", "e", "hn", "wl", "st", "cd"
+            Return "OTROS"                          ' parrilla, FRP, mallas, teflon, esparragos...
+        Case ""
+            Dim tipo As String = UProp(p, "TIPO_PIEZA").ToUpper()
+            If tipo.Contains("PLANCHA") OrElse tipo.Contains("CARTELA") Then Return "PLANCHA"
+            Return "OTROS"
+        Case Else
+            Return "PERFIL"                         ' w, c, a, h, t, xs, xc, pl (platina = barra)...
+    End Select
+End Function
+
+' pieza generada por el Design Accelerator (polea, engranaje, eje, correa...)
+Function EsDA(p As PartDocument) As Boolean
+    ' (la propiedad Categories no sirve: tambien la tienen los perfiles Frame Generator / Content Center)
+    If p.FullFileName.ToLower().Contains("\design accelerator\") Then Return True
+    For Each ps As PropertySet In p.PropertySets
+        If ps.Name = "FDesign" Then Return True
+    Next
+    Try
+        For Each up As UserParameter In p.ComponentDefinition.Parameters.UserParameters
+            If up.Name.StartsWith("da_") Then Return True
+        Next
+    Catch
+    End Try
+    Return False
+End Function
+
+
+Function Espesor(p As PartDocument) As Double
+    Try
+        If p.SubType = SM_SUBTYPE Then Return CType(p.ComponentDefinition, SheetMetalComponentDefinition).Thickness.Value * 10
+    Catch
+    End Try
+    Try
+        Return p.ComponentDefinition.Parameters.Item("ESPESOR").Value * 10
+    Catch
+    End Try
+    Dim r As Box = p.ComponentDefinition.RangeBox
+    Dim ex() As Double = {r.MaxPoint.X - r.MinPoint.X, r.MaxPoint.Y - r.MinPoint.Y, r.MaxPoint.Z - r.MinPoint.Z}
+    Array.Sort(ex)
+    Return Math.Round(ex(0) * 10, 1)
+End Function
+
+' Largo x ancho del corte (desarrollado o cara mayor), mm. No modifica la pieza.
+Sub DimPlancha(p As PartDocument, ByRef la As Double, ByRef an As Double)
+    Try
+        If p.SubType = SM_SUBTYPE Then
+            Dim smd As SheetMetalComponentDefinition = p.ComponentDefinition
+            Dim tx As Transaction = Nothing
+            If Not smd.HasFlatPattern Then
+                tx = ThisApplication.TransactionManager.StartTransaction(p, "CUT_LIST")
+                smd.Unfold()
+                smd.FlatPattern.ExitEdit()
+            End If
+            la = Math.Max(smd.FlatPattern.Length, smd.FlatPattern.Width) * 10
+            an = Math.Min(smd.FlatPattern.Length, smd.FlatPattern.Width) * 10
+            If tx IsNot Nothing Then tx.Abort()
+            Exit Sub
+        End If
+    Catch
+    End Try
+    Try
+        Dim mejor As Face = Nothing
+        Dim a As Double = 0
+        For Each b As SurfaceBody In p.ComponentDefinition.SurfaceBodies
+            For Each fc As Face In b.Faces
+                If fc.SurfaceType = SurfaceTypeEnum.kPlaneSurface AndAlso fc.Evaluator.Area > a + 0.0001 Then
+                    a = fc.Evaluator.Area
+                    mejor = fc
+                End If
+            Next
+        Next
+        Dim r As Box = mejor.Evaluator.RangeBox
+        Dim ex() As Double = {r.MaxPoint.X - r.MinPoint.X, r.MaxPoint.Y - r.MinPoint.Y, r.MaxPoint.Z - r.MinPoint.Z}
+        Array.Sort(ex)
+        la = Math.Round(ex(2) * 10, 1)
+        an = Math.Round(ex(1) * 10, 1)
+    Catch
+    End Try
+End Sub
+
+' ===================== Excel =====================
+Function NuevoLibro() As Object
+    xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    xl.DisplayAlerts = False
+    xl.ScreenUpdating = False
+    Dim wb As Object = xl.Workbooks.Add()
+    Do While wb.Worksheets.Count > 1
+        wb.Worksheets(wb.Worksheets.Count).Delete()
+    Loop
+    Return wb
+End Function
+
+Function Hoja(wb As Object, nombre As String) As Object
+    Dim ws As Object
+    If wb.Worksheets(1).Name.StartsWith("Hoja") OrElse wb.Worksheets(1).Name.StartsWith("Sheet") Then
+        ws = wb.Worksheets(1)
+    Else
+        ws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count))
+    End If
+    ws.Name = nombre
+    Return ws
+End Function
+
+Sub Fila(ws As Object, r As Integer, ParamArray v() As Object)
+    For i As Integer = 0 To v.Length - 1
+        If v(i) Is Nothing Then Continue For
+        Dim s As String = TryCast(v(i), String)
+        If s IsNot Nothing AndAlso s.StartsWith("=") Then
+            ws.Cells(r, i + 1).Formula = s
+        Else
+            ws.Cells(r, i + 1).Value = v(i)
+        End If
+    Next
+End Sub
+
+Sub Estilo(ws As Object, r As Integer, c1 As Integer, c2 As Integer, negrita As Boolean, color As Integer)
+    Dim rg As Object = ws.Range(ws.Cells(r, c1), ws.Cells(r, c2))
+    rg.Font.Bold = negrita
+    If color >= 0 Then rg.Interior.Color = color
+End Sub
+
+Function Col(c As Integer) As String
+    Dim s As String = ""
+    Do While c > 0
+        Dim m As Integer = (c - 1) Mod 26
+        s = Chr(65 + m) & s
+        c = (c - m - 1) \ 26
+    Loop
+    Return s
+End Function
+
+Sub CerrarExcel(wb As Object, ruta As String)
+    Try
+        If System.IO.File.Exists(ruta) Then System.IO.File.Delete(ruta)
+    Catch
+        ruta = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(ruta), System.IO.Path.GetFileNameWithoutExtension(ruta) & "_" & DateTime.Now.ToString("HHmmss") & ".xlsx")
+        resumen.AppendLine("El Excel anterior estaba abierto; se guardo como " & ruta)
+    End Try
+    xl.ScreenUpdating = True
+    wb.Worksheets(1).Activate()
+    wb.SaveAs(ruta, 51)
+    wb.Close(False)
+    xl.Quit()
+    System.Runtime.InteropServices.Marshal.ReleaseComObject(wb)
+    System.Runtime.InteropServices.Marshal.ReleaseComObject(xl)
+    xl = Nothing
+    resumen.AppendLine("Excel: " & ruta)
+    rutaXls = ruta
+End Sub
+Private rutaXls As String = ""
+
+Sub MatarExcel()
+    Try
+        If xl IsNot Nothing Then
+            xl.DisplayAlerts = False
+            xl.Quit()
+            xl = Nothing
+        End If
+    Catch
+    End Try
+End Sub
+
+' ===================== utilidades =====================
+Function TieneParam(p As PartDocument, n As String) As Boolean
+    Try
+        Dim x As Object = p.ComponentDefinition.Parameters.Item(n)
+        Return True
+    Catch
+        Return False
+    End Try
+End Function
+
+Function UProp(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Inventor User Defined Properties").Item(n).Value)
+    Catch
+        Return ""
+    End Try
+End Function
+
+Function DProp(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Design Tracking Properties").Item(n).Value)
+    Catch
+        Return ""
+    End Try
+End Function
+
+Function Num(s As String) As Double
+    Dim r As Double
+    If s Is Nothing Then Return 0
+    If Double.TryParse(s.Replace(",", "."), Globalization.NumberStyles.Any, Globalization.CultureInfo.InvariantCulture, r) Then Return r
+    Return 0
+End Function
+
+' "EE" + "ANTAPACAY" -> "EE-ANTAPACAY"; "EE" + "ANT-EE" -> "ANT-EE" (no repite la planta)
+Function NomBase(planta As String, nombre As String) As String
+    If nombre.ToUpper() = planta.ToUpper() OrElse nombre.ToUpper().EndsWith("-" & planta.ToUpper()) Then Return nombre
+    Return planta & "-" & nombre
+End Function
+
+Function Arg(n As String) As String
+    Try
+        If RuleArguments.Exists(n) Then Return CStr(RuleArguments.Value(n))
+    Catch
+    End Try
+    Return ""
+End Function
+
+Function CompararTexto(a As String, b As String) As Integer
+    Return String.Compare(a, b, True)
+End Function
+
+Sub Aviso(t As String)
+    resumen.AppendLine(t)
+    If Not silencioso Then MessageBox.Show(t, NOMBRE_REGLA)
+End Sub
+
+
+' Panel "Modelo" del navegador (el nombre visible cambia con el idioma de Inventor)
+Function PanelModelo(dwg As DrawingDocument) As BrowserPane
+    For Each bp As BrowserPane In dwg.BrowserPanes
+        If bp.InternalName = "DlHierarchy" Then Return bp
+    Next
+    Return dwg.BrowserPanes.ActivePane
+End Function

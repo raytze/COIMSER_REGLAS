@@ -1,0 +1,552 @@
+' =====================================================================
+'  REVISAR_JERARQUIA  v1.1  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Se corre en el ensamble de PLANTA antes de TEKLA_NUMERACION.
+'
+'  1) REVISA todo el arbol y escribe _REVISION_JERARQUIA.txt en la carpeta de la obra:
+'     ERROR  - conjunto con PREFIJO que no esta en TABLA_MARCAS (A0.61)
+'            - PLANTA / PROYECTO distintos a los del ensamble de planta
+'            - pieza con CODIGO que no esta en la tabla
+'            - piezas DISTINTAS con el mismo Part Number (el BOM las junta)
+'     AVISO  - conjunto sin PREFIJO (transparente: sus piezas suben al conjunto de arriba)
+'            - conjunto dentro de otro conjunto del mismo tipo (posible nivel equivocado)
+'            - pieza sin marca (sin numerar o sin clasificar)
+'            - pieza comercial / Content Center con marca de fabricacion
+'            - archivo fuera de la carpeta de la obra, o de \Librerias sin EQUIPO = SI
+'            - v1.1: REFERENCIA fuera de la obra, y pieza sin solidos (skeleton) sin marcar
+'              como referencia -> NUEVA_REFERENCIA opcion 3
+'  2) CORRIGE desde un menu (solo propiedades; mover piezas: Reestructurar de Inventor):
+'     cambiar tipo de conjunto, volver transparente (Fantasma), igualar PLANTA/PROYECTO,
+'     forzar CODIGO de pieza, bloquear / desbloquear marcas.
+'  3) Al terminar indica que configuracion de TEKLA_NUMERACION correr.
+'  No guarda: guarda el ensamble de planta al terminar.
+'  Argumentos (pruebas): silencioso (solo informe), accion=tipo|fantasma|igualar|codigo|bloquear,
+'     objeto=<nombre de archivo>, valor=<prefijo / codigo / SI / NO>
+' =====================================================================
+Imports System.Collections.Generic
+Imports System.Text.RegularExpressions
+
+Sub Main()
+    Dim asm As AssemblyDocument = TryCast(ThisDoc.Document, AssemblyDocument)
+    If asm Is Nothing Then
+        MessageBox.Show("Abre el ensamble de la planta (.iam) y ejecuta la regla desde ahi.", "REVISAR_JERARQUIA")
+        Exit Sub
+    End If
+    If UProp(asm, "TIPO_ENSAMBLE").ToUpper() = "GENERAL" Then
+        MessageBox.Show("Este es el ensamble GENERAL de la obra." & vbCrLf & "Abre el ensamble de la planta (ej. ANT-EE.iam) y ejecuta la regla ahi.", "REVISAR_JERARQUIA")
+        Exit Sub
+    End If
+    silencioso = RuleArguments.Exists("silencioso")
+    top = asm
+    planta = UProp(asm, "PLANTA").ToUpper()
+    proy = UProp(asm, "PROYECTO").ToUpper()
+    obra = CarpetaObra(asm)
+    CargarTabla(asm)
+
+    Dim accion As String = Arg("accion").ToLower()
+    If accion <> "" Then
+        ' modo sin dialogos (pruebas o uso desde otra regla)
+        Revisar()
+        Aplicar(accion, Arg("objeto"), Arg("valor"))
+        Revisar()
+        Informe()
+        Exit Sub
+    End If
+
+    Revisar()
+    Informe()
+    If silencioso Then Exit Sub
+    Dim opciones As New List(Of String)
+    opciones.Add("1 - Ver el informe")
+    opciones.Add("2 - Cambiar el tipo de un conjunto (PREFIJO)")
+    opciones.Add("3 - Volver transparente un conjunto (Fantasma)")
+    opciones.Add("4 - Igualar PLANTA y PROYECTO en todo el arbol")
+    opciones.Add("5 - Forzar el codigo de una pieza (CODIGO)")
+    opciones.Add("6 - Bloquear / desbloquear una marca")
+    opciones.Add("7 - Terminar")
+    Do
+        Dim titulo As String = "Errores: " & nErr & "   Avisos: " & nAvi & "   Cambios hechos: " & cambios.Count
+        Dim op As String = InputListBox(titulo, opciones, opciones(0), "REVISAR_JERARQUIA", "Que quieres hacer?")
+        If op Is Nothing OrElse op = "" OrElse op.StartsWith("7") Then Exit Do
+        Select Case op.Substring(0, 1)
+            Case "1"
+                MostrarInforme()
+            Case "2"
+                Dim c As String = ElegirConjunto("Conjunto a cambiar de tipo:")
+                If c = "" Then Continue Do
+                Dim tipos As New List(Of String)
+                For Each kv As KeyValuePair(Of String, String) In tablaConj
+                    tipos.Add(kv.Key & " - " & kv.Value)
+                Next
+                tipos.Sort()
+                Dim t As String = InputListBox("Nuevo tipo (A0.61) para " & c & ":", tipos, tipos(0), "REVISAR_JERARQUIA", "Tipo de conjunto")
+                If t = "" Then Continue Do
+                Aplicar("tipo", c, t.Split(" "c)(0))
+            Case "3"
+                Dim c As String = ElegirConjunto("Conjunto que solo agrupa (sus piezas pasan al conjunto de arriba):")
+                If c <> "" Then Aplicar("fantasma", c, "")
+            Case "4"
+                If MessageBox.Show("Escribir PLANTA = " & planta & " y PROYECTO = " & proy & " en todos los conjuntos y piezas de la planta?", "REVISAR_JERARQUIA", MessageBoxButtons.YesNo) = DialogResult.Yes Then Aplicar("igualar", "", "")
+            Case "5"
+                Dim p As String = ElegirPieza("Pieza a la que se fuerza el codigo (primero las sin marca):")
+                If p = "" Then Continue Do
+                Dim cods As New List(Of String)
+                cods.Add("(quitar CODIGO: clasificacion automatica)")
+                For Each kv As KeyValuePair(Of String, String) In tablaParte
+                    cods.Add(kv.Key & " - " & kv.Value)
+                Next
+                Dim cd As String = InputListBox("Codigo de parte (A0.61) para " & p & ":", cods, cods(0), "REVISAR_JERARQUIA", "Codigo")
+                If cd = "" Then Continue Do
+                Aplicar("codigo", p, If(cd.StartsWith("("), "", cd.Split(" "c)(0)))
+            Case "6"
+                Dim todos As New List(Of String)
+                For Each k As String In nombresConj
+                    todos.Add(k & "   [" & EstadoBloq(docs(k)) & "]")
+                Next
+                For Each k As String In nombresPieza
+                    todos.Add(k & "   [" & EstadoBloq(docs(k)) & "]")
+                Next
+                If todos.Count = 0 Then Continue Do
+                Dim o As String = InputListBox("Conjunto o pieza:", todos, todos(0), "REVISAR_JERARQUIA", "Bloquear / desbloquear")
+                If o = "" Then Continue Do
+                Dim nom As String = o.Substring(0, o.IndexOf("   ["))
+                Dim nuevo As String = If(EstadoBloq(docs(nom)) = "BLOQUEADO", "NO", "SI")
+                Aplicar("bloquear", nom, nuevo)
+                If nuevo = "SI" AndAlso nombresConj.Contains(nom) Then
+                    If MessageBox.Show("Bloquear tambien las piezas de " & nom & "?", "REVISAR_JERARQUIA", MessageBoxButtons.YesNo) = DialogResult.Yes Then
+                        For Each sd As Document In docs(nom).AllReferencedDocuments
+                            If sd.DocumentType = DocumentTypeEnum.kPartDocumentObject AndAlso UProp(sd, "MARCA") <> "" Then
+                                EscribirProp(sd, "BLOQUEADO", "SI")
+                            End If
+                        Next
+                        cambios.Add(nom & ": piezas bloqueadas")
+                    End If
+                End If
+        End Select
+        Revisar()
+        Informe()
+    Loop
+    MessageBox.Show(Cierre(), "REVISAR_JERARQUIA")
+End Sub
+
+Private silencioso As Boolean
+Private top As AssemblyDocument
+Private planta As String = ""
+Private proy As String = ""
+Private obra As String = ""
+Private tablaConj As New SortedDictionary(Of String, String)
+Private tablaSistema As New List(Of String)
+Private tablaParte As New SortedDictionary(Of String, String)
+Private docs As New Dictionary(Of String, Document)
+Private nombresConj As New List(Of String)
+Private nombresPieza As New List(Of String)
+Private padreDe As New Dictionary(Of String, String)
+Private refVistas As New List(Of String)
+Private errores As New List(Of String)
+Private avisos As New List(Of String)
+Private cambios As New List(Of String)
+Private nErr As Integer
+Private nAvi As Integer
+Private informeTxt As String = ""
+
+' ===================== revision =====================
+Sub Revisar()
+    docs.Clear() : nombresConj.Clear() : nombresPieza.Clear() : padreDe.Clear() : refVistas.Clear()
+    errores.Clear() : avisos.Clear()
+    If planta = "" Then errores.Add("El ensamble de planta no tiene PLANTA (ej. EE): ponla en iProperties > Personalizada.")
+    If proy = "" Then errores.Add("El ensamble de planta no tiene PROYECTO.")
+    Recorrer(top.ComponentDefinition.Occurrences, "", "(planta)")
+    ' piezas distintas con el mismo Part Number
+    Dim pn As New Dictionary(Of String, List(Of String))
+    For Each k As String In nombresPieza
+        Dim d As Document = docs(k)
+        Dim n As String = PropDT(d, "Part Number").Trim().ToUpper()
+        If n = "" Then Continue For
+        If Not pn.ContainsKey(n) Then pn(n) = New List(Of String)
+        pn(n).Add(k)
+    Next
+    For Each kv As KeyValuePair(Of String, List(Of String)) In pn
+        If kv.Value.Count < 2 Then Continue For
+        Dim mk As String = UProp(docs(kv.Value(0)), "MARCA")
+        Dim distintas As Boolean = (mk = "")
+        For Each k As String In kv.Value
+            If UProp(docs(k), "MARCA") <> mk Then distintas = True
+        Next
+        If distintas Then errores.Add("Part Number '" & kv.Key & "' repetido en " & String.Join(", ", kv.Value) & ": el BOM las junta en una fila. Numera con TEKLA_NUMERACION.")
+    Next
+    nErr = errores.Count
+    nAvi = avisos.Count
+End Sub
+
+Sub Recorrer(occs As Object, conjPadre As String, prefPadre As String)
+    For Each occ As ComponentOccurrence In occs
+        If occ.Suppressed Then Continue For
+        Dim d As Document = Nothing
+        Dim bs As BOMStructureEnum = BOMStructureEnum.kDefaultBOMStructure
+        Try
+            d = occ.Definition.Document
+            bs = occ.BOMStructure
+        Catch
+            Continue For
+        End Try
+        If bs = BOMStructureEnum.kReferenceBOMStructure OrElse UProp(d, "REFERENCIA").ToUpper() = "SI" Then
+            ' referencias: no se numeran, pero deben estar dentro de la obra
+            Dim nr As String = System.IO.Path.GetFileName(d.FullFileName)
+            If Not refVistas.Contains(nr) Then
+                refVistas.Add(nr)
+                If Not d.FullFileName.ToLower().StartsWith(obra.ToLower()) Then avisos.Add(nr & ": es REFERENCIA y esta fuera de la carpeta de la obra (" & System.IO.Path.GetDirectoryName(d.FullFileName) & "). Traela con NUEVA_REFERENCIA opcion 3.")
+            End If
+            Continue For
+        End If
+        Dim nom As String = System.IO.Path.GetFileName(d.FullFileName)
+        Dim ruta As String = d.FullFileName.ToLower()
+        Dim esEquipo As Boolean = (UProp(d, "EQUIPO").ToUpper() = "SI")
+        Dim esCC As Boolean = False
+        Try
+            If d.DocumentType = DocumentTypeEnum.kPartDocumentObject Then esCC = CType(d, PartDocument).ComponentDefinition.IsContentMember
+        Catch
+        End Try
+        Dim comprado As Boolean = (bs = BOMStructureEnum.kPurchasedBOMStructure) OrElse esCC
+        Dim nuevo As Boolean = Not docs.ContainsKey(nom)
+        If nuevo Then docs(nom) = d
+
+        ' archivos fuera de la obra
+        If nuevo AndAlso Not esCC AndAlso Not ruta.Contains("\content center files\") AndAlso Not ruta.StartsWith(obra.ToLower()) Then
+            If ruta.Contains("\librerias\") Then
+                If Not esEquipo AndAlso Not comprado Then avisos.Add(nom & ": viene de \Librerias y no tiene EQUIPO = SI ni estructura Comprado.")
+            Else
+                avisos.Add(nom & ": esta fuera de la carpeta de la obra (" & System.IO.Path.GetDirectoryName(d.FullFileName) & "). Si es skeleton o equipo de referencia: NUEVA_REFERENCIA opcion 3.")
+            End If
+        End If
+        If esEquipo Then Continue For
+        ' pieza sin solidos (boceto / skeleton) sin marcar como referencia
+        If nuevo AndAlso d.DocumentType = DocumentTypeEnum.kPartDocumentObject Then
+            Dim sinSol As Boolean = False
+            Try
+                sinSol = (CType(d, PartDocument).ComponentDefinition.SurfaceBodies.Count = 0)
+            Catch
+            End Try
+            If sinSol Then
+                avisos.Add(nom & ": no tiene solidos (parece un skeleton). Conviertela en referencia con NUEVA_REFERENCIA opcion 3.")
+                Continue For
+            End If
+        End If
+
+        If d.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+            Dim pref As String = UProp(d, "PREFIJO").ToUpper()
+            Dim transparente As Boolean = (bs = BOMStructureEnum.kPhantomBOMStructure) OrElse pref = ""
+            Dim generado As Boolean = ruta.Contains("\design accelerator\") OrElse ruta.Contains("\frame\") OrElse PropDT(d, "Categories").Contains("<Category ")
+            If nuevo Then
+                If Not transparente Then
+                    nombresConj.Add(nom)
+                    padreDe(nom) = conjPadre
+                    If Not tablaConj.ContainsKey(pref) Then errores.Add(nom & ": PREFIJO '" & pref & "' no esta en TABLA_MARCAS (A0.61). Opcion 2 del menu.")
+                    If pref = prefPadre Then avisos.Add(nom & ": conjunto " & pref & " dentro de otro conjunto " & pref & " (" & conjPadre & "). Si debe ir al nivel de arriba: Promover en el navegador.")
+                    RevisarPlantaProy(d, nom)
+                ElseIf bs <> BOMStructureEnum.kPhantomBOMStructure AndAlso Not generado AndAlso Not comprado Then
+                    avisos.Add(nom & ": conjunto sin PREFIJO (transparente): sus piezas cuentan como del conjunto " & If(conjPadre = "", "planta", conjPadre) & ". Si se fabrica junto, opcion 2; si solo agrupa, opcion 3.")
+                End If
+            End If
+            If transparente Then
+                Recorrer(occ.SubOccurrences, conjPadre, prefPadre)
+            Else
+                Recorrer(occ.SubOccurrences, nom, pref)
+            End If
+        Else
+            If Not nuevo Then Continue For
+            Dim mk As String = UProp(d, "MARCA")
+            If comprado Then
+                If mk <> "" Then avisos.Add(nom & ": es comercial / Content Center y tiene MARCA " & mk & " (se le quita al numerar).")
+                Continue For
+            End If
+            If bs = BOMStructureEnum.kPhantomBOMStructure Then Continue For
+            nombresPieza.Add(nom)
+            padreDe(nom) = conjPadre
+            Dim cod As String = UProp(d, "CODIGO").ToLower()
+            If cod <> "" AndAlso Not tablaParte.ContainsKey(cod) Then errores.Add(nom & ": CODIGO '" & cod & "' no esta en TABLA_MARCAS. Opcion 5 del menu.")
+            If mk = "" Then avisos.Add(nom & ": sin marca (sin numerar o sin clasificar). Si TEKLA_NUMERACION no la clasifica: opcion 5 (CODIGO).")
+            RevisarPlantaProy(d, nom)
+        End If
+    Next
+End Sub
+
+Sub RevisarPlantaProy(d As Document, nom As String)
+    Dim p As String = UProp(d, "PLANTA").ToUpper()
+    Dim q As String = UProp(d, "PROYECTO").ToUpper()
+    If (p <> "" AndAlso planta <> "" AndAlso p <> planta) OrElse (q <> "" AndAlso proy <> "" AndAlso q <> proy) Then
+        errores.Add(nom & ": PLANTA/PROYECTO " & p & "/" & q & " distintos a la planta " & planta & "/" & proy & ". Opcion 4 del menu.")
+    End If
+End Sub
+
+Sub Informe()
+    Dim sb As New System.Text.StringBuilder
+    sb.AppendLine("REVISION DE JERARQUIA - " & System.IO.Path.GetFileName(top.FullFileName) & "   " & DateTime.Now.ToString("dd/MM/yyyy HH:mm"))
+    sb.AppendLine("Proyecto " & proy & "  |  Planta " & planta & "  |  " & nombresConj.Count & " conjuntos, " & nombresPieza.Count & " piezas")
+    sb.AppendLine("")
+    sb.AppendLine("CONJUNTOS (padre > conjunto  PREFIJO  MARCA  BLOQUEO):")
+    For Each k As String In nombresConj
+        Dim d As Document = docs(k)
+        sb.AppendLine("  " & If(padreDe(k) = "", "planta", padreDe(k)) & " > " & k & "   " & UProp(d, "PREFIJO") & "   " & UProp(d, "MARCA") & "   " & EstadoBloq(d))
+    Next
+    sb.AppendLine("")
+    sb.AppendLine("ERRORES (" & errores.Count & "):")
+    For Each e As String In errores
+        sb.AppendLine("  - " & e)
+    Next
+    sb.AppendLine("")
+    sb.AppendLine("AVISOS (" & avisos.Count & "):")
+    For Each a As String In avisos
+        sb.AppendLine("  - " & a)
+    Next
+    If cambios.Count > 0 Then
+        sb.AppendLine("")
+        sb.AppendLine("CAMBIOS HECHOS:")
+        For Each c As String In cambios
+            sb.AppendLine("  - " & c)
+        Next
+    End If
+    sb.AppendLine("")
+    sb.AppendLine(Cierre())
+    informeTxt = sb.ToString()
+    Try
+        System.IO.File.WriteAllText(System.IO.Path.Combine(obra, "_REVISION_JERARQUIA.txt"), informeTxt, System.Text.Encoding.UTF8)
+    Catch
+    End Try
+End Sub
+
+Sub MostrarInforme()
+    Dim f As String = System.IO.Path.Combine(obra, "_REVISION_JERARQUIA.txt")
+    Try
+        System.Diagnostics.Process.Start("notepad.exe", """" & f & """")
+    Catch
+        MessageBox.Show(informeTxt, "REVISAR_JERARQUIA")
+    End Try
+End Sub
+
+' Que configuracion de TEKLA_NUMERACION corresponde a la etapa de la obra
+Function Cierre() As String
+    Dim hayPlano As Boolean = False
+    Try
+        hayPlano = System.IO.Directory.GetFiles(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(top.FullFileName), "PLANOS"), "*-FAB.idw").Length > 0
+    Catch
+    End Try
+    Dim hayCorte As Boolean = System.IO.File.Exists(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(top.FullFileName), "PLANOS\PLASMA\_HISTORIAL_CORTE.csv"))
+    Dim s As String = "SIGUIENTE: corre TEKLA_NUMERACION con la configuracion "
+    If Not hayPlano Then
+        s &= "2 (o 1 para numerar toda la planta desde cero: aun no hay planos)."
+    ElseIf Not hayCorte Then
+        s &= "3 (ya hay planos: lo modificado conserva su marca)."
+    Else
+        s &= "3, o 4 si los planos ya se emitieron a fabricacion (ya hay envios a corte)."
+    End If
+    s &= vbCrLf & "Luego GENERAR_PLANOS y EXPORTAR_PLASMA. Guarda el ensamble de planta."
+    If cambios.Count > 0 Then s = "Cambios hechos: " & cambios.Count & " (sin guardar todavia)." & vbCrLf & s
+    Return s
+End Function
+
+' ===================== correcciones =====================
+Sub Aplicar(accion As String, objeto As String, valor As String)
+    Dim d As Document = Nothing
+    If objeto <> "" Then
+        If Not docs.ContainsKey(objeto) Then
+            MsgSi("No encuentro " & objeto & " en la planta.")
+            Exit Sub
+        End If
+        d = docs(objeto)
+        If Not Editable(d) Then
+            MsgSi(objeto & " es de solo lectura (biblioteca, Content Center o protegido en Vault): sacalo para editar.")
+            Exit Sub
+        End If
+    End If
+    Select Case accion
+        Case "tipo"
+            Dim pref As String = valor.Trim().ToUpper()
+            If Not tablaConj.ContainsKey(pref) Then
+                MsgSi("El tipo " & pref & " no esta en TABLA_MARCAS.")
+                Exit Sub
+            End If
+            Dim antes As String = UProp(d, "PREFIJO")
+            EscribirProp(d, "PREFIJO", pref)
+            EscribirProp(d, "TIPO_CONJUNTO", tablaConj(pref))
+            EscribirProp(d, "SISTEMA", If(tablaSistema.Contains(pref), "SI", ""))
+            Try
+                If CType(d, AssemblyDocument).ComponentDefinition.BOMStructure = BOMStructureEnum.kPhantomBOMStructure Then CType(d, AssemblyDocument).ComponentDefinition.BOMStructure = BOMStructureEnum.kNormalBOMStructure
+            Catch
+            End Try
+            cambios.Add(objeto & ": tipo " & If(antes = "", "(transparente)", antes) & " -> " & pref & " " & tablaConj(pref))
+        Case "fantasma"
+            Try
+                CType(d, AssemblyDocument).ComponentDefinition.BOMStructure = BOMStructureEnum.kPhantomBOMStructure
+                cambios.Add(objeto & ": Fantasma (transparente); sus piezas pasan a " & If(padreDe.ContainsKey(objeto) AndAlso padreDe(objeto) <> "", padreDe(objeto), "la planta"))
+            Catch ex As Exception
+                MsgSi("No se pudo poner Fantasma: " & ex.Message)
+            End Try
+        Case "igualar"
+            Dim n As Integer = 0
+            Dim todos As New List(Of String)(nombresConj)
+            todos.AddRange(nombresPieza)
+            For Each k As String In todos
+                Dim x As Document = docs(k)
+                If Not Editable(x) Then Continue For
+                If UProp(x, "PLANTA").ToUpper() <> planta Then
+                    EscribirProp(x, "PLANTA", planta)
+                    n += 1
+                End If
+                If UProp(x, "PROYECTO").ToUpper() <> proy Then
+                    EscribirProp(x, "PROYECTO", proy)
+                    n += 1
+                End If
+            Next
+            cambios.Add("PLANTA / PROYECTO igualados (" & n & " propiedades)")
+        Case "codigo"
+            Dim c As String = valor.Trim().ToLower()
+            If c <> "" AndAlso Not tablaParte.ContainsKey(c) Then
+                MsgSi("El codigo " & c & " no esta en TABLA_MARCAS.")
+                Exit Sub
+            End If
+            EscribirProp(d, "CODIGO", c)
+            cambios.Add(objeto & ": CODIGO = " & If(c = "", "(automatico)", c))
+        Case "bloquear"
+            Dim si As Boolean = valor.Trim().ToUpper().StartsWith("S")
+            EscribirProp(d, "BLOQUEADO", If(si, "SI", ""))
+            cambios.Add(objeto & ": " & If(si, "BLOQUEADO", "desbloqueado"))
+        Case Else
+            MsgSi("Accion desconocida: " & accion)
+    End Select
+End Sub
+
+Function ElegirConjunto(titulo As String) As String
+    Dim l As New List(Of String)
+    For Each k As String In nombresConj
+        l.Add(k & "   [" & UProp(docs(k), "PREFIJO") & " " & UProp(docs(k), "MARCA") & "]")
+    Next
+    ' tambien los transparentes, para darles tipo
+    For Each k As String In docs.Keys
+        Dim d As Document = docs(k)
+        If d.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject AndAlso Not nombresConj.Contains(k) AndAlso UProp(d, "EQUIPO").ToUpper() <> "SI" Then l.Add(k & "   [transparente]")
+    Next
+    If l.Count = 0 Then
+        MsgSi("No hay conjuntos en la planta.")
+        Return ""
+    End If
+    Dim r As String = InputListBox(titulo, l, l(0), "REVISAR_JERARQUIA", "Conjunto")
+    If r Is Nothing OrElse r = "" Then Return ""
+    Return r.Substring(0, r.IndexOf("   ["))
+End Function
+
+Function ElegirPieza(titulo As String) As String
+    Dim l As New List(Of String)
+    For Each k As String In nombresPieza
+        If UProp(docs(k), "MARCA") = "" Then l.Add(k & "   [SIN MARCA]")
+    Next
+    For Each k As String In nombresPieza
+        Dim mk As String = UProp(docs(k), "MARCA")
+        If mk <> "" Then l.Add(k & "   [" & mk & If(UProp(docs(k), "CODIGO") <> "", " CODIGO " & UProp(docs(k), "CODIGO"), "") & "]")
+    Next
+    If l.Count = 0 Then
+        MsgSi("No hay piezas en la planta.")
+        Return ""
+    End If
+    Dim r As String = InputListBox(titulo, l, l(0), "REVISAR_JERARQUIA", "Pieza")
+    If r Is Nothing OrElse r = "" Then Return ""
+    Return r.Substring(0, r.IndexOf("   ["))
+End Function
+
+Function EstadoBloq(d As Document) As String
+    If UProp(d, "BLOQUEADO").ToUpper().StartsWith("S") Then Return "BLOQUEADO"
+    Return "libre"
+End Function
+
+Function Editable(d As Document) As Boolean
+    Try
+        If (System.IO.File.GetAttributes(d.FullFileName) And System.IO.FileAttributes.ReadOnly) = System.IO.FileAttributes.ReadOnly Then Return False
+    Catch
+    End Try
+    Try
+        If d.DocumentType = DocumentTypeEnum.kPartDocumentObject AndAlso CType(d, PartDocument).ComponentDefinition.IsContentMember Then Return False
+    Catch
+    End Try
+    Return True
+End Function
+
+Sub MsgSi(t As String)
+    If silencioso Then
+        cambios.Add("AVISO: " & t)
+    Else
+        MessageBox.Show(t, "REVISAR_JERARQUIA")
+    End If
+End Sub
+
+' ===================== tabla A0.61 =====================
+Sub CargarTabla(asm As Document)
+    Dim archivo As String = ""
+    Dim dir As String = System.IO.Path.GetDirectoryName(asm.FullFileName)
+    For lvl As Integer = 0 To 6
+        If dir Is Nothing Then Exit For
+        For Each sd As String In New String() {"", "iLogic"}
+            Dim p As String = System.IO.Path.Combine(System.IO.Path.Combine(dir, sd), "TABLA_MARCAS.csv")
+            If archivo = "" AndAlso System.IO.File.Exists(p) Then archivo = p
+        Next
+        dir = System.IO.Path.GetDirectoryName(dir)
+    Next
+    If archivo = "" Then
+        errores.Add("No encuentro TABLA_MARCAS.csv (carpeta iLogic de VAULT).")
+        Exit Sub
+    End If
+    For Each ln As String In System.IO.File.ReadAllLines(archivo, System.Text.Encoding.UTF8)
+        Dim c() As String = ln.Split(";"c)
+        If c.Length < 3 OrElse c(1).Trim() = "" Then Continue For
+        Dim tipo As String = c(0).Trim().ToUpper()
+        If tipo.EndsWith("CONJUNTO") Then
+            Dim k As String = c(1).Trim().ToUpper()
+            tablaConj(k) = c(2).Trim()
+            If c.Length >= 5 AndAlso c(4).Trim().ToUpper() = "SI" Then tablaSistema.Add(k)
+        ElseIf tipo.EndsWith("PARTE") Then
+            tablaParte(c(1).Trim().ToLower()) = c(2).Trim()
+        End If
+    Next
+End Sub
+
+' ===================== utilidades =====================
+Function CarpetaObra(asm As Document) As String
+    Dim d As String = System.IO.Path.GetDirectoryName(asm.FullFileName)
+    Dim x As String = d
+    For i As Integer = 0 To 8
+        If x Is Nothing OrElse x = "" Then Exit For
+        If System.IO.File.Exists(System.IO.Path.Combine(x, "_OBRA.txt")) Then Return x
+        x = System.IO.Path.GetDirectoryName(x)
+    Next
+    Return d
+End Function
+
+Function UProp(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Inventor User Defined Properties").Item(n).Value).Trim()
+    Catch
+        Return ""
+    End Try
+End Function
+
+Function PropDT(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Design Tracking Properties").Item(n).Value)
+    Catch
+        Return ""
+    End Try
+End Function
+
+Sub EscribirProp(d As Document, n As String, v As String)
+    Dim ps As PropertySet = d.PropertySets.Item("Inventor User Defined Properties")
+    Try
+        ps.Item(n).Value = v
+    Catch
+        ps.Add(v, n)
+    End Try
+End Sub
+
+Function Arg(n As String) As String
+    Try
+        If RuleArguments.Exists(n) Then Return CStr(RuleArguments.Value(n))
+    Catch
+    End Try
+    Return ""
+End Function

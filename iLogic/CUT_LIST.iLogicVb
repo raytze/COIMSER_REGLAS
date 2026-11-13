@@ -1,0 +1,1157 @@
+' =====================================================================
+'  CUT_LIST  v1.2  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Lista de corte agrupada por material, tipo Tekla "Cut list / Material list",
+'  de un ensamble numerado con TEKLA_NUMERACION (cantidades = toda la planta):
+'
+'   CUT LIST PERFILES : por PERFIL + MATERIAL (ej. W6x15 - ASTM A992)
+'        marcas de mayor a menor longitud, cantidad, longitud total, peso,
+'        subtotal del perfil (unidades, metros, kg, kg/m) y BARRAS COMERCIALES
+'        necesarias de 6 m y 12 m (acomodo FFD, corte 3 mm) con % de desperdicio.
+'   CUT LIST PLANCHAS : por ESPESOR + MATERIAL: largo x ancho de corte (desarrollado
+'        en chapas plegadas), cantidad, area, peso y subtotal.
+'   RESUMEN           : peso total por perfil y por espesor, total general.
+'
+'   REQUERIMIENTO PLANCHAS (v1.2): cuantas planchas comprar por ESPESOR + MATERIAL en los
+'        formatos de FORMATOS_PLANCHA.csv (1500x6000, 1200x2400...), acomodando las piezas
+'        (chapas: desarrollo) por rectangulos con giro, separacion y borde; aprovechamiento %.
+'        Usa primero los RETAZOS disponibles de VAULT\ALMACEN\RETAZOS_PLANCHA.csv y anota los
+'        sobrantes utiles como PREVISTO. Hojas: REQUERIMIENTO PLANCHAS, ACOMODO PLANCHAS, RETAZOS.
+'        Argumentos: sin_requerimiento, sin_retazos
+'  Salida: PLANOS\REPORTES\<PLANTA>-<ENSAMBLE>-CUT_LIST.xlsx
+'  Argumentos opcionales: silencioso, barra1=6000, barra2=12000, corte=3
+' =====================================================================
+
+Sub Main()
+    Dim asm As AssemblyDocument = TryCast(ThisDoc.Document, AssemblyDocument)
+    If asm Is Nothing Then
+        MessageBox.Show("Ejecuta la regla desde el ensamble general (.iam).", NOMBRE_REGLA)
+        Exit Sub
+    End If
+    ' ensamble GENERAL de la obra (NUEVO_PROYECTO): las reglas se corren en cada planta
+    Try
+        If CStr(asm.PropertySets.Item("Inventor User Defined Properties").Item("TIPO_ENSAMBLE").Value).ToUpper() = "GENERAL" Then
+            MessageBox.Show("Este es el ensamble GENERAL de la obra." & vbCrLf & "Abre el ensamble de la planta (ej. ANT-EE.iam) y ejecuta la regla ahi.", "CUT_LIST")
+            Exit Sub
+        End If
+    Catch
+    End Try
+    silencioso = RuleArguments.Exists("silencioso")
+    If Arg("barra1") <> "" Then barra1 = Num(Arg("barra1"))
+    If Arg("barra2") <> "" Then barra2 = Num(Arg("barra2"))
+    If Arg("corte") <> "" Then corte = Num(Arg("corte"))
+    Dim nombre As String = System.IO.Path.GetFileNameWithoutExtension(asm.FullFileName)
+    Dim carpeta As String = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(asm.FullFileName), "PLANOS\REPORTES")
+    Try
+        planta = UProp(asm, "PLANTA")
+        proy = UProp(asm, "PROYECTO")
+        If planta = "" Then planta = "XX"
+        System.IO.Directory.CreateDirectory(carpeta)
+        Recorrer(asm.ComponentDefinition.Occurrences)
+
+        ' ---------- agrupar ----------
+        Dim gPerf As New SortedDictionary(Of String, List(Of String))(StringComparer.OrdinalIgnoreCase)
+        Dim gPlan As New SortedDictionary(Of String, List(Of String))
+        Dim otros As New List(Of String)
+        For Each mk As String In partDoc.Keys
+            Dim inf() As Object = Info(mk)
+            Dim nat As String = CStr(inf(I_NAT))
+            If nat = "PERFIL" Then
+                Dim k As String = CStr(inf(I_PERFIL)) & "|" & CStr(inf(I_GRADO))
+                If Not gPerf.ContainsKey(k) Then gPerf(k) = New List(Of String)
+                gPerf(k).Add(mk)
+            ElseIf nat = "PLANCHA" OrElse nat = "CHAPA PLEGADA" Then
+                Dim k As String = CDbl(inf(I_ESP)).ToString("000.0", Globalization.CultureInfo.InvariantCulture) & "|" & CStr(inf(I_GRADO))
+                If Not gPlan.ContainsKey(k) Then gPlan(k) = New List(Of String)
+                gPlan(k).Add(mk)
+            Else
+                otros.Add(mk)
+            End If
+        Next
+
+        Dim wb As Object = NuevoLibro()
+        Dim wsR As Object = Hoja(wb, "RESUMEN")
+        Dim wsP As Object = Hoja(wb, "CUT LIST PERFILES")
+        Dim wsL As Object = Hoja(wb, "CUT LIST PLANCHAS")
+        Dim res As New List(Of Object())   ' filas del resumen
+        Dim b1 As String = "BARRAS " & (barra1 / 1000).ToString("0.#") & " m"
+        Dim b2 As String = "BARRAS " & (barra2 / 1000).ToString("0.#") & " m"
+
+        ' ---------- PERFILES ----------
+        Dim r As Integer = Encabezado(wsP, "CUT LIST - PERFILES", nombre)
+        For Each kv As KeyValuePair(Of String, List(Of String)) In gPerf
+            Dim pz() As String = kv.Key.Split("|"c)
+            Fila(wsP, r, pz(0) & "   -   " & pz(1))
+            Estilo(wsP, r, 1, 8, True, RGB(31, 78, 121))
+            wsP.Range(wsP.Cells(r, 1), wsP.Cells(r, 8)).Font.Color = RGB(255, 255, 255)
+            r = r + 1
+            Fila(wsP, r, "MARCA", "CONJUNTO", "LONG. (mm)", "CANT.", "LONG. TOTAL (m)", "PESO UNIT. (kg)", "PESO TOTAL (kg)", "ARCHIVO MODELO")
+            Estilo(wsP, r, 1, 8, True, RGB(221, 235, 247))
+            r = r + 1
+            Dim marcas As New List(Of String)(kv.Value)
+            marcas.Sort(AddressOf CompararLongDesc)
+            Dim r0 As Integer = r
+            Dim piezas As New List(Of Double)
+            Dim uni As Integer = 0
+            Dim lt As Double = 0, pt As Double = 0
+            For Each mk As String In marcas
+                Dim inf() As Object = Info(mk)
+                Dim n As Integer = cantParte(mk)
+                Dim lg As Double = CDbl(inf(I_LONG))
+                Fila(wsP, r, mk, inf(I_CONJ), lg, n, "=C" & r & "*D" & r & "/1000", inf(I_MASA), "=D" & r & "*F" & r, inf(I_ARCH))
+                For i As Integer = 1 To n
+                    piezas.Add(lg)
+                Next
+                uni = uni + n
+                lt = lt + lg * n / 1000
+                pt = pt + CDbl(inf(I_MASA)) * n
+                r = r + 1
+            Next
+            Dim r1 As Integer = r - 1
+            Fila(wsP, r, "TOTAL " & pz(0), Nothing, Nothing, "=SUM(D" & r0 & ":D" & r1 & ")", "=SUM(E" & r0 & ":E" & r1 & ")", "=IF(E" & r & ">0,G" & r & "/E" & r & ",0)", "=SUM(G" & r0 & ":G" & r1 & ")", "kg/m en col. F")
+            Estilo(wsP, r, 1, 8, True, RGB(242, 242, 242))
+            r = r + 1
+            Dim d1 As Double, d2 As Double
+            Dim e1 As Integer, e2 As Integer
+            Dim n1 As Integer = Barras(piezas, barra1, d1, e1)
+            Dim n2 As Integer = Barras(piezas, barra2, d2, e2)
+            Dim txt As String = b1 & ": " & n1 & "  (desperdicio " & (d1 * 100).ToString("0") & "%)" & If(e1 > 0, "  - " & e1 & " pieza(s) mas larga(s) que la barra: requiere empalme", "") & "      " & b2 & ": " & n2 & "  (desperdicio " & (d2 * 100).ToString("0") & "%)"
+            Fila(wsP, r, txt)
+            wsP.Cells(r, 1).Font.Italic = True
+            r = r + 2
+            res.Add(New Object() {"PERFIL", pz(0), pz(1), uni, lt, Nothing, pt, If(lt > 0, pt / lt, 0), n1, d1, n2, d2})
+        Next
+        wsP.Range("C:C").NumberFormat = "0"
+        wsP.Range("E:E").NumberFormat = "0.000"
+        wsP.Range("F:G").NumberFormat = "0.00"
+        wsP.Columns("B:H").AutoFit()
+        wsP.Columns("A").ColumnWidth = 16
+
+        ' ---------- PLANCHAS ----------
+        r = Encabezado(wsL, "CUT LIST - PLANCHAS Y CHAPAS", nombre)
+        For Each kv As KeyValuePair(Of String, List(Of String)) In gPlan
+            Dim pz() As String = kv.Key.Split("|"c)
+            Dim esp As Double = Num(pz(0))
+            Dim espTxt As String = If(Math.Abs(esp - Math.Round(esp)) < 0.01, esp.ToString("0"), esp.ToString("0.0", Globalization.CultureInfo.InvariantCulture))
+            Fila(wsL, r, "PL " & espTxt & " mm   -   " & pz(1))
+            Estilo(wsL, r, 1, 11, True, RGB(31, 78, 121))
+            wsL.Range(wsL.Cells(r, 1), wsL.Cells(r, 11)).Font.Color = RGB(255, 255, 255)
+            r = r + 1
+            Fila(wsL, r, "MARCA", "CONJUNTO", "TIPO", "LARGO (mm)", "ANCHO (mm)", "CANT.", "AREA UNIT. (m2)", "AREA TOTAL (m2)", "PESO UNIT. (kg)", "PESO TOTAL (kg)", "ARCHIVO MODELO")
+            Estilo(wsL, r, 1, 11, True, RGB(221, 235, 247))
+            r = r + 1
+            Dim marcas As New List(Of String)(kv.Value)
+            marcas.Sort(AddressOf CompararTexto)
+            Dim r0 As Integer = r
+            Dim uni As Integer = 0
+            Dim at As Double = 0, pt As Double = 0
+            For Each mk As String In marcas
+                Dim inf() As Object = Info(mk)
+                Dim n As Integer = cantParte(mk)
+                Fila(wsL, r, mk, inf(I_CONJ), inf(I_NAT), inf(I_LARGO), inf(I_ANCHO), n, "=D" & r & "*E" & r & "/1000000", "=F" & r & "*G" & r, inf(I_MASA), "=F" & r & "*I" & r, inf(I_ARCH))
+                uni = uni + n
+                at = at + CDbl(inf(I_LARGO)) * CDbl(inf(I_ANCHO)) / 1000000.0 * n
+                pt = pt + CDbl(inf(I_MASA)) * n
+                r = r + 1
+            Next
+            Dim r1 As Integer = r - 1
+            Fila(wsL, r, "TOTAL PL " & espTxt, Nothing, Nothing, Nothing, Nothing, "=SUM(F" & r0 & ":F" & r1 & ")", Nothing, "=SUM(H" & r0 & ":H" & r1 & ")", Nothing, "=SUM(J" & r0 & ":J" & r1 & ")")
+            Estilo(wsL, r, 1, 11, True, RGB(242, 242, 242))
+            r = r + 2
+            res.Add(New Object() {"PLANCHA", "PL " & espTxt & " mm", pz(1), uni, Nothing, at, pt, Nothing, Nothing, Nothing, Nothing, Nothing})
+        Next
+        wsL.Range("D:E").NumberFormat = "0"
+        wsL.Range("G:H").NumberFormat = "0.000"
+        wsL.Range("I:J").NumberFormat = "0.00"
+        wsL.Columns("B:K").AutoFit()
+        wsL.Columns("A").ColumnWidth = 16
+
+        ' ---------- REQUERIMIENTO DE PLANCHAS (compras) ----------
+        If gPlan.Count > 0 AndAlso Not RuleArguments.Exists("sin_requerimiento") Then
+            Try
+                Requerimiento(wb, gPlan, nombre, asm)
+            Catch ex As Exception
+                resumen.AppendLine("Requerimiento de planchas: " & ex.Message & vbCrLf & ex.StackTrace)
+                reqResumen.AppendLine("Requerimiento de planchas: ERROR " & ex.Message)
+            End Try
+        End If
+
+        ' ---------- OTROS (mecanicas / sin clasificar) ----------
+        For Each mk As String In otros
+            Dim inf() As Object = Info(mk)
+            res.Add(New Object() {CStr(inf(I_NAT)), mk & "  " & CStr(inf(I_PERFIL)), inf(I_GRADO), cantParte(mk), Nothing, Nothing, CDbl(inf(I_MASA)) * cantParte(mk), Nothing, Nothing, Nothing, Nothing, Nothing})
+        Next
+
+        ' ---------- RESUMEN ----------
+        r = Encabezado(wsR, "RESUMEN DE MATERIALES (CUT LIST)", nombre)
+        Fila(wsR, r, "TIPO", "PERFIL / ESPESOR", "MATERIAL", "UNIDADES", "LONG. TOTAL (m)", "AREA (m2)", "PESO TOTAL (kg)", "kg/m", b1, "DESP. (%)", b2, "DESP. (%)")
+        Estilo(wsR, r, 1, 12, True, RGB(221, 235, 247))
+        r = r + 1
+        Dim rIni As Integer = r
+        Dim tot As New Dictionary(Of String, Double)
+        For Each f() As Object In res
+            Fila(wsR, r, f(0), f(1), f(2), f(3), f(4), f(5), f(6), f(7), f(8), If(f(9) Is Nothing, CObj(Nothing), CObj(CDbl(f(9)) * 100)), f(10), If(f(11) Is Nothing, CObj(Nothing), CObj(CDbl(f(11)) * 100)))
+            Dim t As String = CStr(f(0))
+            If t = "CHAPA PLEGADA" Then t = "PLANCHA"
+            If Not tot.ContainsKey(t) Then tot(t) = 0
+            tot(t) = tot(t) + CDbl(f(6))
+            r = r + 1
+        Next
+        r = r + 1
+        For Each kv As KeyValuePair(Of String, Double) In tot
+            Fila(wsR, r, "TOTAL " & kv.Key & If(kv.Key = "PERFIL", "ES", "S"), Nothing, Nothing, Nothing, Nothing, Nothing, kv.Value)
+            Estilo(wsR, r, 1, 12, True, -1)
+            r = r + 1
+        Next
+        Fila(wsR, r, "TOTAL GENERAL " & planta, Nothing, Nothing, "=SUM(D" & rIni & ":D" & (rIni + res.Count - 1) & ")", Nothing, Nothing, "=SUM(G" & rIni & ":G" & (rIni + res.Count - 1) & ")")
+        Estilo(wsR, r, 1, 12, True, RGB(242, 242, 242))
+        Dim totGen As Double = CDbl(wsR.Cells(r, 7).Value)
+        r = r + 2
+        Fila(wsR, r, "Cantidades = toda la planta (incluye conjuntos repetidos). Barras: acomodo de mayor a menor (FFD) con " & corte & " mm de corte; referencial, sin empalmes.")
+        wsR.Cells(r, 1).Font.Italic = True
+        wsR.Range("E:F").NumberFormat = "0.000"
+        wsR.Range("G:H").NumberFormat = "0.00"
+        wsR.Range("J:J").NumberFormat = "0"
+        wsR.Range("L:L").NumberFormat = "0"
+        wsR.Columns("B:L").AutoFit()
+        wsR.Columns("A").ColumnWidth = 18
+
+        Dim ruta As String = System.IO.Path.Combine(carpeta, NomBase(planta, nombre) & "-CUT_LIST.xlsx")
+        CerrarExcel(wb, ruta)
+        Aviso("Cut list " & planta & " - " & nombre & vbCrLf & gPerf.Count & " perfiles, " & gPlan.Count & " espesores de plancha" & vbCrLf & "Peso total: " & totGen.ToString("0.00") & " kg" & vbCrLf & reqResumen.ToString() & rutaXls)
+    Catch ex As Exception
+        MatarExcel()
+        resumen.AppendLine("ERROR: " & ex.Message & vbCrLf & ex.StackTrace)
+        Aviso("Error en " & NOMBRE_REGLA & ": " & ex.Message)
+    Finally
+        Try
+            System.IO.File.WriteAllText(System.IO.Path.Combine(carpeta, NOMBRE_REGLA & ".log"), resumen.ToString())
+        Catch
+        End Try
+    End Try
+End Sub
+
+' ===================== REQUERIMIENTO DE PLANCHAS (v1.2) =====================
+' Acomodo por rectangulos (MaxRects, con giro de 90 grados) de las planchas y chapas
+' DESPLEGADAS en los formatos de FORMATOS_PLANCHA.csv; primero usa los RETAZOS disponibles
+' del almacen (ALMACEN\RETAZOS_PLANCHA.csv) y anota como PREVISTO los sobrantes utiles.
+Private fmtNom As New List(Of String)
+Private fmtDim As New List(Of Double())        ' largo, ancho, espesor min, espesor max
+Private SEPARA As Double = 5
+Private SEPARA_G As Double = 10
+Private ESP_G As Double = 12
+Private BORDE As Double = 10
+Private RET_MIN As Double = 300
+Private retArchivo As String = ""
+Private retFilas As New List(Of String())
+Private retEditable As Boolean = True
+Private Const RET_CAB As String = "ID;ESPESOR;GRADO;LARGO;ANCHO;ESTADO;OBRA;ORIGEN;FECHA;NOTA"
+Private reqResumen As New System.Text.StringBuilder
+
+Class Lamina
+    Public Nombre As String
+    Public Formato As String
+    Public L As Double
+    Public A As Double
+    Public W As Double
+    Public H As Double
+    Public Off As Double
+    Public RetazoId As String = ""
+    Public Libres As New List(Of Double())
+    Public Piezas As New List(Of Object())
+    Public Neta As Double
+    Public Sub New(nom As String, fmt As String, l0 As Double, a0 As Double, uw As Double, uh As Double, off0 As Double)
+        Nombre = nom
+        Formato = fmt
+        L = l0
+        A = a0
+        W = uw
+        H = uh
+        Off = off0
+        Libres.Add(New Double() {0, 0, W, H})
+    End Sub
+    ' lugar con menor sobrante del lado corto; -1 si no entra
+    Public Function Buscar(pw As Double, ph As Double, ByRef bx As Double, ByRef by As Double, ByRef rot As Boolean) As Double
+        Dim mejor As Double = -1
+        For Each f() As Double In Libres
+            For k As Integer = 0 To 1
+                Dim w As Double = If(k = 0, pw, ph)
+                Dim h As Double = If(k = 0, ph, pw)
+                If w <= f(2) + 0.001 AndAlso h <= f(3) + 0.001 Then
+                    Dim s As Double = Math.Min(f(2) - w, f(3) - h)
+                    If mejor < 0 OrElse s < mejor Then
+                        mejor = s
+                        bx = f(0)
+                        by = f(1)
+                        rot = (k = 1)
+                    End If
+                End If
+            Next
+        Next
+        Return mejor
+    End Function
+    Public Sub Poner(mk As String, x As Double, y As Double, w As Double, h As Double, rot As Boolean, lReal As Double, aReal As Double)
+        Piezas.Add(New Object() {mk, x + Off, y + Off, lReal, aReal, rot})
+        Neta += lReal * aReal
+        Dim nuevos As New List(Of Double())
+        For Each f() As Double In Libres
+            If x >= f(0) + f(2) - 0.001 OrElse x + w <= f(0) + 0.001 OrElse y >= f(1) + f(3) - 0.001 OrElse y + h <= f(1) + 0.001 Then
+                nuevos.Add(f)
+                Continue For
+            End If
+            If x > f(0) Then nuevos.Add(New Double() {f(0), f(1), x - f(0), f(3)})
+            If x + w < f(0) + f(2) Then nuevos.Add(New Double() {x + w, f(1), f(0) + f(2) - x - w, f(3)})
+            If y > f(1) Then nuevos.Add(New Double() {f(0), f(1), f(2), y - f(1)})
+            If y + h < f(1) + f(3) Then nuevos.Add(New Double() {f(0), y + h, f(2), f(1) + f(3) - y - h})
+        Next
+        Libres.Clear()
+        For i As Integer = 0 To nuevos.Count - 1
+            Dim dentro As Boolean = False
+            For j As Integer = 0 To nuevos.Count - 1
+                If i <> j AndAlso Cabe(nuevos(j), nuevos(i)) AndAlso (Not Cabe(nuevos(i), nuevos(j)) OrElse j < i) Then
+                    dentro = True
+                    Exit For
+                End If
+            Next
+            If Not dentro Then Libres.Add(nuevos(i))
+        Next
+    End Sub
+    Public Shared Function Cabe(a() As Double, b() As Double) As Boolean
+        Return b(0) >= a(0) - 0.001 AndAlso b(1) >= a(1) - 0.001 AndAlso b(0) + b(2) <= a(0) + a(2) + 0.001 AndAlso b(1) + b(3) <= a(1) + a(3) + 0.001
+    End Function
+End Class
+
+Sub CargarFormatos(asm As Document)
+    Dim archivo As String = Buscar(asm, "FORMATOS_PLANCHA.csv")
+    If archivo <> "" Then
+        For Each ln As String In System.IO.File.ReadAllLines(archivo, System.Text.Encoding.UTF8)
+            Dim c() As String = ln.Split(";"c)
+            If c.Length < 3 Then Continue For
+            Dim t As String = c(0).Trim().ToUpper()
+            If t = "FORMATO" AndAlso c.Length >= 4 Then
+                Dim emin As Double = 0, emax As Double = 999
+                If c.Length >= 5 AndAlso c(4).Trim() <> "" Then emin = Num(c(4))
+                If c.Length >= 6 AndAlso c(5).Trim() <> "" Then emax = Num(c(5))
+                Dim l As Double = Math.Max(Num(c(2)), Num(c(3)))
+                Dim a As Double = Math.Min(Num(c(2)), Num(c(3)))
+                If l > 0 AndAlso a > 0 Then
+                    fmtNom.Add(c(1).Trim())
+                    fmtDim.Add(New Double() {l, a, emin, emax})
+                End If
+            ElseIf t = "PARAMETRO" Then
+                Dim v As Double = Num(c(2))
+                Select Case c(1).Trim().ToUpper()
+                    Case "SEPARACION" : SEPARA = v
+                    Case "SEPARACION_GRUESO" : SEPARA_G = v
+                    Case "ESPESOR_GRUESO" : ESP_G = v
+                    Case "BORDE" : BORDE = v
+                    Case "RETAZO_MINIMO" : RET_MIN = v
+                End Select
+            End If
+        Next
+    End If
+    If fmtNom.Count = 0 Then
+        fmtNom.Add("1500x6000") : fmtDim.Add(New Double() {6000, 1500, 0, 999})
+        fmtNom.Add("1200x2400") : fmtDim.Add(New Double() {2400, 1200, 0, 999})
+    End If
+End Sub
+
+' archivo en la carpeta del ensamble o superiores, o en su subcarpeta iLogic
+Function Buscar(asm As Document, nombre As String) As String
+    Dim dir As String = System.IO.Path.GetDirectoryName(asm.FullFileName)
+    For lvl As Integer = 0 To 7
+        If dir Is Nothing OrElse dir = "" Then Exit For
+        For Each sd As String In New String() {"", "iLogic"}
+            Dim p As String = System.IO.Path.Combine(System.IO.Path.Combine(dir, sd), nombre)
+            If System.IO.File.Exists(p) Then Return p
+        Next
+        dir = System.IO.Path.GetDirectoryName(dir)
+    Next
+    Return ""
+End Function
+
+' ALMACEN\RETAZOS_PLANCHA.csv: en la raiz de VAULT (la carpeta que tiene \iLogic)
+Sub CargarRetazos(asm As Document)
+    Dim dir As String = System.IO.Path.GetDirectoryName(asm.FullFileName)
+    Dim raiz As String = ""
+    For lvl As Integer = 0 To 7
+        If dir Is Nothing OrElse dir = "" Then Exit For
+        Dim p As String = System.IO.Path.Combine(dir, "ALMACEN\RETAZOS_PLANCHA.csv")
+        If System.IO.File.Exists(p) Then
+            retArchivo = p
+            Exit For
+        End If
+        If raiz = "" AndAlso System.IO.Directory.Exists(System.IO.Path.Combine(dir, "iLogic")) Then raiz = dir
+        dir = System.IO.Path.GetDirectoryName(dir)
+    Next
+    If retArchivo = "" Then
+        If raiz = "" Then raiz = System.IO.Path.GetDirectoryName(asm.FullFileName)
+        System.IO.Directory.CreateDirectory(System.IO.Path.Combine(raiz, "ALMACEN"))
+        retArchivo = System.IO.Path.Combine(raiz, "ALMACEN\RETAZOS_PLANCHA.csv")
+        System.IO.File.WriteAllText(retArchivo, RET_CAB & vbCrLf, New System.Text.UTF8Encoding(True))
+    End If
+    Try
+        retEditable = (System.IO.File.GetAttributes(retArchivo) And System.IO.FileAttributes.ReadOnly) <> System.IO.FileAttributes.ReadOnly
+    Catch
+    End Try
+    For Each ln As String In System.IO.File.ReadAllLines(retArchivo, System.Text.Encoding.UTF8)
+        If ln.Trim() = "" OrElse ln.StartsWith("ID;") Then Continue For
+        Dim c() As String = ln.Split(";"c)
+        If c.Length < 10 Then ReDim Preserve c(9)
+        For i As Integer = 0 To 9
+            If c(i) Is Nothing Then c(i) = ""
+        Next
+        retFilas.Add(c)
+    Next
+End Sub
+
+Sub GuardarRetazos()
+    If Not retEditable Then
+        reqResumen.AppendLine("  RETAZOS_PLANCHA.csv es de solo lectura (protegido en Vault): no se anotaron reservas ni sobrantes. Sacalo para editar.")
+        Exit Sub
+    End If
+    Dim sb As New System.Text.StringBuilder
+    sb.AppendLine(RET_CAB)
+    For Each c() As String In retFilas
+        sb.AppendLine(String.Join(";", c))
+    Next
+    System.IO.File.WriteAllText(retArchivo, sb.ToString(), New System.Text.UTF8Encoding(True))
+End Sub
+
+Function NuevoIdRetazo() As String
+    Dim n As Integer = 0
+    For Each c() As String In retFilas
+        Dim k As Integer
+        If c(0).StartsWith("R") AndAlso Integer.TryParse(c(0).Substring(1), k) AndAlso k > n Then n = k
+    Next
+    Return "R" & (n + 1).ToString("00000")
+End Function
+
+Function Empacar(piezas As List(Of Object()), fi As Integer, sep As Double, nom As String) As List(Of Lamina)
+    Dim res As New List(Of Lamina)
+    Dim fL As Double = fmtDim(fi)(0)
+    Dim fA As Double = fmtDim(fi)(1)
+    For Each pz() As Object In piezas
+        Dim pw As Double = CDbl(pz(1)) + sep
+        Dim ph As Double = CDbl(pz(2)) + sep
+        Dim mejor As Lamina = Nothing
+        Dim mS As Double = -1
+        Dim bx As Double = 0, by As Double = 0
+        Dim brot As Boolean = False
+        For Each lam As Lamina In res
+            Dim x As Double = 0, y As Double = 0
+            Dim rt As Boolean = False
+            Dim s As Double = lam.Buscar(pw, ph, x, y, rt)
+            If s >= 0 AndAlso (mS < 0 OrElse s < mS) Then
+                mS = s
+                mejor = lam
+                bx = x
+                by = y
+                brot = rt
+            End If
+        Next
+        If mejor Is Nothing Then
+            mejor = New Lamina(nom, fmtNom(fi), fL, fA, fL - 2 * BORDE + sep, fA - 2 * BORDE + sep, BORDE)
+            If mejor.Buscar(pw, ph, bx, by, brot) < 0 Then Return Nothing
+            res.Add(mejor)
+        End If
+        mejor.Poner(CStr(pz(0)), bx, by, If(brot, ph, pw), If(brot, pw, ph), brot, CDbl(pz(1)), CDbl(pz(2)))
+    Next
+    Return res
+End Function
+
+' Cada plancha (de la menos llena a la mas llena) pasa a un formato de menor area si sus
+' piezas entran en una sola plancha de ese formato: mezcla formatos (ej. 1 de 1500x6000 + 1 de 1200x2400)
+Sub Achicar(lams As List(Of Lamina), cands As List(Of Integer), sep As Double)
+    Dim orden As New List(Of Lamina)(lams)
+    orden.Sort(AddressOf PorNeta)
+    For Each lam As Lamina In orden
+        Dim sus As New List(Of Object())
+        For Each p() As Object In lam.Piezas
+            sus.Add(New Object() {p(0), p(3), p(4)})
+        Next
+        sus.Sort(AddressOf PorAreaPieza)
+        Dim mejorAlt As Lamina = Nothing
+        For Each i As Integer In cands
+            If fmtDim(i)(0) * fmtDim(i)(1) >= lam.L * lam.A - 1 Then Continue For
+            Dim t As List(Of Lamina) = Empacar(sus, i, sep, "")
+            If t IsNot Nothing AndAlso t.Count = 1 AndAlso (mejorAlt Is Nothing OrElse t(0).L * t(0).A < mejorAlt.L * mejorAlt.A) Then mejorAlt = t(0)
+        Next
+        If mejorAlt IsNot Nothing Then lams(lams.IndexOf(lam)) = mejorAlt
+    Next
+End Sub
+
+Function PorNeta(x As Lamina, y As Lamina) As Integer
+    Return x.Neta.CompareTo(y.Neta)
+End Function
+
+Function EntraEn(l As Double, a As Double, fi As Integer, sep As Double) As Boolean
+    Dim uw As Double = fmtDim(fi)(0) - 2 * BORDE + sep
+    Dim uh As Double = fmtDim(fi)(1) - 2 * BORDE + sep
+    Return (l + sep <= uw + 0.001 AndAlso a + sep <= uh + 0.001) OrElse (a + sep <= uw + 0.001 AndAlso l + sep <= uh + 0.001)
+End Function
+
+' Sobrantes utiles (lado menor >= RETAZO_MINIMO), sin solaparse
+Function Sobrantes(lam As Lamina, sep As Double) As List(Of Double())
+    Dim cand As New List(Of Double())
+    For Each f() As Double In lam.Libres
+        If Math.Min(f(2), f(3)) - sep >= RET_MIN Then cand.Add(f)
+    Next
+    cand.Sort(AddressOf PorArea)
+    Dim elegidos As New List(Of Double())
+    For Each c() As Double In cand
+        Dim choca As Boolean = False
+        For Each e() As Double In elegidos
+            If Not (c(0) >= e(0) + e(2) OrElse c(0) + c(2) <= e(0) OrElse c(1) >= e(1) + e(3) OrElse c(1) + c(3) <= e(1)) Then choca = True
+        Next
+        If Not choca Then elegidos.Add(c)
+    Next
+    Return elegidos
+End Function
+
+Function PorArea(a() As Double, b() As Double) As Integer
+    Return (b(2) * b(3)).CompareTo(a(2) * a(3))
+End Function
+
+Function PorAreaLamina(x As Lamina, y As Lamina) As Integer
+    Return (x.L * x.A).CompareTo(y.L * y.A)
+End Function
+
+Function PorAreaPieza(a() As Object, b() As Object) As Integer
+    Return (CDbl(b(1)) * CDbl(b(2))).CompareTo(CDbl(a(1)) * CDbl(a(2)))
+End Function
+
+Sub Requerimiento(wb As Object, gPlan As SortedDictionary(Of String, List(Of String)), nombre As String, asm As Document)
+    CargarFormatos(asm)
+    Dim usarRet As Boolean = Not RuleArguments.Exists("sin_retazos")
+    If usarRet Then CargarRetazos(asm)
+    Dim obraKey As String = proy & "-" & planta
+    Dim hoy As String = DateTime.Now.ToString("yyyy-MM-dd")
+    ' cada corrida rehace lo de esta obra: libera sus reservas y borra sus previstos
+    If usarRet Then
+        Dim quedan As New List(Of String())
+        For Each c() As String In retFilas
+            If c(6) = obraKey AndAlso c(5) = "PREVISTO" Then Continue For
+            If c(6) = obraKey AndAlso c(5) = "RESERVADO" Then
+                c(5) = "DISPONIBLE"
+                c(6) = ""
+                c(9) = ""
+            End If
+            quedan.Add(c)
+        Next
+        retFilas = quedan
+    End If
+
+    Dim wsQ As Object = Hoja(wb, "REQUERIMIENTO PLANCHAS")
+    Dim wsA As Object = Hoja(wb, "ACOMODO PLANCHAS")
+    Dim rq As Integer = Encabezado(wsQ, "REQUERIMIENTO DE PLANCHAS (PARA COMPRAS)", nombre)
+    Fila(wsQ, rq, "ESPESOR (mm)", "MATERIAL", "FORMATO", "PLANCHAS", "AREA COMPRADA (m2)", "PESO A COMPRAR (kg)", "AREA NETA PIEZAS (m2)", "APROVECHAMIENTO (%)", "MINIMO TEORICO (planchas)", "RETAZOS USADOS", "SOBRANTES PREVISTOS", "OBSERVACIONES")
+    Estilo(wsQ, rq, 1, 12, True, RGB(221, 235, 247))
+    rq += 1
+    Dim rq0 As Integer = rq
+    Dim ra As Integer = Encabezado(wsA, "ACOMODO DE PIEZAS POR PLANCHA (por rectangulos; referencial)", nombre)
+    Fila(wsA, ra, "PLANCHA", "FORMATO / RETAZO", "MARCA", "X (mm)", "Y (mm)", "LARGO (mm)", "ANCHO (mm)", "GIRADA")
+    Estilo(wsA, ra, 1, 8, True, RGB(221, 235, 247))
+    ra += 1
+    Dim totPl As Integer = 0
+    Dim totKg As Double = 0
+
+    For Each kv As KeyValuePair(Of String, List(Of String)) In gPlan
+        Dim pz() As String = kv.Key.Split("|"c)
+        Dim esp As Double = Num(pz(0))
+        Dim grado As String = pz(1)
+        Dim espTxt As String = If(Math.Abs(esp - Math.Round(esp)) < 0.01, esp.ToString("0"), esp.ToString("0.0", Globalization.CultureInfo.InvariantCulture))
+        Dim sep As Double = If(esp > ESP_G, SEPARA_G, SEPARA)
+        Dim cands As New List(Of Integer)
+        For i As Integer = 0 To fmtDim.Count - 1
+            If esp >= fmtDim(i)(2) AndAlso esp <= fmtDim(i)(3) Then cands.Add(i)
+        Next
+        ' piezas una por unidad
+        Dim piezas As New List(Of Object())
+        Dim grandes As New List(Of String)
+        Dim neta As Double = 0
+        For Each mk As String In kv.Value
+            Dim inf() As Object = Info(mk)
+            Dim l As Double = Math.Max(CDbl(inf(I_LARGO)), CDbl(inf(I_ANCHO)))
+            Dim a As Double = Math.Min(CDbl(inf(I_LARGO)), CDbl(inf(I_ANCHO)))
+            If l <= 0 OrElse a <= 0 Then Continue For
+            Dim entra As Boolean = False
+            For Each i As Integer In cands
+                If EntraEn(l, a, i, sep) Then entra = True
+            Next
+            For u As Integer = 1 To cantParte(mk)
+                If entra Then
+                    piezas.Add(New Object() {mk, l, a})
+                    neta += l * a
+                ElseIf u = 1 Then
+                    grandes.Add(mk & " " & l.ToString("0") & "x" & a.ToString("0") & " x" & cantParte(mk))
+                End If
+            Next
+        Next
+        piezas.Sort(AddressOf PorAreaPieza)
+
+        ' 1) retazos disponibles del mismo espesor y grado
+        Dim usados As New List(Of Lamina)
+        Dim restantes As New List(Of Object())
+        If usarRet Then
+            Dim rets As New List(Of Lamina)
+            For Each c() As String In retFilas
+                If c(5) <> "DISPONIBLE" Then Continue For
+                If Math.Abs(Num(c(1)) - esp) > 0.05 OrElse c(2).Trim().ToUpper() <> grado.ToUpper() Then Continue For
+                Dim lr As Double = Num(c(3)), ar As Double = Num(c(4))
+                Dim lam As New Lamina(c(0), "RETAZO " & lr.ToString("0") & "x" & ar.ToString("0"), lr, ar, lr + sep, ar + sep, 0)
+                lam.RetazoId = c(0)
+                rets.Add(lam)
+            Next
+            ' primero los retazos mas chicos
+            rets.Sort(AddressOf PorAreaLamina)
+            For Each p() As Object In piezas
+                Dim pw As Double = CDbl(p(1)) + sep
+                Dim ph As Double = CDbl(p(2)) + sep
+                Dim puesto As Boolean = False
+                For Each lam As Lamina In rets
+                    Dim x As Double = 0, y As Double = 0
+                    Dim rt As Boolean = False
+                    If lam.Buscar(pw, ph, x, y, rt) >= 0 Then
+                        lam.Poner(CStr(p(0)), x, y, If(rt, ph, pw), If(rt, pw, ph), rt, CDbl(p(1)), CDbl(p(2)))
+                        puesto = True
+                        Exit For
+                    End If
+                Next
+                If Not puesto Then restantes.Add(p)
+            Next
+            For Each lam As Lamina In rets
+                If lam.Piezas.Count > 0 Then usados.Add(lam)
+            Next
+        Else
+            restantes.AddRange(piezas)
+        End If
+
+        ' 2) planchas nuevas: el formato que menos area compra
+        Dim mejor As List(Of Lamina) = Nothing
+        Dim mejorCosto As Double = -1
+        If restantes.Count > 0 Then
+            For Each i As Integer In cands
+                Dim t As List(Of Lamina) = Empacar(restantes, i, sep, "")
+                If t Is Nothing Then Continue For
+                Achicar(t, cands, sep)
+                Dim costo As Double = 0
+                For Each lm As Lamina In t
+                    costo += lm.L * lm.A
+                Next
+                If mejorCosto < 0 OrElse costo < mejorCosto - 1 OrElse (Math.Abs(costo - mejorCosto) <= 1 AndAlso t.Count < mejor.Count) Then
+                    mejor = t
+                    mejorCosto = costo
+                End If
+            Next
+        End If
+        If mejor Is Nothing Then mejor = New List(Of Lamina)
+        Dim k0 As Integer = 1
+        For Each lam As Lamina In mejor
+            lam.Nombre = "PL" & espTxt & "-" & grado.Replace("ASTM ", "") & "-" & k0
+            k0 += 1
+        Next
+
+        ' 4) filas del requerimiento (una por formato)
+        Dim porFmt As New SortedDictionary(Of String, List(Of Lamina))
+        For Each lam As Lamina In mejor
+            If Not porFmt.ContainsKey(lam.Formato) Then porFmt(lam.Formato) = New List(Of Lamina)
+            porFmt(lam.Formato).Add(lam)
+        Next
+        Dim compradaTot As Double = 0
+        For Each lam As Lamina In mejor
+            compradaTot += lam.L * lam.A
+        Next
+        Dim netaNueva As Double = 0
+        For Each lam As Lamina In mejor
+            netaNueva += lam.Neta
+        Next
+        Dim nRetUs As Integer = usados.Count
+        ' sobrantes previstos
+        Dim nPrev As Integer = 0
+        If usarRet Then
+            Dim todos As New List(Of Lamina)(mejor)
+            todos.AddRange(usados)
+            For Each lam As Lamina In todos
+                For Each s() As Double In Sobrantes(lam, sep)
+                    Dim c(9) As String
+                    c(0) = NuevoIdRetazo()
+                    c(1) = espTxt
+                    c(2) = grado
+                    c(3) = Math.Floor(Math.Max(s(2), s(3)) - sep).ToString("0")
+                    c(4) = Math.Floor(Math.Min(s(2), s(3)) - sep).ToString("0")
+                    c(5) = "PREVISTO"
+                    c(6) = obraKey
+                    c(7) = lam.Nombre & If(lam.RetazoId <> "", " (retazo)", " (" & lam.Formato & ")")
+                    c(8) = hoy
+                    c(9) = "pasa a DISPONIBLE cuando el taller lo confirme"
+                    retFilas.Add(c)
+                    nPrev += 1
+                Next
+            Next
+            For Each lam As Lamina In usados
+                For Each c() As String In retFilas
+                    If c(0) = lam.RetazoId Then
+                        c(5) = "RESERVADO"
+                        c(6) = obraKey
+                        Dim mks As New List(Of String)
+                        For Each p() As Object In lam.Piezas
+                            mks.Add(CStr(p(0)))
+                        Next
+                        c(9) = String.Join(" ", mks)
+                    End If
+                Next
+            Next
+        End If
+        Dim obs As String = ""
+        If grandes.Count > 0 Then obs = "REQUIERE EMPALME (mas grande que el formato): " & String.Join(", ", grandes)
+        If porFmt.Count = 0 Then
+            Fila(wsQ, rq, CDbl(esp), grado, If(nRetUs > 0, "solo retazos", "-"), 0, 0, 0, neta / 1000000.0, Nothing, Nothing, nRetUs, nPrev, obs)
+            rq += 1
+        End If
+        Dim primera As Boolean = True
+        For Each f As KeyValuePair(Of String, List(Of Lamina)) In porFmt
+            Dim n As Integer = f.Value.Count
+            Dim area As Double = n * f.Value(0).L * f.Value(0).A
+            Dim kg As Double = area * esp * 0.00000785
+            Dim netaF As Double = 0
+            For Each lam As Lamina In f.Value
+                netaF += lam.Neta
+            Next
+            Dim minT As Double = netaNueva / (f.Value(0).L * f.Value(0).A)
+            Fila(wsQ, rq, CDbl(esp), grado, f.Key, n, area / 1000000.0, kg, netaF / 1000000.0, netaF / area * 100, If(primera, CObj(Math.Round(minT, 2)), Nothing), If(primera, CObj(nRetUs), Nothing), If(primera, CObj(nPrev), Nothing), If(primera, obs, ""))
+            totPl += n
+            totKg += kg
+            reqResumen.AppendLine("  PL " & espTxt & " " & grado & ": " & n & " x " & f.Key & "  (" & (netaF / area * 100).ToString("0") & " % aprovechado)")
+            primera = False
+            rq += 1
+        Next
+        If grandes.Count > 0 Then reqResumen.AppendLine("  PL " & espTxt & ": " & obs)
+
+        ' 5) acomodo
+        Dim todasL As New List(Of Lamina)(usados)
+        todasL.AddRange(mejor)
+        For Each lam As Lamina In todasL
+            Dim primeraL As Boolean = True
+            For Each p() As Object In lam.Piezas
+                Fila(wsA, ra, If(primeraL, lam.Nombre, ""), If(primeraL, lam.Formato, ""), p(0), Math.Round(CDbl(p(1))), Math.Round(CDbl(p(2))), CDbl(p(3)), CDbl(p(4)), If(CBool(p(5)), "SI", ""))
+                If primeraL Then Estilo(wsA, ra, 1, 8, True, -1)
+                primeraL = False
+                ra += 1
+            Next
+            Fila(wsA, ra, "", "aprovechamiento " & (lam.Neta / (lam.L * lam.A) * 100).ToString("0") & " %")
+            ra += 2
+        Next
+    Next
+    Fila(wsQ, rq + 1, "TOTAL A COMPRAR", Nothing, Nothing, totPl, Nothing, totKg)
+    Estilo(wsQ, rq + 1, 1, 12, True, RGB(242, 242, 242))
+    Fila(wsQ, rq + 3, "Acomodo por rectangulos con giro de 90 grados; separacion " & SEPARA & " mm (" & SEPARA_G & " mm sobre " & ESP_G & " mm), borde " & BORDE & " mm. Chapas plegadas: desarrollo. El software de plasma del taller puede aprovechar algo mas.")
+    Fila(wsQ, rq + 4, "Minimo teorico = area neta / area de la plancha (imposible de lograr: referencia). Retazos: " & If(usarRet, retArchivo, "no se usaron"))
+    wsQ.Range("E:E").NumberFormat = "0.00"
+    wsQ.Range("F:F").NumberFormat = "0.0"
+    wsQ.Range("G:G").NumberFormat = "0.000"
+    wsQ.Range("H:H").NumberFormat = "0"
+    wsQ.Columns("A:L").AutoFit()
+    wsA.Columns("A:H").AutoFit()
+    If usarRet Then
+        GuardarRetazos()
+        Dim wsT As Object = Hoja(wb, "RETAZOS")
+        Dim rt As Integer = Encabezado(wsT, "RETAZOS DE ESTA OBRA (" & obraKey & ")", nombre)
+        Fila(wsT, rt, "ID", "ESPESOR", "GRADO", "LARGO (mm)", "ANCHO (mm)", "ESTADO", "OBRA", "ORIGEN", "FECHA", "NOTA")
+        Estilo(wsT, rt, 1, 10, True, RGB(221, 235, 247))
+        rt += 1
+        For Each c() As String In retFilas
+            If c(6) <> obraKey Then Continue For
+            Fila(wsT, rt, c(0), c(1), c(2), c(3), c(4), c(5), c(6), c(7), c(8), c(9))
+            rt += 1
+        Next
+        Fila(wsT, rt + 1, "Almacen: " & retArchivo & "  (DISPONIBLE = existe y se puede usar; RESERVADO = asignado a esta obra; PREVISTO = sobrante que quedara al cortar)")
+        wsT.Columns("A:J").AutoFit()
+    End If
+    reqResumen.Insert(0, "Planchas a comprar: " & totPl & "  (" & totKg.ToString("0") & " kg)" & vbCrLf)
+End Sub
+
+Private Const NOMBRE_REGLA As String = "CUT_LIST"
+Private barra1 As Double = 6000
+Private barra2 As Double = 12000
+Private corte As Double = 3
+
+Function CompararLongDesc(a As String, b As String) As Integer
+    Return CDbl(Info(b)(I_LONG)).CompareTo(CDbl(Info(a)(I_LONG)))
+End Function
+
+Function Encabezado(ws As Object, titulo As String, nombre As String) As Integer
+    Fila(ws, 1, titulo)
+    ws.Cells(1, 1).Font.Bold = True
+    ws.Cells(1, 1).Font.Size = 14
+    Fila(ws, 2, "PROYECTO: " & proy, Nothing, "PLANTA: " & planta, Nothing, "ENSAMBLE: " & nombre, Nothing, Nothing, "FECHA: " & DateTime.Now.ToString("dd/MM/yyyy HH:mm"))
+    Return 4
+End Function
+
+' Acomodo First Fit Decreasing. Devuelve numero de barras; desp = fraccion desperdiciada.
+Function Barras(piezas As List(Of Double), stock As Double, ByRef desp As Double, ByRef empalmes As Integer) As Integer
+    Dim l As New List(Of Double)(piezas)
+    l.Sort()
+    l.Reverse()
+    Dim restos As New List(Of Double)
+    Dim enteras As Integer = 0
+    Dim usado As Double = 0
+    empalmes = 0
+    For Each pz As Double In l
+        Dim lg As Double = pz
+        usado = usado + lg
+        If lg > stock Then
+            empalmes = empalmes + 1
+            enteras = enteras + CInt(Math.Floor(lg / stock))
+            lg = lg - Math.Floor(lg / stock) * stock
+            If lg < 1 Then Continue For
+        End If
+        Dim puesto As Boolean = False
+        For i As Integer = 0 To restos.Count - 1
+            If restos(i) >= lg Then
+                restos(i) = restos(i) - lg - corte
+                puesto = True
+                Exit For
+            End If
+        Next
+        If Not puesto Then restos.Add(stock - lg - corte)
+    Next
+    Dim nb As Integer = enteras + restos.Count
+    If nb > 0 Then desp = 1 - usado / (nb * stock) Else desp = 0
+    Return nb
+End Function
+
+
+' ===================== comun (REPORTE_ENSAMBLES / CUT_LIST) =====================
+Private planta As String = ""
+Private proy As String = ""
+Private silencioso As Boolean
+Private resumen As New System.Text.StringBuilder
+Private conjOrden As New List(Of String)
+Private conjDoc As New Dictionary(Of String, Document)
+Private cantConj As New Dictionary(Of String, Integer)
+Private partDoc As New Dictionary(Of String, Document)
+Private cantParte As New Dictionary(Of String, Integer)
+Private infoP As New Dictionary(Of String, Object())
+Private xl As Object = Nothing
+Private Const SM_SUBTYPE As String = "{9C464203-9BAE-11D3-8BAD-0060B0CE6BB4}"
+Private Const ATR As String = "COIMSER_PLANOS"
+' indices de infoP
+Private Const I_NAT As Integer = 0, I_PERFIL As Integer = 1, I_LONG As Integer = 2, I_GRADO As Integer = 3, I_MASA As Integer = 4
+Private Const I_AREA As Integer = 5, I_ESP As Integer = 6, I_LARGO As Integer = 7, I_ANCHO As Integer = 8, I_ARCH As Integer = 9, I_CONJ As Integer = 10
+
+' Recorre toda la planta: cantidades totales por marca (multiplicando niveles)
+Sub Recorrer(occs As Object)
+    For Each occ As ComponentOccurrence In occs
+        If occ.Suppressed Then Continue For
+        Dim d As Document = Nothing
+        Dim bs As BOMStructureEnum = BOMStructureEnum.kDefaultBOMStructure
+        Try
+            d = occ.Definition.Document
+            bs = occ.BOMStructure
+        Catch
+            Continue For
+        End Try
+        If bs = BOMStructureEnum.kReferenceBOMStructure OrElse bs = BOMStructureEnum.kPurchasedBOMStructure Then Continue For
+        If UProp(d, "EQUIPO").ToUpper() = "SI" Then Continue For
+        Dim mk As String = UProp(d, "MARCA")
+        If d.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+            If mk <> "" AndAlso bs <> BOMStructureEnum.kPhantomBOMStructure Then
+                Sumar(cantConj, mk)
+                If Not conjDoc.ContainsKey(mk) Then
+                    conjDoc(mk) = d
+                    conjOrden.Add(mk)
+                End If
+            End If
+            Recorrer(occ.SubOccurrences)
+        Else
+            If mk = "" Then
+                resumen.AppendLine("Sin marca (no entra al reporte): " & occ.Name)
+                Continue For
+            End If
+            Sumar(cantParte, mk)
+            If Not partDoc.ContainsKey(mk) Then partDoc(mk) = d
+        End If
+    Next
+End Sub
+
+Sub Sumar(dic As Dictionary(Of String, Integer), k As String)
+    If dic.ContainsKey(k) Then dic(k) = dic(k) + 1 Else dic(k) = 1
+End Sub
+
+' Datos de una marca (se calculan una vez)
+Function Info(mk As String) As Object()
+    If infoP.ContainsKey(mk) Then Return infoP(mk)
+    Dim d As Document = partDoc(mk)
+    Dim r(I_CONJ) As Object
+    Dim p As PartDocument = TryCast(d, PartDocument)
+    r(I_NAT) = Naturaleza(p)
+    r(I_PERFIL) = DProp(d, "Description")
+    r(I_LONG) = Num(UProp(d, "LONGITUD"))
+    r(I_GRADO) = UProp(d, "GRADO")
+    Dim masa As Double = Num(UProp(d, "PESO"))
+    Dim area As Double = 0
+    Try
+        Dim mp As MassProperties = p.ComponentDefinition.MassProperties
+        masa = mp.Mass
+        area = mp.Area / 10000.0
+    Catch
+    End Try
+    r(I_MASA) = masa
+    r(I_AREA) = area
+    r(I_ESP) = 0.0
+    r(I_LARGO) = 0.0
+    r(I_ANCHO) = 0.0
+    If CStr(r(I_NAT)) = "PLANCHA" OrElse CStr(r(I_NAT)) = "CHAPA PLEGADA" Then
+        Dim la As Double = 0, an As Double = 0
+        r(I_ESP) = Espesor(p)
+        DimPlancha(p, la, an)
+        r(I_LARGO) = la
+        r(I_ANCHO) = an
+    End If
+    r(I_ARCH) = System.IO.Path.GetFileName(d.FullFileName)
+    r(I_CONJ) = UProp(d, "CONJUNTO")
+    infoP(mk) = r
+    Return r
+End Function
+
+' PERFIL / PLANCHA / CHAPA PLEGADA / MECANICA / OTROS  (segun el codigo A0.61 de TEKLA_NUMERACION)
+Function Naturaleza(p As PartDocument) As String
+    If p Is Nothing Then Return "OTROS"
+    If EsDA(p) Then Return "MECANICA"          ' Design Accelerator: polea, engranaje, eje (nunca plancha)
+    If TieneParam(p, "G_L") OrElse TieneParam(p, "B_L") Then Return "PERFIL"
+    Dim cod As String = UProp(p, "CODIGO_PIEZA").ToLower()
+    If cod = "" Then cod = UProp(p, "CODIGO").ToLower()
+    If cod = "mq" Then Return "MECANICA"
+    If p.SubType = SM_SUBTYPE Then
+        Dim nb As Integer = 0
+        Try
+            nb = CType(p.ComponentDefinition, SheetMetalComponentDefinition).Bends.Count
+        Catch
+        End Try
+        If nb > 0 OrElse cod = "f" OrElse cod = "fp" Then Return "CHAPA PLEGADA"
+        Return "PLANCHA"
+    End If
+    Select Case cod
+        Case "n", "p", "b", "pp", "r"
+            Return "PLANCHA"
+        Case "f", "fp"
+            Return "CHAPA PLEGADA"
+        Case "g", "k", "ma", "mx", "me", "j", "e", "hn", "wl", "st", "cd"
+            Return "OTROS"                          ' parrilla, FRP, mallas, teflon, esparragos...
+        Case ""
+            Dim tipo As String = UProp(p, "TIPO_PIEZA").ToUpper()
+            If tipo.Contains("PLANCHA") OrElse tipo.Contains("CARTELA") Then Return "PLANCHA"
+            Return "OTROS"
+        Case Else
+            Return "PERFIL"                         ' w, c, a, h, t, xs, xc, pl (platina = barra)...
+    End Select
+End Function
+
+' pieza generada por el Design Accelerator (polea, engranaje, eje, correa...)
+Function EsDA(p As PartDocument) As Boolean
+    ' (la propiedad Categories no sirve: tambien la tienen los perfiles Frame Generator / Content Center)
+    If p.FullFileName.ToLower().Contains("\design accelerator\") Then Return True
+    For Each ps As PropertySet In p.PropertySets
+        If ps.Name = "FDesign" Then Return True
+    Next
+    Try
+        For Each up As UserParameter In p.ComponentDefinition.Parameters.UserParameters
+            If up.Name.StartsWith("da_") Then Return True
+        Next
+    Catch
+    End Try
+    Return False
+End Function
+
+
+Function Espesor(p As PartDocument) As Double
+    Try
+        If p.SubType = SM_SUBTYPE Then Return CType(p.ComponentDefinition, SheetMetalComponentDefinition).Thickness.Value * 10
+    Catch
+    End Try
+    Try
+        Return p.ComponentDefinition.Parameters.Item("ESPESOR").Value * 10
+    Catch
+    End Try
+    Dim r As Box = p.ComponentDefinition.RangeBox
+    Dim ex() As Double = {r.MaxPoint.X - r.MinPoint.X, r.MaxPoint.Y - r.MinPoint.Y, r.MaxPoint.Z - r.MinPoint.Z}
+    Array.Sort(ex)
+    Return Math.Round(ex(0) * 10, 1)
+End Function
+
+' Largo x ancho del corte (desarrollado o cara mayor), mm. No modifica la pieza.
+Sub DimPlancha(p As PartDocument, ByRef la As Double, ByRef an As Double)
+    Try
+        If p.SubType = SM_SUBTYPE Then
+            Dim smd As SheetMetalComponentDefinition = p.ComponentDefinition
+            Dim tx As Transaction = Nothing
+            If Not smd.HasFlatPattern Then
+                tx = ThisApplication.TransactionManager.StartTransaction(p, "CUT_LIST")
+                smd.Unfold()
+                smd.FlatPattern.ExitEdit()
+            End If
+            la = Math.Max(smd.FlatPattern.Length, smd.FlatPattern.Width) * 10
+            an = Math.Min(smd.FlatPattern.Length, smd.FlatPattern.Width) * 10
+            If tx IsNot Nothing Then tx.Abort()
+            Exit Sub
+        End If
+    Catch
+    End Try
+    Try
+        Dim mejor As Face = Nothing
+        Dim a As Double = 0
+        For Each b As SurfaceBody In p.ComponentDefinition.SurfaceBodies
+            For Each fc As Face In b.Faces
+                If fc.SurfaceType = SurfaceTypeEnum.kPlaneSurface AndAlso fc.Evaluator.Area > a + 0.0001 Then
+                    a = fc.Evaluator.Area
+                    mejor = fc
+                End If
+            Next
+        Next
+        Dim r As Box = mejor.Evaluator.RangeBox
+        Dim ex() As Double = {r.MaxPoint.X - r.MinPoint.X, r.MaxPoint.Y - r.MinPoint.Y, r.MaxPoint.Z - r.MinPoint.Z}
+        Array.Sort(ex)
+        la = Math.Round(ex(2) * 10, 1)
+        an = Math.Round(ex(1) * 10, 1)
+    Catch
+    End Try
+End Sub
+
+' ===================== Excel =====================
+Function NuevoLibro() As Object
+    xl = CreateObject("Excel.Application")
+    xl.Visible = False
+    xl.DisplayAlerts = False
+    xl.ScreenUpdating = False
+    Dim wb As Object = xl.Workbooks.Add()
+    Do While wb.Worksheets.Count > 1
+        wb.Worksheets(wb.Worksheets.Count).Delete()
+    Loop
+    Return wb
+End Function
+
+Function Hoja(wb As Object, nombre As String) As Object
+    Dim ws As Object
+    If wb.Worksheets(1).Name.StartsWith("Hoja") OrElse wb.Worksheets(1).Name.StartsWith("Sheet") Then
+        ws = wb.Worksheets(1)
+    Else
+        ws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count))
+    End If
+    ws.Name = nombre
+    Return ws
+End Function
+
+Sub Fila(ws As Object, r As Integer, ParamArray v() As Object)
+    For i As Integer = 0 To v.Length - 1
+        If v(i) Is Nothing Then Continue For
+        Dim s As String = TryCast(v(i), String)
+        If s IsNot Nothing AndAlso s.StartsWith("=") Then
+            ws.Cells(r, i + 1).Formula = s
+        Else
+            ws.Cells(r, i + 1).Value = v(i)
+        End If
+    Next
+End Sub
+
+Sub Estilo(ws As Object, r As Integer, c1 As Integer, c2 As Integer, negrita As Boolean, color As Integer)
+    Dim rg As Object = ws.Range(ws.Cells(r, c1), ws.Cells(r, c2))
+    rg.Font.Bold = negrita
+    If color >= 0 Then rg.Interior.Color = color
+End Sub
+
+Function Col(c As Integer) As String
+    Dim s As String = ""
+    Do While c > 0
+        Dim m As Integer = (c - 1) Mod 26
+        s = Chr(65 + m) & s
+        c = (c - m - 1) \ 26
+    Loop
+    Return s
+End Function
+
+Sub CerrarExcel(wb As Object, ruta As String)
+    Try
+        If System.IO.File.Exists(ruta) Then System.IO.File.Delete(ruta)
+    Catch
+        ruta = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(ruta), System.IO.Path.GetFileNameWithoutExtension(ruta) & "_" & DateTime.Now.ToString("HHmmss") & ".xlsx")
+        resumen.AppendLine("El Excel anterior estaba abierto; se guardo como " & ruta)
+    End Try
+    xl.ScreenUpdating = True
+    wb.Worksheets(1).Activate()
+    wb.SaveAs(ruta, 51)
+    wb.Close(False)
+    xl.Quit()
+    System.Runtime.InteropServices.Marshal.ReleaseComObject(wb)
+    System.Runtime.InteropServices.Marshal.ReleaseComObject(xl)
+    xl = Nothing
+    resumen.AppendLine("Excel: " & ruta)
+    rutaXls = ruta
+End Sub
+Private rutaXls As String = ""
+
+Sub MatarExcel()
+    Try
+        If xl IsNot Nothing Then
+            xl.DisplayAlerts = False
+            xl.Quit()
+            xl = Nothing
+        End If
+    Catch
+    End Try
+End Sub
+
+' ===================== utilidades =====================
+Function TieneParam(p As PartDocument, n As String) As Boolean
+    Try
+        Dim x As Object = p.ComponentDefinition.Parameters.Item(n)
+        Return True
+    Catch
+        Return False
+    End Try
+End Function
+
+Function UProp(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Inventor User Defined Properties").Item(n).Value)
+    Catch
+        Return ""
+    End Try
+End Function
+
+Function DProp(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Design Tracking Properties").Item(n).Value)
+    Catch
+        Return ""
+    End Try
+End Function
+
+Function Num(s As String) As Double
+    Dim r As Double
+    If s Is Nothing Then Return 0
+    If Double.TryParse(s.Replace(",", "."), Globalization.NumberStyles.Any, Globalization.CultureInfo.InvariantCulture, r) Then Return r
+    Return 0
+End Function
+
+' "EE" + "ANTAPACAY" -> "EE-ANTAPACAY"; "EE" + "ANT-EE" -> "ANT-EE" (no repite la planta)
+Function NomBase(planta As String, nombre As String) As String
+    If nombre.ToUpper() = planta.ToUpper() OrElse nombre.ToUpper().EndsWith("-" & planta.ToUpper()) Then Return nombre
+    Return planta & "-" & nombre
+End Function
+
+Function Arg(n As String) As String
+    Try
+        If RuleArguments.Exists(n) Then Return CStr(RuleArguments.Value(n))
+    Catch
+    End Try
+    Return ""
+End Function
+
+Function CompararTexto(a As String, b As String) As Integer
+    Return String.Compare(a, b, True)
+End Function
+
+Sub Aviso(t As String)
+    resumen.AppendLine(t)
+    If Not silencioso Then MessageBox.Show(t, NOMBRE_REGLA)
+End Sub

@@ -1,0 +1,242 @@
+' =====================================================================
+'  NUEVA_PIEZA  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Crea una pieza nueva (.ipt) ordenada, como hace Frame Generator con sus perfiles:
+'
+'   <carpeta del ensamble>\<NOMBRE ENSAMBLE>\Piezas\<NOMBRE ENSAMBLE>-PL-001.ipt
+'
+'  Naturalezas:
+'   ESTRUCTURAL - Plancha / cartela  -> pieza solida con parametro ESPESOR (plancha 200x150 inicial)
+'   ESTRUCTURAL - Chapa plegada      -> pieza de chapa (Sheet Metal) con el espesor elegido
+'   MECANICA    - Pieza mecanizada   -> pieza vacia, CODIGO = mq, material elegido
+'  v2: + plancha estriada (pp), platina plegada (plf), plancha rolada (r), perfil H/I, T,
+'      cajon y canal SOLDADOS (h, t, i, cs: pieza vacia para modelar las planchas),
+'      parrilla (g) y OTRO: cualquier codigo de PARTE de TABLA_MARCAS (A0.61).
+'      El CODIGO queda puesto; TEKLA_NUMERACION le agrega la "p" si luego tiene agujeros.
+'
+'  La inserta en el ensamble activo (o en el subensamble que estes editando en el sitio)
+'  y entra a editarla en el sitio para que dibujes la forma.
+'  Despues TEKLA_NUMERACION le pone la marca (n, p, b, f, fp, mq...).
+' =====================================================================
+Imports System.Collections.Generic
+
+Sub Main()
+    Dim top As AssemblyDocument = TryCast(ThisApplication.ActiveDocument, AssemblyDocument)
+    If top Is Nothing Then
+        MessageBox.Show("Abre un ensamble (.iam) y ejecuta la regla desde ahi.", "NUEVA_PIEZA")
+        Exit Sub
+    End If
+    ' Si estas editando un subensamble en el sitio, la pieza va ahi
+    Dim destino As AssemblyDocument = top
+    Try
+        If ThisApplication.ActiveEditDocument.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+            destino = CType(ThisApplication.ActiveEditDocument, AssemblyDocument)
+        End If
+    Catch
+    End Try
+    Dim silencioso As Boolean = RuleArguments.Exists("silencioso")
+
+    ' ---------- naturaleza ----------
+    ' naturaleza | forma (plancha / chapa / vacia) | CODIGO A0.61 ("" = automatico) | prefijo de archivo
+    Dim defs()() As String = {
+        New String() {"ESTRUCTURAL - Plancha / cartela", "plancha", "", "PL"},
+        New String() {"ESTRUCTURAL - Plancha estriada", "plancha", "pp", "PL"},
+        New String() {"ESTRUCTURAL - Chapa plegada", "chapa", "", "CH"},
+        New String() {"ESTRUCTURAL - Platina plegada", "chapa", "plf", "CH"},
+        New String() {"ESTRUCTURAL - Plancha rolada", "chapa", "r", "CH"},
+        New String() {"ESTRUCTURAL - Perfil H/I soldado", "vacia", "h", "PS"},
+        New String() {"ESTRUCTURAL - Perfil T soldado", "vacia", "t", "PS"},
+        New String() {"ESTRUCTURAL - Perfil cajon soldado", "vacia", "i", "PS"},
+        New String() {"ESTRUCTURAL - Canal soldado", "vacia", "cs", "PS"},
+        New String() {"ESTRUCTURAL - Parrilla de piso (grating)", "vacia", "g", "OT"},
+        New String() {"MECANICA - Pieza mecanizada", "vacia", "mq", "MQ"},
+        New String() {"OTRO - Elegir codigo de TABLA_MARCAS (A0.61)", "vacia", "?", "OT"}}
+    Dim tipos As New List(Of String)
+    For Each d0() As String In defs
+        tipos.Add(d0(0))
+    Next
+    Dim tipo As String = Arg("tipo")
+    If tipo = "" Then tipo = InputListBox("Naturaleza de la pieza nueva:", tipos, tipos(0), "NUEVA_PIEZA", "Tipo")
+    If tipo Is Nothing OrElse tipo = "" Then Exit Sub
+    Dim def() As String = defs(0)
+    For Each d0() As String In defs
+        If d0(0) = tipo Then def = d0
+    Next
+    Dim forma As String = def(1)
+    Dim codigoFijo As String = def(2)
+    Dim esChapa As Boolean = (forma = "chapa")
+    Dim esVacia As Boolean = (forma = "vacia")
+    Dim esMec As Boolean = (codigoFijo = "mq")
+    Dim pref As String = def(3)
+    Dim descCodigo As String = ""
+    If codigoFijo = "?" Then
+        ' cualquier codigo de parte de la tabla A0.61
+        Dim cods As List(Of String) = CodigosTabla(destino)
+        Dim r As String = Arg("codigo")
+        If r = "" Then r = InputListBox("Codigo de parte (A0.61):", cods, cods(0), "NUEVA_PIEZA", "Codigo")
+        If r Is Nothing OrElse r = "" Then Exit Sub
+        codigoFijo = r.Split(" "c)(0).Trim().ToLower()
+        If r.IndexOf(" - ") > 0 Then descCodigo = r.Substring(r.IndexOf(" - ") + 3)
+        pref = codigoFijo.ToUpper()
+    End If
+
+    ' ---------- espesor (planchas y chapa) ----------
+    Dim espesor As String = ""
+    If Not esVacia Then
+        Dim esp As New List(Of String)
+        For Each e As String In New String() {"3", "4.5", "6", "8", "9.5", "10", "12", "12.7", "16", "19", "20", "25", "32", "38", "50"}
+            esp.Add(e)
+        Next
+        espesor = Arg("espesor")
+        If espesor = "" Then espesor = InputListBox("Espesor (mm):", esp, "10", "NUEVA_PIEZA", "Espesor")
+        If espesor Is Nothing OrElse espesor = "" Then Exit Sub
+    End If
+
+    ' ---------- material / grado ----------
+    Dim grados As New List(Of String)
+    If esMec Then
+        For Each g As String In New String() {"SAE 1045", "AISI 4140", "AISI 4340", "AISI 304", "AISI 316", "SAE 1020", "BRONCE SAE 65", "NYLON", "UHMW"}
+            grados.Add(g)
+        Next
+    Else
+        For Each g As String In New String() {"ASTM A36", "ASTM A572 GR.50", "ASTM A588", "ASTM A240 304"}
+            grados.Add(g)
+        Next
+    End If
+    Dim grado As String = Arg("grado")
+    If grado = "" Then grado = InputListBox("Material / grado:", grados, grados(0), "NUEVA_PIEZA", "Material")
+    If grado Is Nothing OrElse grado = "" Then Exit Sub
+
+    ' ---------- carpeta y nombre (como Frame Generator) ----------
+    Dim nomEns As String = System.IO.Path.GetFileNameWithoutExtension(destino.FullFileName)
+    If nomEns = "" Then
+        MessageBox.Show("Guarda primero el ensamble para saber donde crear la pieza.", "NUEVA_PIEZA")
+        Exit Sub
+    End If
+    Dim carpeta As String = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(destino.FullFileName), nomEns, "Piezas")
+    System.IO.Directory.CreateDirectory(carpeta)
+    Dim n As Integer = 1
+    Dim ruta As String
+    Do
+        ruta = System.IO.Path.Combine(carpeta, nomEns & "-" & pref & "-" & n.ToString("000") & ".ipt")
+        If Not System.IO.File.Exists(ruta) Then Exit Do
+        n += 1
+    Loop
+
+    ' ---------- crear la pieza ----------
+    Dim tpl As String = BuscarPlantilla(If(esChapa, "Sheet Metal (mm).ipt", "Standard (mm).ipt"))
+    Dim p As PartDocument = CType(ThisApplication.Documents.Add(DocumentTypeEnum.kPartDocumentObject, tpl, False), PartDocument)
+    Dim tg As TransientGeometry = ThisApplication.TransientGeometry
+
+    If esChapa Then
+        Dim sm As SheetMetalComponentDefinition = CType(p.ComponentDefinition, SheetMetalComponentDefinition)
+        Try : sm.UseSheetMetalStyleThickness = False : Catch : End Try
+        sm.Thickness.Expression = espesor & " mm"
+    ElseIf Not esVacia Then
+        Dim cd As PartComponentDefinition = p.ComponentDefinition
+        Dim up As UserParameter = cd.Parameters.UserParameters.AddByExpression("ESPESOR", espesor & " mm", "mm")
+        up.ExposedAsProperty = False
+        Dim sk As PlanarSketch = cd.Sketches.Add(cd.WorkPlanes.Item(3))
+        sk.SketchLines.AddAsTwoPointCenteredRectangle(tg.CreatePoint2d(0, 0), tg.CreatePoint2d(10, 7.5))
+        Dim ed As ExtrudeDefinition = cd.Features.ExtrudeFeatures.CreateExtrudeDefinition(sk.Profiles.AddForSolid(), PartFeatureOperationEnum.kJoinOperation)
+        ed.SetDistanceExtent("ESPESOR", PartFeatureExtentDirectionEnum.kPositiveExtentDirection)
+        cd.Features.ExtrudeFeatures.Add(ed)
+    End If
+
+    ' material de Inventor (para el peso) y propiedades
+    Dim mat As String = "Steel"
+    If grado.StartsWith("BRONCE") Then mat = "Bronze"
+    If grado = "NYLON" Or grado = "UHMW" Then mat = "Nylon"
+    If grado.Contains("304") Or grado.Contains("316") Then mat = "Stainless Steel"
+    AsignarMaterial(p, mat)
+    EscribirProp(p, "GRADO", grado)
+    EscribirProp(p, "TIPO_PIEZA", If(esMec, "MECANICA", "ESTRUCTURAL"))
+    EscribirProp(p, "NATURALEZA", tipo)
+    If codigoFijo <> "" Then EscribirProp(p, "CODIGO", codigoFijo)
+    If Not esVacia Then EscribirProp(p, "ESPESOR", espesor)
+    Dim descP As String = "PL" & espesor
+    If esVacia Then descP = If(descCodigo <> "", descCodigo, tipo.Substring(tipo.IndexOf(" - ") + 3).ToUpper())
+    If esMec Then descP = "PIEZA MECANIZADA"
+    p.PropertySets.Item("Design Tracking Properties").Item("Description").Value = descP
+    p.SaveAs(ruta, False)
+
+    ' ---------- insertar en el ensamble y editar en el sitio ----------
+    Dim occ As ComponentOccurrence = destino.ComponentDefinition.Occurrences.Add(ruta, tg.CreateMatrix())
+    p.Close(True)
+    If Not silencioso Then
+        Try
+            occ.Edit()
+        Catch
+            MessageBox.Show("Pieza creada: " & ruta & vbCrLf & "Haz doble clic sobre ella para editarla.", "NUEVA_PIEZA")
+        End Try
+    End If
+    System.IO.File.WriteAllText(System.IO.Path.Combine(carpeta, "_ultima_pieza.txt"), ruta)
+End Sub
+
+' Codigos de PARTE de TABLA_MARCAS.csv: "pp - PLANCHA ESTRIADA"
+Function CodigosTabla(asm As Document) As List(Of String)
+    Dim l As New List(Of String)
+    Dim dir As String = System.IO.Path.GetDirectoryName(asm.FullFileName)
+    For lvl As Integer = 0 To 6
+        If dir Is Nothing Then Exit For
+        For Each sd As String In New String() {"", "iLogic"}
+            Dim p As String = System.IO.Path.Combine(System.IO.Path.Combine(dir, sd), "TABLA_MARCAS.csv")
+            If l.Count = 0 AndAlso System.IO.File.Exists(p) Then
+                For Each ln As String In System.IO.File.ReadAllLines(p, System.Text.Encoding.UTF8)
+                    Dim c() As String = ln.Split(";"c)
+                    If c.Length >= 3 AndAlso c(0).Trim().ToUpper().EndsWith("PARTE") AndAlso c(1).Trim() <> "" Then l.Add(c(1).Trim().ToLower() & " - " & c(2).Trim())
+                Next
+            End If
+        Next
+        dir = System.IO.Path.GetDirectoryName(dir)
+    Next
+    If l.Count = 0 Then l.Add("mq - MECANIZADO")
+    Return l
+End Function
+
+Function Arg(nombre As String) As String
+    Try
+        If RuleArguments.Exists(nombre) Then Return CStr(RuleArguments.Value(nombre))
+    Catch
+    End Try
+    Return ""
+End Function
+
+Function BuscarPlantilla(nombre As String) As String
+    Dim raiz As String = ThisApplication.FileOptions.TemplatesPath
+    Try
+        For Each f As String In System.IO.Directory.GetFiles(raiz, nombre, System.IO.SearchOption.AllDirectories)
+            Return f
+        Next
+        ' Inventor en espanol: "Sheet Metal (mm).ipt" y "Standard (mm).ipt" estan en Metric
+        For Each f As String In System.IO.Directory.GetFiles(raiz, If(nombre.StartsWith("Sheet"), "Sheet Metal*.ipt", "Standard*.ipt"), System.IO.SearchOption.AllDirectories)
+            Return f
+        Next
+    Catch
+    End Try
+    Return ThisApplication.FileManager.GetTemplateFile(DocumentTypeEnum.kPartDocumentObject)
+End Function
+
+Sub AsignarMaterial(p As PartDocument, nombre As String)
+    Dim espanol As New Dictionary(Of String, String)
+    espanol("Steel") = "Acero"
+    espanol("Bronze") = "Bronce"
+    espanol("Nylon") = "Nailon"
+    espanol("Stainless Steel") = "Acero inoxidable"
+    Dim biblio As AssetLibrary = ThisApplication.ActiveMaterialLibrary
+    For Each n As String In New String() {nombre, If(espanol.ContainsKey(nombre), espanol(nombre), nombre)}
+        Try
+            p.ActiveMaterial = biblio.MaterialAssets.Item(n)
+            Exit Sub
+        Catch
+        End Try
+    Next
+End Sub
+
+Sub EscribirProp(d As Document, nombre As String, valor As String)
+    Dim cu As PropertySet = d.PropertySets.Item("Inventor User Defined Properties")
+    Try
+        cu.Item(nombre).Value = valor
+    Catch
+        cu.Add(valor, nombre)
+    End Try
+End Sub

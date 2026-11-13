@@ -1,0 +1,239 @@
+' =====================================================================
+'  INICIAR_CONJUNTO  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Primer paso de cada ensamble: dice A QUE FASE / PLANTA pertenece y QUE TIPO
+'  de conjunto es (segun A0.61 MARCACION DE PIEZAS -> TABLA_MARCAS.csv):
+'     C COLUMNA, SP SOPORTE, BS BASTIDOR, V VIGA, DV DIAGONAL VERTICAL, ...
+'
+'  Dos modos:
+'   1) DEFINIR ESTE ENSAMBLE   -> escribe PROYECTO, PLANTA, PREFIJO, TIPO_CONJUNTO
+'                                 y Descripcion en el ensamble activo (ej. ZAR-001)
+'   2) CREAR SUBCONJUNTO NUEVO -> crea el .iam dentro del ensamble activo y entra a
+'                                 editarlo:
+'        <carpeta>\<ENSAMBLE>\<ENSAMBLE>-<PREF>-001.iam
+'      dentro de el usa NUEVA_PIEZA (planchas, chapas, mecanizadas) y Frame Generator.
+'
+'  TEKLA_NUMERACION despues le da la marca: <PLANTA>-<PREF><n>  (ej. EE-BS1) y a sus
+'  piezas <PLANTA>-<PREF><n>-<codigo><n>  (ej. EE-BS1-f1). No pone marcas aqui.
+'  Tipos marcados SISTEMA = SI en TABLA_MARCAS (FAJ faja, EQ equipo propio) quedan con la
+'  propiedad SISTEMA = SI: la regla TAG_EQUIPOS les da TAG por instancia (EE-FAJ-001) y
+'  sus equipos lo heredan (EE-FAJ-001-MOT-01).
+'  Argumentos opcionales: silencioso, modo=este|nuevo, tipo=<PREF>, planta=, proyecto=
+' =====================================================================
+
+Sub Main()
+    Dim top As AssemblyDocument = TryCast(ThisApplication.ActiveDocument, AssemblyDocument)
+    If top Is Nothing Then
+        MessageBox.Show("Abre un ensamble (.iam) y ejecuta la regla desde ahi.", "INICIAR_CONJUNTO")
+        Exit Sub
+    End If
+    Dim destino As AssemblyDocument = top
+    Try
+        If ThisApplication.ActiveEditDocument.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then destino = CType(ThisApplication.ActiveEditDocument, AssemblyDocument)
+    Catch
+    End Try
+    silencioso = RuleArguments.Exists("silencioso")
+    Dim nomEns As String = System.IO.Path.GetFileNameWithoutExtension(destino.FullFileName)
+    If nomEns = "" Then
+        MessageBox.Show("Guarda primero el ensamble.", "INICIAR_CONJUNTO")
+        Exit Sub
+    End If
+
+    ' ---------- tabla de tipos de conjunto ----------
+    Dim tipos As List(Of String) = CargarTipos(destino)
+    If tipos.Count = 0 Then
+        MessageBox.Show("No encuentro TABLA_MARCAS.csv (carpeta del ensamble, superiores o \iLogic).", "INICIAR_CONJUNTO")
+        Exit Sub
+    End If
+
+    ' ---------- modo ----------
+    Dim prefActual As String = UProp(destino, "PREFIJO")
+    Dim opEste As String = "DEFINIR ESTE ENSAMBLE (" & nomEns & ")" & If(prefActual <> "", "  [hoy: " & prefActual & "]", "")
+    Dim opNuevo As String = "CREAR SUBCONJUNTO NUEVO dentro de " & nomEns
+    Dim modo As String = Arg("modo").ToLower()
+    If modo = "" Then
+        Dim ops As New List(Of String)
+        If prefActual = "" AndAlso Not (destino Is top) Then
+            ops.Add(opEste)
+            ops.Add(opNuevo)
+        Else
+            ops.Add(opNuevo)
+            ops.Add(opEste)
+        End If
+        Dim r As String = InputListBox("Que quieres hacer?", ops, ops(0), "INICIAR_CONJUNTO", "Modo")
+        If r Is Nothing OrElse r = "" Then Exit Sub
+        modo = If(r = opNuevo, "nuevo", "este")
+    End If
+
+    ' ---------- proyecto y fase (se heredan del ensamble de arriba) ----------
+    Dim proy As String = Primero(Arg("proyecto"), UProp(destino, "PROYECTO"), UProp(top, "PROYECTO"))
+    Dim planta As String = Primero(Arg("planta"), UProp(destino, "PLANTA"), UProp(top, "PLANTA"))
+    If proy = "" Then proy = InputBox("Proyecto / obra (ej. ANTAPACCAY):", "INICIAR_CONJUNTO", "")
+    If planta = "" OrElse (modo = "este" AndAlso Not silencioso AndAlso destino Is top) Then
+        planta = InputBox("Fase / planta a la que pertenece (ej. EE, AEE, EBP, SZ):", "INICIAR_CONJUNTO", If(planta = "", "EE", planta))
+    End If
+    If proy Is Nothing OrElse planta Is Nothing OrElse planta.Trim() = "" Then Exit Sub
+    proy = proy.Trim().ToUpper()
+    planta = planta.Trim().ToUpper()
+
+    ' ---------- tipo de conjunto ----------
+    Dim elegido As String = ""
+    Dim pa As String = Arg("tipo").ToUpper()
+    If pa <> "" Then
+        For Each t As String In tipos
+            If t.StartsWith(pa & " - ") Then elegido = t
+        Next
+    End If
+    If elegido = "" Then
+        Dim def As String = tipos(0)
+        For Each t As String In tipos
+            If prefActual <> "" AndAlso t.StartsWith(prefActual & " - ") AndAlso modo = "este" Then def = t
+        Next
+        elegido = InputListBox("Tipo de conjunto (A0.61 MARCACION):", tipos, def, "INICIAR_CONJUNTO", "Tipo")
+    End If
+    If elegido Is Nothing OrElse elegido = "" Then Exit Sub
+    Dim pref As String = elegido.Substring(0, elegido.IndexOf(" - ")).Trim()
+    Dim desc As String = elegido.Substring(elegido.IndexOf(" - ") + 3).Trim()
+    esSistema = desc.EndsWith("[SISTEMA]")
+    desc = desc.Replace("[SISTEMA]", "").Trim()
+
+    If modo = "este" AndAlso destino Is top AndAlso Not silencioso Then
+        If MessageBox.Show(nomEns & " es el ensamble PRINCIPAL (normalmente es la fase " & planta & ", no un conjunto)." & vbCrLf & "Definirlo como " & desc & " hara que todo el ensamble sea un solo conjunto (" & planta & "-" & pref & "<n>)." & vbCrLf & vbCrLf & "Continuar?", "INICIAR_CONJUNTO", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) <> DialogResult.Yes Then Exit Sub
+    End If
+    If modo = "este" Then
+        Configurar(destino, proy, planta, pref, desc)
+        Aviso(nomEns & " definido como " & desc & " (PREFIJO " & pref & ") de la fase " & planta & vbCrLf & "Marca que recibira al numerar: " & planta & "-" & pref & "<n>" & vbCrLf & "Guarda el ensamble.")
+        Exit Sub
+    End If
+
+    ' ---------- crear subconjunto ----------
+    Dim carpeta As String = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(destino.FullFileName), nomEns)
+    System.IO.Directory.CreateDirectory(carpeta)
+    Dim n As Integer = 1
+    Dim ruta As String
+    Do
+        ruta = System.IO.Path.Combine(carpeta, nomEns & "-" & pref & "-" & n.ToString("000") & ".iam")
+        If Not System.IO.File.Exists(ruta) Then Exit Do
+        n += 1
+    Loop
+    Dim a As AssemblyDocument = CType(ThisApplication.Documents.Add(DocumentTypeEnum.kAssemblyDocumentObject, PlantillaEnsamble(), False), AssemblyDocument)
+    Configurar(a, proy, planta, pref, desc)
+    a.SaveAs(ruta, False)
+    ' si el ensamble de arriba aun no tiene fase, se la ponemos
+    If UProp(destino, "PLANTA") = "" Then EscribirProp(destino, "PLANTA", planta)
+    If UProp(destino, "PROYECTO") = "" Then EscribirProp(destino, "PROYECTO", proy)
+    Dim occ As ComponentOccurrence = destino.ComponentDefinition.Occurrences.Add(ruta, ThisApplication.TransientGeometry.CreateMatrix())
+    a.Close(True)
+    If Not silencioso Then
+        Try
+            occ.Edit()
+        Catch
+        End Try
+        MessageBox.Show("Subconjunto creado: " & System.IO.Path.GetFileName(ruta) & vbCrLf & desc & "  (PREFIJO " & pref & ", fase " & planta & ")" & vbCrLf & vbCrLf & "Estas editandolo: agrega perfiles con Frame Generator y planchas / chapas con NUEVA_PIEZA." & vbCrLf & "Al terminar: Volver, guardar y TEKLA_NUMERACION desde el ensamble general.", "INICIAR_CONJUNTO")
+    End If
+    resumen.AppendLine(ruta)
+End Sub
+
+Private silencioso As Boolean
+Private esSistema As Boolean = False
+Private resumen As New System.Text.StringBuilder
+
+Sub Configurar(d As Document, proy As String, planta As String, pref As String, desc As String)
+    EscribirProp(d, "PROYECTO", proy)
+    EscribirProp(d, "PLANTA", planta)
+    EscribirProp(d, "PREFIJO", pref)
+    EscribirProp(d, "TIPO_CONJUNTO", desc)
+    ' SISTEMA = SI: conjunto funcional (faja, equipo propio) -> lleva TAG por instancia (regla TAG_EQUIPOS)
+    EscribirProp(d, "SISTEMA", If(esSistema, "SI", ""))
+    Dim dt As PropertySet = d.PropertySets.Item("Design Tracking Properties")
+    dt.Item("Description").Value = desc
+    If CStr(dt.Item("Project").Value).Trim() = "" Then dt.Item("Project").Value = proy
+    ' un conjunto debe ser Normal en la lista de materiales (no fantasma)
+    Try
+        Dim ad As AssemblyDocument = TryCast(d, AssemblyDocument)
+        If ad IsNot Nothing AndAlso ad.ComponentDefinition.BOMStructure <> BOMStructureEnum.kNormalBOMStructure Then ad.ComponentDefinition.BOMStructure = BOMStructureEnum.kNormalBOMStructure
+    Catch
+    End Try
+End Sub
+
+Function CargarTipos(asm As Document) As List(Of String)
+    Dim l As New List(Of String)
+    Dim dir As String = System.IO.Path.GetDirectoryName(asm.FullFileName)
+    Dim archivo As String = ""
+    For lvl As Integer = 0 To 6
+        If dir Is Nothing Then Exit For
+        For Each sd As String In New String() {"", "iLogic"}
+            Dim p As String = System.IO.Path.Combine(System.IO.Path.Combine(dir, sd), "TABLA_MARCAS.csv")
+            If archivo = "" AndAlso System.IO.File.Exists(p) Then archivo = p
+        Next
+        dir = System.IO.Path.GetDirectoryName(dir)
+    Next
+    If archivo = "" Then
+        Try
+            For Each p As String In ThisApplication.FileOptions.ExternalRuleDirectories
+                If System.IO.File.Exists(System.IO.Path.Combine(p, "TABLA_MARCAS.csv")) Then archivo = System.IO.Path.Combine(p, "TABLA_MARCAS.csv")
+            Next
+        Catch
+        End Try
+    End If
+    If archivo = "" Then Return l
+    For Each ln As String In System.IO.File.ReadAllLines(archivo, System.Text.Encoding.UTF8)
+        Dim c() As String = ln.Split(";"c)
+        If c.Length >= 3 AndAlso c(0).Trim().ToUpper().EndsWith("CONJUNTO") AndAlso c(1).Trim() <> "" Then
+            Dim sis As Boolean = c.Length >= 5 AndAlso c(4).Trim().ToUpper() = "SI"
+            l.Add(c(1).Trim().ToUpper() & " - " & c(2).Trim() & If(sis, "  [SISTEMA]", ""))
+        End If
+    Next
+    l.Sort()
+    Return l
+End Function
+
+Function PlantillaEnsamble() As String
+    Try
+        Dim raiz As String = ThisApplication.FileOptions.TemplatesPath
+        For Each f As String In System.IO.Directory.GetFiles(raiz, "Standard (mm).iam", System.IO.SearchOption.AllDirectories)
+            Return f
+        Next
+        For Each f As String In System.IO.Directory.GetFiles(raiz, "Standard*.iam", System.IO.SearchOption.AllDirectories)
+            Return f
+        Next
+    Catch
+    End Try
+    Return ThisApplication.FileManager.GetTemplateFile(DocumentTypeEnum.kAssemblyDocumentObject)
+End Function
+
+Function Primero(ParamArray v() As String) As String
+    For Each s As String In v
+        If s IsNot Nothing AndAlso s.Trim() <> "" Then Return s.Trim()
+    Next
+    Return ""
+End Function
+
+Function Arg(n As String) As String
+    Try
+        If RuleArguments.Exists(n) Then Return CStr(RuleArguments.Value(n))
+    Catch
+    End Try
+    Return ""
+End Function
+
+Function UProp(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Inventor User Defined Properties").Item(n).Value)
+    Catch
+        Return ""
+    End Try
+End Function
+
+Sub EscribirProp(d As Document, n As String, v As String)
+    Dim ps As PropertySet = d.PropertySets.Item("Inventor User Defined Properties")
+    Try
+        ps.Item(n).Value = v
+    Catch
+        ps.Add(v, n)
+    End Try
+End Sub
+
+Sub Aviso(t As String)
+    resumen.AppendLine(t)
+    If Not silencioso Then MessageBox.Show(t, "INICIAR_CONJUNTO")
+End Sub

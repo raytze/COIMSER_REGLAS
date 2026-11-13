@@ -1,0 +1,310 @@
+' =====================================================================
+'  REORGANIZAR_OBRA  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Pasa una obra ANTIGUA (fases sueltas en la raiz) a la estructura CARPETA POR FASE:
+'
+'     antes:  2026-004 MAJES\MAJ-ALM.iam           + MAJ-ALM\ (sus conjuntos)  + PLANOS\
+'     despues 2026-004 MAJES\MAJ-ALM\MAJ-ALM.iam   (sus conjuntos ya estaban ahi) + MAJ-ALM\PLANOS\
+'
+'  - Ejecutar con el ensamble GENERAL de la obra abierto (y SIN planos abiertos).
+'  - La fase se guarda en su carpeta (Guardar como) y el GENERAL queda apuntando a la nueva ruta.
+'  - El archivo viejo NO se borra: va a <obra>\_to_delete\<fecha>\.
+'  - Si la obra tiene UNA sola fase, la carpeta PLANOS de la raiz pasa a <fase>\PLANOS y sus planos
+'    que apuntaban a la fase se re-enlazan. Con varias fases PLANOS queda donde esta (avisa).
+'  - Quita la propiedad PLANTA del GENERAL (el general no es de ninguna fase).
+'  Hazlo ANTES del primer check-in en Vault.  Argumentos: silencioso, planos=NO
+' =====================================================================
+
+Sub Main()
+    silencioso = RuleArguments.Exists("silencioso")
+    Dim g As AssemblyDocument = TryCast(ThisApplication.ActiveDocument, AssemblyDocument)
+    If g Is Nothing OrElse Not EsGeneral(g) Then
+        MessageBox.Show("Abre el ensamble GENERAL de la obra (ej. MAJ-GENERAL.iam) y ejecuta la regla ahi.", "REORGANIZAR_OBRA")
+        Exit Sub
+    End If
+    For Each d As Document In ThisApplication.Documents
+        If d.DocumentType = DocumentTypeEnum.kDrawingDocumentObject Then
+            MessageBox.Show("Cierra los planos abiertos antes de reorganizar (" & System.IO.Path.GetFileName(d.FullFileName) & ").", "REORGANIZAR_OBRA")
+            Exit Sub
+        End If
+    Next
+    Dim obra As String = System.IO.Path.GetDirectoryName(g.FullFileName)
+    Dim fases As Dictionary(Of String, String) = FasesDe(g)
+    Dim sueltas As New List(Of String)
+    For Each k As String In fases.Keys
+        If System.IO.Path.GetDirectoryName(fases(k)).ToLower() = obra.ToLower() Then sueltas.Add(k)
+    Next
+    If sueltas.Count = 0 Then
+        Aviso("La obra ya esta ordenada: cada fase esta en su carpeta.")
+        Exit Sub
+    End If
+    Dim moverPlanos As Boolean = (fases.Count = 1 AndAlso System.IO.Directory.Exists(System.IO.Path.Combine(obra, "PLANOS")))
+    If Not silencioso Then
+        Dim t As String = "Se moveran a su carpeta estas fases:" & vbCrLf
+        For Each k As String In sueltas
+            Dim nom As String = System.IO.Path.GetFileNameWithoutExtension(fases(k))
+            t &= "   " & nom & ".iam  ->  " & nom & "\" & nom & ".iam" & vbCrLf
+        Next
+        If moverPlanos Then t &= vbCrLf & "PLANOS\ de la raiz pasa a " & System.IO.Path.GetFileNameWithoutExtension(fases(sueltas(0))) & "\PLANOS\" & vbCrLf
+        If fases.Count > 1 AndAlso System.IO.Directory.Exists(System.IO.Path.Combine(obra, "PLANOS")) Then t &= vbCrLf & "Hay varias fases: PLANOS\ de la raiz NO se mueve (reparte sus planos a mano)." & vbCrLf
+        t &= vbCrLf & "Los archivos viejos van a _to_delete (no se borra nada). Continuar?"
+        If MessageBox.Show(t, "REORGANIZAR_OBRA", MessageBoxButtons.YesNo, MessageBoxIcon.Question) <> DialogResult.Yes Then Exit Sub
+    End If
+
+    Dim papelera As String = System.IO.Path.Combine(obra, "_to_delete", DateTime.Now.ToString("yyyyMMdd_HHmm"))
+    Dim movidos As New Dictionary(Of String, String)   ' ruta vieja -> nueva
+    For Each k As String In sueltas
+        Dim viejo As String = fases(k)
+        Dim nom As String = System.IO.Path.GetFileNameWithoutExtension(viejo)
+        Dim destDir As String = System.IO.Path.Combine(obra, nom)
+        Dim nuevo As String = System.IO.Path.Combine(destDir, nom & ".iam")
+        If System.IO.File.Exists(nuevo) Then
+            resumen.AppendLine("OMITIDA " & nom & ": ya existe " & nuevo)
+            Continue For
+        End If
+        For Each sd As String In New String() {"", "REFERENCIAS", "PLANOS\PLASMA", "PLANOS\REPORTES"}
+            If sd.StartsWith("PLANOS") AndAlso moverPlanos Then Continue For
+            System.IO.Directory.CreateDirectory(System.IO.Path.Combine(destDir, sd))
+        Next
+        Dim fd As Document = Nothing
+        For Each d As Document In ThisApplication.Documents
+            If d.FullFileName.ToLower() = viejo.ToLower() Then fd = d
+        Next
+        If fd Is Nothing Then
+            resumen.AppendLine("OMITIDA " & nom & ": no esta cargada en el GENERAL")
+            Continue For
+        End If
+        fd.SaveAs(nuevo, False)
+        movidos.Add(viejo, nuevo)
+        resumen.AppendLine(nom & ".iam -> " & nuevo)
+    Next
+    If movidos.Count = 0 Then
+        Aviso(resumen.ToString())
+        Exit Sub
+    End If
+
+    ' el general apunta ya a las rutas nuevas: guardar
+    If UProp(g, "PLANTA") <> "" Then
+        EscribirProp(g, "PLANTA", "")
+        resumen.AppendLine("Quitada la propiedad PLANTA del GENERAL")
+    End If
+    If UProp(g, "TIPO_ENSAMBLE") = "" Then EscribirProp(g, "TIPO_ENSAMBLE", "GENERAL")
+    g.Save()
+
+    ' PLANOS de la raiz -> carpeta de la unica fase, y re-enlazar sus planos
+    If moverPlanos Then
+        Dim nuevoF As String = ""
+        For Each v As String In movidos.Values
+            nuevoF = v
+        Next
+        Dim destPl As String = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(nuevoF), "PLANOS")
+        If Not System.IO.Directory.Exists(destPl) Then
+            System.IO.Directory.Move(System.IO.Path.Combine(obra, "PLANOS"), destPl)
+            resumen.AppendLine("PLANOS\ -> " & destPl)
+            If Arg("planos").ToUpper() <> "NO" Then Reenlazar(destPl, movidos)
+        Else
+            resumen.AppendLine("No movi PLANOS\: ya existe " & destPl)
+        End If
+    End If
+
+    ' archivos viejos a la papelera
+    For Each viejo As String In movidos.Keys
+        Try
+            System.IO.Directory.CreateDirectory(papelera)
+            System.IO.File.Move(viejo, System.IO.Path.Combine(papelera, System.IO.Path.GetFileName(viejo)))
+        Catch ex As Exception
+            resumen.AppendLine("No pude mover " & viejo & " a _to_delete (" & ex.Message & "). Muevelo a mano.")
+        End Try
+    Next
+    resumen.AppendLine("Listo. Abre cada fase y revisa; luego REVISAR_JERARQUIA.")
+    Aviso(resumen.ToString())
+End Sub
+
+Private silencioso As Boolean
+Private resumen As New System.Text.StringBuilder
+Private xl As Object
+Private rutaSalida As String = ""
+
+' Re-enlaza los planos (idw/dwg) de una carpeta que apuntaban a una fase movida
+Sub Reenlazar(carpeta As String, movidos As Dictionary(Of String, String))
+    Dim nOk As Integer = 0
+    Dim archivos As New List(Of String)
+    archivos.AddRange(System.IO.Directory.GetFiles(carpeta, "*.idw"))
+    archivos.AddRange(System.IO.Directory.GetFiles(carpeta, "*.dwg"))
+    For Each f As String In archivos
+        Dim dd As Document = Nothing
+        Try
+            dd = ThisApplication.Documents.Open(f, False)
+            Dim cambio As Boolean = False
+            For Each rf As FileDescriptor In dd.File.ReferencedFileDescriptors
+                For Each kv As KeyValuePair(Of String, String) In movidos
+                    If rf.FullFileName.ToLower() = kv.Key.ToLower() Then
+                        rf.ReplaceReference(kv.Value)
+                        cambio = True
+                    End If
+                Next
+            Next
+            If cambio Then
+                dd.Save()
+                nOk += 1
+            End If
+        Catch ex As Exception
+            resumen.AppendLine("  plano " & System.IO.Path.GetFileName(f) & ": no pude re-enlazar (" & ex.Message & ") -> abrelo y usa Reemplazar referencia")
+        End Try
+        Try
+            If dd IsNot Nothing Then dd.Close(True)
+        Catch
+        End Try
+    Next
+    resumen.AppendLine("Planos re-enlazados: " & nOk)
+End Sub
+
+Sub Aviso(t As String)
+    If Not silencioso Then MessageBox.Show(t, "REORGANIZAR_OBRA")
+End Sub
+
+' ===================== comunes COIMSER =====================
+Function Arg(n As String) As String
+    Try
+        If RuleArguments.Exists(n) Then Return CStr(RuleArguments.Value(n))
+    Catch
+    End Try
+    Return ""
+End Function
+
+Function UProp(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Inventor User Defined Properties").Item(n).Value).Trim()
+    Catch
+        Return ""
+    End Try
+End Function
+
+Function PropDT(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Design Tracking Properties").Item(n).Value).Trim()
+    Catch
+        Return ""
+    End Try
+End Function
+
+Sub EscribirProp(d As Document, n As String, v As String)
+    Dim ps As PropertySet = d.PropertySets.Item("Inventor User Defined Properties")
+    Try
+        ps.Item(n).Value = v
+    Catch
+        ps.Add(v, n)
+    End Try
+End Sub
+
+' Carpeta de la obra: la primera hacia arriba que tiene _OBRA.txt
+Function CarpetaObra(ruta As String) As String
+    Dim x As String = System.IO.Path.GetDirectoryName(ruta)
+    For i As Integer = 0 To 8
+        If x Is Nothing OrElse x = "" Then Exit For
+        If System.IO.File.Exists(System.IO.Path.Combine(x, "_OBRA.txt")) Then Return x
+        x = System.IO.Path.GetDirectoryName(x)
+    Next
+    Return ""
+End Function
+
+Function EsGeneral(d As Document) As Boolean
+    If UProp(d, "TIPO_ENSAMBLE").ToUpper() = "GENERAL" Then Return True
+    Return System.IO.Path.GetFileNameWithoutExtension(d.FullFileName).ToUpper().EndsWith("-GENERAL")
+End Function
+
+' Fases del ensamble general: PLANTA -> ruta del .iam
+Function FasesDe(g As AssemblyDocument) As Dictionary(Of String, String)
+    Dim r As New Dictionary(Of String, String)
+    For Each oc As ComponentOccurrence In g.ComponentDefinition.Occurrences
+        Try
+            Dim d As Document = oc.Definition.Document
+            Dim pl As String = UProp(d, "PLANTA").ToUpper()
+            If UProp(d, "TIPO_ENSAMBLE").ToUpper() = "PLANTA" AndAlso pl <> "" AndAlso Not r.ContainsKey(pl) Then r.Add(pl, d.FullFileName)
+        Catch
+        End Try
+    Next
+    Return r
+End Function
+
+Function Limpia(s As String) As String
+    If s Is Nothing Then Return ""
+    Return s.Replace(";", ",").Replace(vbCr, " ").Replace(vbLf, " ").Trim()
+End Function
+
+' ===================== Excel (si no hay Excel se guarda CSV) =====================
+Function NuevoLibro() As Object
+    Try
+        xl = CreateObject("Excel.Application")
+        xl.Visible = False
+        xl.DisplayAlerts = False
+        Dim wb As Object = xl.Workbooks.Add()
+        Do While wb.Worksheets.Count > 1
+            wb.Worksheets(wb.Worksheets.Count).Delete()
+        Loop
+        Return wb
+    Catch
+        xl = Nothing
+        Return Nothing
+    End Try
+End Function
+
+Function Hoja(wb As Object, nombre As String, primera As Boolean) As Object
+    Dim ws As Object
+    If primera Then
+        ws = wb.Worksheets(1)
+    Else
+        ws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count))
+    End If
+    ws.Name = nombre
+    Return ws
+End Function
+
+' Escribe una tabla (fila 1 = titulos) en una hoja; devuelve la ultima fila
+Function Tabla(ws As Object, filaIni As Integer, filas As List(Of Object())) As Integer
+    Dim r As Integer = filaIni
+    For Each f() As Object In filas
+        For c As Integer = 0 To f.Length - 1
+            If f(c) Is Nothing Then Continue For
+            ws.Cells(r, c + 1).Value = f(c)
+        Next
+        r += 1
+    Next
+    Try
+        Dim nc As Integer = filas(0).Length
+        ws.Range(ws.Cells(filaIni, 1), ws.Cells(filaIni, nc)).Font.Bold = True
+        ws.Range(ws.Cells(filaIni, 1), ws.Cells(filaIni, nc)).Interior.Color = 14277081
+        ws.Columns.AutoFit()
+    Catch
+    End Try
+    Return r - 1
+End Function
+
+Sub GuardarLibro(wb As Object, ruta As String)
+    Try
+        If System.IO.File.Exists(ruta) Then System.IO.File.Delete(ruta)
+    Catch
+        ruta = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(ruta), System.IO.Path.GetFileNameWithoutExtension(ruta) & "_" & DateTime.Now.ToString("HHmmss") & ".xlsx")
+    End Try
+    wb.Worksheets(1).Activate()
+    wb.SaveAs(ruta, 51)
+    wb.Close(False)
+    xl.Quit()
+    System.Runtime.InteropServices.Marshal.ReleaseComObject(wb)
+    System.Runtime.InteropServices.Marshal.ReleaseComObject(xl)
+    xl = Nothing
+    rutaSalida = ruta
+End Sub
+
+' CSV de respaldo (;) cuando no hay Excel
+Sub GuardarCsv(ruta As String, filas As List(Of Object()))
+    Dim sb As New System.Text.StringBuilder()
+    For Each f() As Object In filas
+        Dim l As New List(Of String)
+        For Each v As Object In f
+            l.Add(If(v Is Nothing, "", Limpia(CStr(v))))
+        Next
+        sb.AppendLine(String.Join(";", l))
+    Next
+    System.IO.File.WriteAllText(ruta, sb.ToString(), System.Text.Encoding.UTF8)
+    rutaSalida = ruta
+End Sub

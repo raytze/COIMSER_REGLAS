@@ -1,0 +1,664 @@
+' =====================================================================
+'  EXPORTAR_PLASMA  v2.1  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Paquete de CORTE POR PLASMA de un ensamble ya numerado (TEKLA_NUMERACION):
+'
+'   - Toma solo planchas, cartelas y chapas (segun su naturaleza):
+'       chapa (Sheet Metal) con dobleces -> CHAPA PLEGADA : DXF del DESARROLLADO
+'                                           (dobleces en capa DOBLEZ, no se cortan)
+'       chapa sin dobleces / plancha solida (codigo n, p, b o TIPO_PIEZA plancha)
+'                                        -> PLANCHA : DXF de la cara mayor (contorno + agujeros)
+'     Perfiles (Frame Generator / Content Center), compras y piezas mecanicas no entran.
+'   - Un DXF por MARCA, 1:1 en mm, capa CORTE:
+'       PLANOS\PLASMA\<esp>mm\<MARCA>_PL<esp>_<GRADO>_x<CANT>.dxf
+'   - Lista de corte agrupada por espesor y material:
+'       PLANOS\PLASMA\<PLANTA>-<ENSAMBLE>-LISTA_CORTE.csv  (abre en Excel)
+'   - Trazabilidad: PLANOS\PLASMA\_HISTORIAL_CORTE.csv con cada envio
+'     (fecha, marca, cantidad, espesor, peso). Avisa que marcas son NUEVAS y cuales
+'     ya se enviaron antes (y si cambio la cantidad).
+'
+'  v2.0 - CONTROL DE ENVIOS COMO TEKLA (lo ya cortado no se pierde ni se pisa):
+'   - PLASMA\<esp>mm\        = juego VIGENTE (solo DXF de la numeracion actual)
+'   - PLASMA\ENVIOS\ENVIO_###_<fecha>\ = PAQUETE para el taller: solo lo NUEVO, el COMPLEMENTO
+'     de cantidad (x diferencia), lo REACTIVADO o REENVIADO. No se vuelve a tocar.
+'   - PLASMA\_OBSOLETO\<fecha>\ = DXF que ya no corresponden (otra cantidad, pieza eliminada o
+'     renumerada). NUNCA se borra nada.
+'   - El historial guarda la HUELLA de cada pieza enviada (espesor, masa, area, inercias). Si una
+'     marca ya cortada cambia de geometria -> BLOQUEADA: no se exporta y avisa (TEKLA_NUMERACION
+'     v3.3 le da marca nueva; argumento forzar=EE-C1-p3 para aceptar el cambio con la misma marca).
+'   - Marcas enviadas que ya no estan en el modelo -> ANULADA (sobrantes en el taller).
+'   - Menos cantidad que lo enviado -> REDUCCION (sobrantes), no se envia nada.
+'   - reenviar=EE-C1-p3,EE-C1-n2 (o reenviar=TODO): vuelve a mandar esas marcas completas.
+'
+'  v2.1 - las piezas del DESIGN ACCELERATOR (poleas, engranajes, ejes, correas...) nunca van
+'     a plasma aunque parezcan una plancha.
+'  No modifica las piezas: lo que crea para exportar se deshace al terminar.
+'  Argumentos opcionales: silencioso, reenviar, forzar
+' =====================================================================
+
+Sub Main()
+    Dim asm As AssemblyDocument = TryCast(ThisDoc.Document, AssemblyDocument)
+    If asm Is Nothing Then
+        MessageBox.Show("Ejecuta la regla desde el ensamble general (.iam).", "EXPORTAR_PLASMA")
+        Exit Sub
+    End If
+    ' ensamble GENERAL de la obra (NUEVO_PROYECTO): las reglas se corren en cada planta
+    Try
+        If CStr(asm.PropertySets.Item("Inventor User Defined Properties").Item("TIPO_ENSAMBLE").Value).ToUpper() = "GENERAL" Then
+            MessageBox.Show("Este es el ensamble GENERAL de la obra." & vbCrLf & "Abre el ensamble de la planta (ej. ANT-EE.iam) y ejecuta la regla ahi.", "EXPORTAR_PLASMA")
+            Exit Sub
+        End If
+    Catch
+    End Try
+    silencioso = RuleArguments.Exists("silencioso")
+    Dim nombre As String = System.IO.Path.GetFileNameWithoutExtension(asm.FullFileName)
+    carpeta = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(asm.FullFileName), "PLANOS\PLASMA")
+    Try
+        planta = UProp(asm, "PLANTA")
+        If planta = "" Then planta = "XX"
+        ensamble = NomBase(planta, nombre)
+        System.IO.Directory.CreateDirectory(carpeta)
+        Recorrer(asm.ComponentDefinition.Occurrences)
+        LeerHistorial()
+        Dim reenviar As List(Of String) = ListaArg("reenviar")
+        Dim forzar As List(Of String) = ListaArg("forzar")
+
+        Dim marcas As New List(Of String)(partDoc.Keys)
+        marcas.Sort(AddressOf CompararTexto)
+        Dim filas As New List(Of String())
+        Dim paquete As New List(Of String())
+        Dim vigentes As New List(Of String)
+        Dim carpetaEnvio As String = ""
+        For Each mk As String In marcas
+            Dim p As PartDocument = TryCast(partDoc(mk), PartDocument)
+            If p Is Nothing Then Continue For
+            Dim nat As String = Naturaleza(p)
+            If nat = "" Then Continue For
+            Try
+                Dim n As Integer = cantParte(mk)
+                Dim hu As String = Huella(p)
+                Dim antes As Integer = -1
+                If histCant.ContainsKey(mk) Then antes = histCant(mk)
+                Dim huAntes As String = ""
+                If histHuella.ContainsKey(mk) Then huAntes = histHuella(mk)
+                Dim est As String
+                Dim envio As Integer = 0
+                Dim todo As Boolean = reenviar.Contains("TODO") OrElse reenviar.Contains(mk.ToUpper())
+                If antes < 0 Then
+                    est = "NUEVA"
+                    envio = n
+                ElseIf huAntes <> "" AndAlso huAntes <> hu AndAlso Not forzar.Contains(mk.ToUpper()) Then
+                    ' misma marca, otra geometria: lo cortado ya no coincide -> no se exporta
+                    bloqueadas.Add(mk & "  (" & System.IO.Path.GetFileName(p.FullFileName) & ")")
+                    For Each f0 As String In DxfDeMarca(mk)
+                        vigentes.Add(f0)
+                    Next
+                    resumen.AppendLine("  BLOQUEADA " & mk & ": huella enviada " & huAntes & " / actual " & hu)
+                    Continue For
+                ElseIf huAntes <> "" AndAlso huAntes <> hu Then
+                    est = "MODIFICADA (FORZADO)"
+                    envio = n
+                ElseIf histEstado.ContainsKey(mk) AndAlso histEstado(mk) = "ANULADA" Then
+                    est = "REACTIVADA"
+                    envio = n
+                ElseIf todo Then
+                    est = "REENVIO"
+                    envio = n
+                ElseIf n > antes Then
+                    est = "COMPLEMENTO"
+                    envio = n - antes
+                ElseIf n < antes Then
+                    est = "REDUCCION"
+                    reducidas.Add(mk & " (" & antes & "->" & n & ", sobran " & (antes - n) & ")")
+                ElseIf huAntes = "" Then
+                    est = "SIN CAMBIO (HUELLA REGISTRADA)"
+                Else
+                    est = "SIN CAMBIO"
+                End If
+                Dim f() As String = Exportar(p, mk, nat)
+                f(F_EST) = est
+                f(F_ENV) = envio.ToString()
+                f(F_HU) = hu
+                filas.Add(f)
+                vigentes.Add(System.IO.Path.Combine(carpeta, f(F_DXF)))
+                If envio > 0 Then
+                    If carpetaEnvio = "" Then carpetaEnvio = NuevaCarpetaEnvio()
+                    Dim sub2 As String = System.IO.Path.Combine(carpetaEnvio, f(F_ESP) & "mm")
+                    System.IO.Directory.CreateDirectory(sub2)
+                    Dim suf As String = ""
+                    If est = "COMPLEMENTO" Then suf = "_COMPLEMENTO"
+                    Dim nomE As String = Limpio(mk & "_PL" & f(F_ESP) & "_" & f(F_MAT).Replace("ASTM ", "") & "_x" & envio & suf) & ".dxf"
+                    System.IO.File.Copy(System.IO.Path.Combine(carpeta, f(F_DXF)), System.IO.Path.Combine(sub2, nomE), True)
+                    Dim fe() As String = CType(f.Clone(), String())
+                    fe(F_CANT) = envio.ToString()
+                    fe(F_PT) = (Num(f(F_PU)) * envio).ToString("0.00", Globalization.CultureInfo.InvariantCulture)
+                    fe(F_DXF) = f(F_ESP) & "mm\" & nomE
+                    paquete.Add(fe)
+                End If
+                If est <> "SIN CAMBIO" Then
+                    Dim t1 As String = est & ": " & mk
+                    If envio > 0 Then t1 = t1 & " x" & envio
+                    porEstado.Add(t1)
+                End If
+            Catch ex As Exception
+                resumen.AppendLine("  ERROR " & mk & ": " & ex.Message)
+            End Try
+        Next
+
+        ' marcas de este ensamble que se enviaron y ya no estan en el modelo
+        Dim anuladas As New List(Of String())
+        For Each kv As KeyValuePair(Of String, String()) In histFila
+            If partDoc.ContainsKey(kv.Key) Then Continue For
+            If histEstado(kv.Key) = "ANULADA" Then Continue For
+            If kv.Value(1) <> ensamble Then Continue For
+            anuladas.Add(kv.Value)
+        Next
+
+        ' DXF que ya no corresponden a la numeracion actual -> _OBSOLETO (nunca se borran)
+        Dim nObs As Integer = MoverObsoletos(vigentes)
+
+        If filas.Count = 0 AndAlso anuladas.Count = 0 AndAlso bloqueadas.Count = 0 Then
+            Aviso("No hay planchas ni chapas con marca en este ensamble.")
+            Exit Sub
+        End If
+        filas.Sort(AddressOf CompararFila)
+        Dim lista As String = System.IO.Path.Combine(carpeta, ensamble & "-LISTA_CORTE.csv")
+        EscribirLista(lista, filas, "LISTA DE CORTE PLASMA (VIGENTE)", True)
+        Dim nomEnvio As String = ""
+        If paquete.Count > 0 Then
+            nomEnvio = System.IO.Path.GetFileName(carpetaEnvio)
+            paquete.Sort(AddressOf CompararFila)
+            EscribirLista(System.IO.Path.Combine(carpetaEnvio, nomEnvio & "-LISTA_CORTE.csv"), paquete, "ENVIO A CORTE " & nomEnvio, False)
+        End If
+        EscribirHistorial(filas, anuladas, nomEnvio)
+
+        Dim msg As New System.Text.StringBuilder
+        msg.AppendLine("Piezas vigentes para plasma: " & filas.Count & " marcas")
+        msg.AppendLine(resumenEsp.ToString())
+        If paquete.Count > 0 Then
+            msg.AppendLine("ENVIAR AL TALLER: " & carpetaEnvio & "  (" & paquete.Count & " DXF)")
+        Else
+            msg.AppendLine("Nada nuevo que enviar al taller.")
+        End If
+        For Each t0 As String In porEstado
+            msg.AppendLine("  " & t0)
+        Next
+        If bloqueadas.Count > 0 Then
+            msg.AppendLine("")
+            msg.AppendLine("BLOQUEADAS (ya cortadas con otra geometria, NO se exportaron):")
+            For Each t0 As String In bloqueadas
+                msg.AppendLine("  " & t0)
+            Next
+            msg.AppendLine("  -> corre TEKLA_NUMERACION (les da marca nueva) o, si el cambio no afecta")
+            msg.AppendLine("     lo ya cortado, exporta con el argumento forzar=<marca>.")
+        End If
+        If anuladas.Count > 0 Then
+            msg.AppendLine("")
+            msg.AppendLine("ANULADAS (se cortaron y ya no estan en el modelo: avisar al taller, son sobrantes):")
+            For Each a0() As String In anuladas
+                msg.AppendLine("  " & a0(2) & " x" & a0(3))
+            Next
+        End If
+        If reducidas.Count > 0 Then msg.AppendLine("MENOS CANTIDAD (sobrantes): " & String.Join(", ", reducidas))
+        If nObs > 0 Then msg.AppendLine("DXF que ya no corresponden movidos a _OBSOLETO: " & nObs)
+        msg.AppendLine("Lista vigente: " & lista)
+        Aviso(msg.ToString())
+    Catch ex As Exception
+        resumen.AppendLine("ERROR: " & ex.Message & vbCrLf & ex.StackTrace)
+        Aviso("Error en EXPORTAR_PLASMA: " & ex.Message)
+    Finally
+        Try
+            System.IO.File.WriteAllText(System.IO.Path.Combine(carpeta, "EXPORTAR_PLASMA.log"), resumen.ToString())
+        Catch
+        End Try
+    End Try
+End Sub
+
+Private planta As String = ""
+Private carpeta As String = ""
+Private silencioso As Boolean
+Private resumen As New System.Text.StringBuilder
+Private resumenEsp As New System.Text.StringBuilder
+Private partDoc As New Dictionary(Of String, Document)
+Private cantParte As New Dictionary(Of String, Integer)
+Private ownerDe As New Dictionary(Of String, String)
+Private histCant As New Dictionary(Of String, Integer)
+Private histHuella As New Dictionary(Of String, String)
+Private histEstado As New Dictionary(Of String, String)
+Private histFila As New Dictionary(Of String, String())
+Private bloqueadas As New List(Of String)
+Private reducidas As New List(Of String)
+Private porEstado As New List(Of String)
+Private ensamble As String = ""
+Private Const SM_SUBTYPE As String = "{9C464203-9BAE-11D3-8BAD-0060B0CE6BB4}"
+' columnas de cada fila
+Private Const F_ESP As Integer = 0, F_MAT As Integer = 1, F_MARCA As Integer = 2, F_CONJ As Integer = 3, F_CANT As Integer = 4
+Private Const F_TIPO As Integer = 5, F_LARGO As Integer = 6, F_ANCHO As Integer = 7, F_AGUJ As Integer = 8, F_BISEL As Integer = 9
+Private Const F_PU As Integer = 10, F_PT As Integer = 11, F_DXF As Integer = 12, F_ARCH As Integer = 13
+Private Const F_EST As Integer = 14, F_ENV As Integer = 15, F_HU As Integer = 16
+
+' ===================== jerarquia (igual que GENERAR_PLANOS) =====================
+Sub Recorrer(occs As Object)
+    For Each occ As ComponentOccurrence In occs
+        If occ.Suppressed Then Continue For
+        Dim d As Document = Nothing
+        Dim bs As BOMStructureEnum = BOMStructureEnum.kDefaultBOMStructure
+        Try
+            d = occ.Definition.Document
+            bs = occ.BOMStructure
+        Catch
+            Continue For
+        End Try
+        If bs = BOMStructureEnum.kReferenceBOMStructure OrElse bs = BOMStructureEnum.kPurchasedBOMStructure Then Continue For
+        If UProp(d, "EQUIPO").ToUpper() = "SI" Then Continue For
+        If d.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+            Recorrer(occ.SubOccurrences)
+        Else
+            Dim mk As String = UProp(d, "MARCA")
+            If mk = "" Then Continue For
+            If cantParte.ContainsKey(mk) Then cantParte(mk) = cantParte(mk) + 1 Else cantParte(mk) = 1
+            If Not partDoc.ContainsKey(mk) Then
+                partDoc(mk) = d
+                ownerDe(mk) = UProp(d, "CONJUNTO")
+            End If
+        End If
+    Next
+End Sub
+
+' "CHAPA PLEGADA", "PLANCHA" o "" (no va a plasma)
+Function Naturaleza(p As PartDocument) As String
+    If TieneParam(p, "G_L") OrElse TieneParam(p, "B_L") Then Return ""   ' perfil FG / CC
+    If EsDA(p) Then Return ""                                               ' Design Accelerator
+    Dim cod As String = UProp(p, "CODIGO_PIEZA").ToLower()
+    If cod = "" Then cod = UProp(p, "CODIGO").ToLower()
+    If cod = "mq" Then Return ""
+    If p.SubType = SM_SUBTYPE Then
+        Dim smd As SheetMetalComponentDefinition = p.ComponentDefinition
+        Dim nb As Integer = 0
+        Try
+            nb = smd.Bends.Count
+        Catch
+        End Try
+        If nb > 0 OrElse cod = "f" OrElse cod = "fp" Then Return "CHAPA PLEGADA"
+        Return "PLANCHA"
+    End If
+    Dim tipo As String = UProp(p, "TIPO_PIEZA").ToUpper()
+    ' platinas (pl) son barra: se cortan con sierra, no van a plasma
+    If cod = "n" OrElse cod = "p" OrElse cod = "b" OrElse cod = "pp" OrElse cod = "r" OrElse (cod = "" AndAlso (tipo.Contains("PLANCHA") OrElse tipo.Contains("CARTELA"))) Then Return "PLANCHA"
+    Return ""
+End Function
+
+' ===================== exportacion =====================
+Function Exportar(p As PartDocument, mk As String, nat As String) As String()
+    Dim esp As Double = Espesor(p)
+    Dim espTxt As String = Fmt(esp)
+    Dim grado As String = UProp(p, "GRADO")
+    If grado = "" Then grado = "A36"
+    Dim n As Integer = cantParte(mk)
+    Dim sub1 As String = System.IO.Path.Combine(carpeta, espTxt & "mm")
+    System.IO.Directory.CreateDirectory(sub1)
+    Dim archivo As String = Limpio(mk & "_PL" & espTxt & "_" & grado.Replace("ASTM ", "") & "_x" & n) & ".dxf"
+    Dim ruta As String = System.IO.Path.Combine(sub1, archivo)
+    If System.IO.File.Exists(ruta) Then System.IO.File.Delete(ruta)
+
+    Dim largo As Double = 0, ancho As Double = 0, aguj As Integer = 0
+    Dim tx As Transaction = ThisApplication.TransactionManager.StartTransaction(p, "EXPORTAR_PLASMA")
+    Try
+        If nat = "CHAPA PLEGADA" OrElse p.SubType = SM_SUBTYPE Then
+            Dim smd As SheetMetalComponentDefinition = p.ComponentDefinition
+            If Not smd.HasFlatPattern Then
+                smd.Unfold()
+                smd.FlatPattern.ExitEdit()
+            End If
+            Dim fp As FlatPattern = smd.FlatPattern
+            largo = Math.Max(fp.Length, fp.Width) * 10
+            ancho = Math.Min(fp.Length, fp.Width) * 10
+            Try
+                aguj = ContarAgujeros(fp.TopFace)
+            Catch
+            End Try
+            Dim op As String = "FLAT PATTERN DXF?AcadVersion=2000&OuterProfileLayer=CORTE&InteriorProfilesLayer=CORTE&BendUpLayer=DOBLEZ&BendDownLayer=DOBLEZ&InvisibleLayers=IV_TANGENT;IV_ARC_CENTERS;IV_TOOL_CENTER;IV_TOOL_CENTER_DOWN;IV_FEATURE_PROFILES;IV_FEATURE_PROFILES_DOWN;IV_ALTREP_FRONT;IV_ALTREP_BACK;IV_ROLL_TANGENT;IV_ROLL;IV_UNCONSUMED_SKETCHES"
+            smd.DataIO.WriteDataToFile(op, ruta)
+        Else
+            Dim pd As PartComponentDefinition = p.ComponentDefinition
+            Dim cara As Face = CaraMayor(pd)
+            If cara Is Nothing Then Throw New Exception("no tiene cara plana")
+            aguj = ContarAgujeros(cara)
+            Dim sk As PlanarSketch = pd.Sketches.Add(cara, False)
+            For Each e As Edge In cara.Edges
+                sk.AddByProjectingEntity(e)
+            Next
+            Dim r As Box = cara.Evaluator.RangeBox
+            Dim ex() As Double = {r.MaxPoint.X - r.MinPoint.X, r.MaxPoint.Y - r.MinPoint.Y, r.MaxPoint.Z - r.MinPoint.Z}
+            Array.Sort(ex)
+            largo = ex(2) * 10
+            ancho = ex(1) * 10
+            sk.DataIO.WriteDataToFile("DXF", ruta)
+        End If
+    Finally
+        tx.Abort()   ' la pieza queda como estaba
+    End Try
+    If Not System.IO.File.Exists(ruta) Then Throw New Exception("no se genero el DXF")
+
+    Dim pu As Double = Num(UProp(p, "PESO"))
+    Dim cod As String = UProp(p, "CODIGO_PIEZA").ToLower()
+    Dim f(F_HU) As String
+    For i As Integer = 0 To F_HU
+        f(i) = ""
+    Next
+    f(F_ESP) = espTxt
+    f(F_MAT) = grado
+    f(F_MARCA) = mk
+    f(F_CONJ) = ownerDe(mk)
+    f(F_CANT) = n.ToString()
+    f(F_TIPO) = nat
+    f(F_LARGO) = largo.ToString("0")
+    f(F_ANCHO) = ancho.ToString("0")
+    f(F_AGUJ) = aguj.ToString()
+    f(F_BISEL) = If(cod = "b", "SI", "")
+    f(F_PU) = pu.ToString("0.00", Globalization.CultureInfo.InvariantCulture)
+    f(F_PT) = (pu * n).ToString("0.00", Globalization.CultureInfo.InvariantCulture)
+    f(F_DXF) = espTxt & "mm\" & archivo
+    f(F_ARCH) = System.IO.Path.GetFileName(p.FullFileName)
+
+    resumen.AppendLine("  " & mk & "  " & nat & "  e=" & espTxt & "  x" & n & "  " & largo.ToString("0") & "x" & ancho.ToString("0") & "  -> " & ruta)
+    Return f
+End Function
+
+Function CaraMayor(pd As PartComponentDefinition) As Face
+    Dim mejor As Face = Nothing
+    Dim a As Double = 0
+    For Each b As SurfaceBody In pd.SurfaceBodies
+        For Each fc As Face In b.Faces
+            If fc.SurfaceType <> SurfaceTypeEnum.kPlaneSurface Then Continue For
+            Dim ar As Double = fc.Evaluator.Area
+            If ar > a + 0.0001 Then
+                a = ar
+                mejor = fc
+            End If
+        Next
+    Next
+    Return mejor
+End Function
+
+' agujeros = lazos interiores circulares de la cara
+Function ContarAgujeros(fc As Face) As Integer
+    Dim n As Integer = 0
+    For Each lp As EdgeLoop In fc.EdgeLoops
+        If lp.IsOuterEdgeLoop Then Continue For
+        n = n + 1
+    Next
+    Return n
+End Function
+
+Function Espesor(p As PartDocument) As Double
+    Try
+        If p.SubType = SM_SUBTYPE Then
+            Dim smd As SheetMetalComponentDefinition = p.ComponentDefinition
+            Return smd.Thickness.Value * 10
+        End If
+    Catch
+    End Try
+    Try
+        Return p.ComponentDefinition.Parameters.Item("ESPESOR").Value * 10
+    Catch
+    End Try
+    Dim r As Box = p.ComponentDefinition.RangeBox
+    Dim ex() As Double = {r.MaxPoint.X - r.MinPoint.X, r.MaxPoint.Y - r.MinPoint.Y, r.MaxPoint.Z - r.MinPoint.Z}
+    Array.Sort(ex)
+    Return ex(0) * 10
+End Function
+
+' ===================== lista de corte e historial =====================
+Sub EscribirLista(ruta As String, filas As List(Of String()), titulo As String, conResumen As Boolean)
+    Dim sb As New System.Text.StringBuilder
+    sb.AppendLine(titulo & ";" & ensamble & ";" & DateTime.Now.ToString("dd/MM/yyyy HH:mm"))
+    sb.AppendLine("")
+    sb.AppendLine("ESPESOR (mm);MATERIAL;MARCA;CONJUNTO;CANT.;TIPO;LARGO (mm);ANCHO (mm);AGUJEROS;BISEL;PESO UNIT. (kg);PESO TOTAL (kg);ARCHIVO DXF;ARCHIVO MODELO (.ipt);ESTADO;CANT. ENVIO;HUELLA")
+    Dim grupo As String = ""
+    Dim gPeso As Double = 0, gCant As Integer = 0, tPeso As Double = 0
+    For i As Integer = 0 To filas.Count - 1
+        Dim f() As String = filas(i)
+        Dim g As String = f(F_ESP) & "|" & f(F_MAT)
+        If grupo <> "" AndAlso g <> grupo Then
+            sb.AppendLine(Subtotal(grupo, gCant, gPeso))
+            If conResumen Then resumenEsp.AppendLine("  " & grupo.Replace("|", " mm  ") & ": " & gCant & " piezas, " & gPeso.ToString("0.0") & " kg")
+            gPeso = 0
+            gCant = 0
+        End If
+        grupo = g
+        Dim pt As Double = Num(f(F_PT))
+        gPeso = gPeso + pt
+        gCant = gCant + CInt(f(F_CANT))
+        tPeso = tPeso + pt
+        Dim linea As New List(Of String)
+        For Each c As String In f
+            linea.Add(c)
+        Next
+        linea(F_PU) = linea(F_PU).Replace(".", ",")
+        linea(F_PT) = linea(F_PT).Replace(".", ",")
+        sb.AppendLine(String.Join(";", linea))
+    Next
+    If filas.Count > 0 Then sb.AppendLine(Subtotal(grupo, gCant, gPeso))
+    If conResumen AndAlso filas.Count > 0 Then resumenEsp.AppendLine("  " & grupo.Replace("|", " mm  ") & ": " & gCant & " piezas, " & gPeso.ToString("0.0") & " kg")
+    sb.AppendLine("")
+    sb.AppendLine(";;;;;;;;;;TOTAL (kg);" & tPeso.ToString("0.00").Replace(".", ","))
+    System.IO.File.WriteAllText(ruta, sb.ToString(), New System.Text.UTF8Encoding(True))
+End Sub
+
+Function Subtotal(grupo As String, n As Integer, peso As Double) As String
+    Dim p() As String = grupo.Split("|"c)
+    Return ";;SUBTOTAL PL" & p(0) & " " & p(1) & ";;" & n & ";;;;;;;" & peso.ToString("0.00").Replace(".", ",") & ";"
+End Function
+
+Private Const HIST_CAB As String = "FECHA;ENSAMBLE;MARCA;CANT.;ESPESOR (mm);MATERIAL;PESO TOTAL (kg);ESTADO;USUARIO;ARCHIVO MODELO (.ipt);CANT. ENVIO;ENVIO;HUELLA"
+
+' ultima situacion de cada marca enviada (cantidad, estado, huella)
+Sub LeerHistorial()
+    Dim h As String = System.IO.Path.Combine(carpeta, "_HISTORIAL_CORTE.csv")
+    If Not System.IO.File.Exists(h) Then Exit Sub
+    For Each ln As String In System.IO.File.ReadAllLines(h)
+        Dim c() As String = ln.Split(";"c)
+        If c.Length < 4 OrElse c(0) = "FECHA" Then Continue For
+        Dim n As Integer
+        If Not Integer.TryParse(c(3), n) Then Continue For
+        histCant(c(2)) = n
+        histEstado(c(2)) = If(c.Length > 7, c(7), "")
+        histFila(c(2)) = c
+        If c.Length > 12 AndAlso c(12) <> "" Then histHuella(c(2)) = c(12)
+    Next
+End Sub
+
+Sub EscribirHistorial(filas As List(Of String()), anuladas As List(Of String()), envio As String)
+    Dim h As String = System.IO.Path.Combine(carpeta, "_HISTORIAL_CORTE.csv")
+    Dim sb As New System.Text.StringBuilder
+    If Not System.IO.File.Exists(h) Then
+        sb.AppendLine(HIST_CAB)
+    Else
+        ' historial de la v1: se le agregan las columnas nuevas a la cabecera
+        Dim lns() As String = System.IO.File.ReadAllLines(h)
+        If lns.Length > 0 AndAlso Not lns(0).Contains("HUELLA") Then
+            lns(0) = HIST_CAB
+            System.IO.File.WriteAllLines(h, lns, New System.Text.UTF8Encoding(True))
+        End If
+    End If
+    Dim fecha As String = DateTime.Now.ToString("dd/MM/yyyy HH:mm")
+    Dim usr As String = System.Environment.UserName
+    For Each f() As String In filas
+        If f(F_EST) = "SIN CAMBIO" Then Continue For
+        Dim env As String = If(f(F_ENV) <> "0", envio, "")
+        sb.AppendLine(fecha & ";" & ensamble & ";" & f(F_MARCA) & ";" & f(F_CANT) & ";" & f(F_ESP) & ";" & f(F_MAT) & ";" & f(F_PT).Replace(".", ",") & ";" & f(F_EST) & ";" & usr & ";" & f(F_ARCH) & ";" & f(F_ENV) & ";" & env & ";" & f(F_HU))
+    Next
+    For Each a() As String In anuladas
+        Dim hu As String = ""
+        If histHuella.ContainsKey(a(2)) Then hu = histHuella(a(2))
+        Dim esp As String = If(a.Length > 4, a(4), "")
+        Dim mat As String = If(a.Length > 5, a(5), "")
+        Dim arch As String = If(a.Length > 9, a(9), "")
+        sb.AppendLine(fecha & ";" & ensamble & ";" & a(2) & ";0;" & esp & ";" & mat & ";0;ANULADA;" & usr & ";" & arch & ";0;;" & hu)
+    Next
+    If sb.Length > 0 Then System.IO.File.AppendAllText(h, sb.ToString(), New System.Text.UTF8Encoding(True))
+End Sub
+
+' ===================== control de envios (v2) =====================
+' Huella de corte: espesor | masa | area | momentos principales (4 cifras significativas).
+' Cambia si cambia el contorno, un agujero (tamano o posicion), el espesor o el material.
+Function Huella(p As PartDocument) As String
+    Dim mp As MassProperties = p.ComponentDefinition.MassProperties
+    Dim i1 As Double, i2 As Double, i3 As Double
+    mp.PrincipalMomentsOfInertia(i1, i2, i3)
+    Dim a() As Double = {i1, i2, i3}
+    Array.Sort(a)
+    Return Fmt(Espesor(p)) & "/" & Cif(mp.Mass) & "/" & Cif(mp.Area) & "/" & Cif(a(0)) & "/" & Cif(a(1)) & "/" & Cif(a(2))
+End Function
+
+Function Cif(x As Double) As String
+    If Math.Abs(x) < 0.000001 Then Return "0"
+    Dim inv As Globalization.CultureInfo = Globalization.CultureInfo.InvariantCulture
+    Return Double.Parse(x.ToString("G4", inv), inv).ToString("R", inv)
+End Function
+
+' argumento "a,b,c" -> lista en mayusculas
+Function ListaArg(n As String) As List(Of String)
+    Dim l As New List(Of String)
+    Try
+        If RuleArguments.Exists(n) Then
+            For Each x As String In CStr(RuleArguments.Value(n)).Split(","c)
+                If x.Trim() <> "" Then l.Add(x.Trim().ToUpper())
+            Next
+        End If
+    Catch
+    End Try
+    Return l
+End Function
+
+' DXF vigentes que ya existen para una marca (en PLASMA\<esp>mm\)
+Function DxfDeMarca(mk As String) As List(Of String)
+    Dim l As New List(Of String)
+    Dim pre As String = Limpio(mk & "_PL").ToUpper()
+    For Each d As String In System.IO.Directory.GetDirectories(carpeta)
+        If Not System.IO.Path.GetFileName(d).ToLower().EndsWith("mm") Then Continue For
+        For Each f As String In System.IO.Directory.GetFiles(d, "*.dxf")
+            If System.IO.Path.GetFileName(f).ToUpper().StartsWith(pre) Then l.Add(f)
+        Next
+    Next
+    Return l
+End Function
+
+' PLASMA\ENVIOS\ENVIO_004_2026-11-11  (un paquete por envio, no se vuelve a tocar)
+Function NuevaCarpetaEnvio() As String
+    Dim raiz As String = System.IO.Path.Combine(carpeta, "ENVIOS")
+    System.IO.Directory.CreateDirectory(raiz)
+    Dim n As Integer = 1
+    For Each d As String In System.IO.Directory.GetDirectories(raiz, "ENVIO_*")
+        Dim c() As String = System.IO.Path.GetFileName(d).Split("_"c)
+        Dim k As Integer
+        If c.Length > 1 AndAlso Integer.TryParse(c(1), k) AndAlso k >= n Then n = k + 1
+    Next
+    Dim r As String = System.IO.Path.Combine(raiz, "ENVIO_" & n.ToString("000") & "_" & DateTime.Now.ToString("yyyy-MM-dd"))
+    System.IO.Directory.CreateDirectory(r)
+    Return r
+End Function
+
+' Mueve a PLASMA\_OBSOLETO\<fecha>\<esp>mm\ todo DXF que no es vigente
+Function MoverObsoletos(vigentes As List(Of String)) As Integer
+    Dim n As Integer = 0
+    Dim destino As String = System.IO.Path.Combine(System.IO.Path.Combine(carpeta, "_OBSOLETO"), DateTime.Now.ToString("yyyy-MM-dd_HHmm"))
+    For Each d As String In System.IO.Directory.GetDirectories(carpeta)
+        Dim nd As String = System.IO.Path.GetFileName(d)
+        If Not nd.ToLower().EndsWith("mm") Then Continue For
+        For Each f As String In System.IO.Directory.GetFiles(d, "*.dxf")
+            Dim vale As Boolean = False
+            For Each v As String In vigentes
+                If String.Compare(v, f, True) = 0 Then vale = True
+            Next
+            If vale Then Continue For
+            Try
+                Dim sd As String = System.IO.Path.Combine(destino, nd)
+                System.IO.Directory.CreateDirectory(sd)
+                Dim dst As String = System.IO.Path.Combine(sd, System.IO.Path.GetFileName(f))
+                If System.IO.File.Exists(dst) Then dst = System.IO.Path.Combine(sd, System.IO.Path.GetFileNameWithoutExtension(f) & "_" & DateTime.Now.ToString("HHmmss") & ".dxf")
+                System.IO.File.Move(f, dst)
+                resumen.AppendLine("  obsoleto: " & f & " -> " & dst)
+                n += 1
+            Catch ex As Exception
+                resumen.AppendLine("  no se pudo mover (abierto?): " & f & " " & ex.Message)
+            End Try
+        Next
+    Next
+    Return n
+End Function
+
+' ===================== utilidades =====================
+Function CompararFila(a As String(), b As String()) As Integer
+    Dim c As Integer = Num(a(F_ESP)).CompareTo(Num(b(F_ESP)))
+    If c <> 0 Then Return c
+    c = String.Compare(a(F_MAT), b(F_MAT), True)
+    If c <> 0 Then Return c
+    Return String.Compare(a(F_MARCA), b(F_MARCA), True)
+End Function
+
+Function CompararTexto(a As String, b As String) As Integer
+    Return String.Compare(a, b, True)
+End Function
+
+Function Fmt(x As Double) As String
+    If Math.Abs(x - Math.Round(x)) < 0.01 Then Return Math.Round(x).ToString("0")
+    Return x.ToString("0.0", Globalization.CultureInfo.InvariantCulture)
+End Function
+
+Function Limpio(s As String) As String
+    For Each ch As Char In System.IO.Path.GetInvalidFileNameChars()
+        s = s.Replace(ch, "-"c)
+    Next
+    Return s.Replace(" ", "-")
+End Function
+
+' pieza generada por el Design Accelerator (polea, engranaje, eje, correa...)
+Function EsDA(p As PartDocument) As Boolean
+    ' (la propiedad Categories no sirve: tambien la tienen los perfiles Frame Generator / Content Center)
+    If p.FullFileName.ToLower().Contains("\design accelerator\") Then Return True
+    For Each ps As PropertySet In p.PropertySets
+        If ps.Name = "FDesign" Then Return True
+    Next
+    Try
+        For Each up As UserParameter In p.ComponentDefinition.Parameters.UserParameters
+            If up.Name.StartsWith("da_") Then Return True
+        Next
+    Catch
+    End Try
+    Return False
+End Function
+
+Function TieneParam(p As PartDocument, n As String) As Boolean
+    Try
+        Dim x As Object = p.ComponentDefinition.Parameters.Item(n)
+        Return True
+    Catch
+        Return False
+    End Try
+End Function
+
+Function UProp(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Inventor User Defined Properties").Item(n).Value)
+    Catch
+        Return ""
+    End Try
+End Function
+
+' "EE" + "ANTAPACAY" -> "EE-ANTAPACAY"; "EE" + "ANT-EE" -> "ANT-EE" (no repite la planta)
+Function NomBase(planta As String, nombre As String) As String
+    If nombre.ToUpper() = planta.ToUpper() OrElse nombre.ToUpper().EndsWith("-" & planta.ToUpper()) Then Return nombre
+    Return planta & "-" & nombre
+End Function
+
+Function Num(s As String) As Double
+    Dim r As Double
+    If Double.TryParse(s.Replace(",", "."), Globalization.NumberStyles.Any, Globalization.CultureInfo.InvariantCulture, r) Then Return r
+    Return 0
+End Function
+
+Sub Aviso(t As String)
+    resumen.AppendLine(t)
+    If Not silencioso Then MessageBox.Show(t, "EXPORTAR_PLASMA")
+End Sub

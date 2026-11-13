@@ -1,0 +1,428 @@
+' =====================================================================
+'  ESTILO_PLANO  v1.1  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Deja un plano (.idw) o la PLANTILLA con un estilo de ingenieria uniforme:
+'
+'   TEXTO   una sola fuente en todo el plano = la del rotulo (ISOCP), SIN cursiva.
+'           Estilos COIMSER-1.8 / 2.5 / 3.5 (y NEGRITA). Texto negro.
+'   CAPAS   COIMSER-VISIBLE        negro    continua  0.50
+'           COIMSER-VISIBLE FINA   negro    continua  0.25
+'           COIMSER-OCULTA         gris     trazos    0.25   (y OCULTA FINA 0.18)
+'           COIMSER-EJES           gris     eje       0.18   (y MARCA CENTRO)
+'           COIMSER-COTAS          magenta  continua  0.18   <- lineas de cota (texto negro)
+'           COIMSER-LINEA CORTE    magenta  eje       0.50
+'           COIMSER-DETALLE        magenta            0.25   <- contorno y etiqueta de vistas
+'           COIMSER-ROTURA         magenta            0.25
+'           COIMSER-GLOBOS         magenta            0.18
+'           COIMSER-SIMBOLOS       magenta            0.18   (soldadura, rugosidad, tolerancias)
+'           COIMSER-TEXTO          negro              0.25   (notas)
+'           COIMSER-BOM            negro              0.25   (listas y tablas)
+'           COIMSER-SOMBREADO      gris               0.18
+'           Las capas de vista ISO se RENOMBRAN (Visible (ISO) -> COIMSER-VISIBLE ...) asi
+'           las vistas nuevas ya salen en las capas COIMSER. Las capas sin uso se eliminan.
+'   COTAS   estilo COIMSER-COTAS: texto COIMSER-2.5 negro, sin decimales (mm).
+'   VISTAS  etiquetas "A-A (1:10)" e identificadores de corte / detalle en magenta.
+'   BOM     titulo 3.5 negrita, cabecera 2.5 negrita (2 lineas), datos 2.5; columnas ajustadas
+'           al texto. GENERAR_PLANOS v2.3 hace el mismo ajuste en cada lista nueva.
+'
+'  Ademas pasa los objetos YA dibujados (cotas, globos, notas, listas, etiquetas de vista)
+'  a sus capas y estilos. Argumentos: fuente=<nombre>, solo_estilos, no_guardar, silencioso,
+'  sin_listas (no rehace las listas; asi la llama GENERAR_PLANOS v2.3 al final).
+' =====================================================================
+Imports System.Collections.Generic
+
+Sub Main()
+    Dim dwg As DrawingDocument = TryCast(ThisDoc.Document, DrawingDocument)
+    If dwg Is Nothing Then dwg = TryCast(ThisApplication.ActiveDocument, DrawingDocument)
+    If dwg Is Nothing Then
+        MessageBox.Show("Abre un plano (.idw) o la plantilla y ejecuta la regla.", "ESTILO_PLANO")
+        Exit Sub
+    End If
+    Dim sm As DrawingStylesManager = dwg.StylesManager
+    Dim fuente As String = Arg("fuente")
+    If fuente = "" Then fuente = FuenteRotulo(dwg)
+    If fuente = "" Then fuente = "ISOCP"
+    log.AppendLine("Fuente: " & fuente)
+
+    ' ---------- 1) textos: una sola fuente, sin cursiva ----------
+    For Each ts As TextStyle In sm.TextStyles
+        If ts.StyleLocation = StyleLocationEnum.kLibraryStyleLocation AndAlso Not ts.InUse Then Continue For
+        Try
+            ts.Font = fuente
+            ts.Italic = False
+        Catch
+        End Try
+        If ts.Name.StartsWith("Texto de identificador") Then
+            Try
+                ts.Color = Clr(MAGENTA)
+                ts.Bold = True
+            Catch
+            End Try
+        End If
+    Next
+    Dim t18 As TextStyle = Texto(sm, "COIMSER-1.8", fuente, 1.8, False, NEGRO)
+    Dim t25 As TextStyle = Texto(sm, "COIMSER-2.5", fuente, 2.5, False, NEGRO)
+    Dim t35 As TextStyle = Texto(sm, "COIMSER-3.5", fuente, 3.5, False, NEGRO)
+    Dim t25b As TextStyle = Texto(sm, "COIMSER-2.5 NEGRITA", fuente, 2.5, True, NEGRO)
+    Dim t35b As TextStyle = Texto(sm, "COIMSER-3.5 NEGRITA", fuente, 3.5, True, NEGRO)
+    Dim tVista As TextStyle = Texto(sm, "COIMSER-VISTA 3.5", fuente, 3.5, True, MAGENTA)
+
+    ' ---------- 2) capas ----------
+    Dim cVis As Layer = Capa(sm, "COIMSER-VISIBLE", "Visible (ISO)", NEGRO, LineTypeEnum.kContinuousLineType, 0.5)
+    Capa(sm, "COIMSER-VISIBLE FINA", "Visible fina (ISO)|Visible Narrow (ISO)", NEGRO, LineTypeEnum.kContinuousLineType, 0.25)
+    Capa(sm, "COIMSER-OCULTA", "Oculto (ISO)|Hidden (ISO)", GRIS, LineTypeEnum.kDashedHiddenLineType, 0.25)
+    Capa(sm, "COIMSER-OCULTA FINA", "Oculta fina (ISO)|Hidden Narrow (ISO)", GRIS, LineTypeEnum.kDashedHiddenLineType, 0.18)
+    Dim cEje As Layer = Capa(sm, "COIMSER-EJES", "Eje (ISO)|Centerline (ISO)", GRIS, LineTypeEnum.kChainLineType, 0.18)
+    Dim cCm As Layer = Capa(sm, "COIMSER-MARCA CENTRO", "Marca de centro (ISO)|Center Mark (ISO)", GRIS, LineTypeEnum.kContinuousLineType, 0.18)
+    Dim cCota As Layer = Capa(sm, "COIMSER-COTAS", "Cota (ISO)|Dimension (ISO)", MAGENTA, LineTypeEnum.kContinuousLineType, 0.18)
+    Dim cSim As Layer = Capa(sm, "COIMSER-SIMBOLOS", "Simbolo (ISO)|Symbol (ISO)", MAGENTA, LineTypeEnum.kContinuousLineType, 0.18)
+    Dim cGlobo As Layer = Capa(sm, "COIMSER-GLOBOS", "", MAGENTA, LineTypeEnum.kContinuousLineType, 0.18)
+    Dim cTxt As Layer = Capa(sm, "COIMSER-TEXTO", "", NEGRO, LineTypeEnum.kContinuousLineType, 0.25)
+    Dim cBom As Layer = Capa(sm, "COIMSER-BOM", "", NEGRO, LineTypeEnum.kContinuousLineType, 0.25)
+    Dim cCorte As Layer = Capa(sm, "COIMSER-LINEA CORTE", "Linea de seccion (ISO)|Section Line (ISO)", MAGENTA, LineTypeEnum.kChainLineType, 0.5)
+    Dim cDet As Layer = Capa(sm, "COIMSER-DETALLE", "Contorno de detalle (ISO)|Detail Boundary (ISO)", MAGENTA, LineTypeEnum.kContinuousLineType, 0.25)
+    Dim cRot As Layer = Capa(sm, "COIMSER-ROTURA", "Linea de vista descubierta (ISO)|Break Line (ISO)", MAGENTA, LineTypeEnum.kContinuousLineType, 0.25)
+    Capa(sm, "COIMSER-SOMBREADO", "Sombreado (ISO)|Hatch (ISO)", GRIS, LineTypeEnum.kContinuousLineType, 0.18)
+    ' datos del rotulo: negro como el resto del texto
+    For Each ly As Layer In sm.Layers
+        If ly.Name = "TEXTO-PROPIEDADES" Then
+            Try : ly.Color = Clr(NEGRO) : Catch : End Try
+        End If
+    Next
+
+    ' ---------- 3) estilos de cota y valores por defecto ----------
+    Dim od As ObjectDefaultsStyle = sm.ActiveStandardStyle.ActiveObjectDefaults
+    Dim dCota As DimensionStyle = Cota(sm, "COIMSER-COTAS", od.LinearDimensionStyle, t25, t18)
+    Try : dCota.LinearPrecision = LinearPrecisionEnum.kZeroDecimalPlaceLinearPrecision : Catch : End Try
+    Dim dNota As DimensionStyle = Cota(sm, "COIMSER-NOTAS", od.LeaderTextStyle, t25, t18)
+    Try
+        od.LinearDimensionStyle = dCota : od.LinearDimensionLayer = cCota
+        od.AngularDimensionStyle = dCota : od.AngularDimensionLayer = cCota
+        od.BaselineDimensionStyle = dCota : od.BaselineDimensionLayer = cCota
+        od.ChainDimensionStyle = dCota : od.ChainDimensionLayer = cCota
+        od.DiameterDimensionStyle = dCota : od.DiameterDimensionLayer = cCota
+        od.RadialDimensionStyle = dCota : od.RadialDimensionLayer = cCota
+        od.OrdinateDimensionStyle = dCota : od.OrdinateDimensionLayer = cCota
+        od.OrdinateSetDimensionStyle = dCota : od.OrdinateDimensionSetLayer = cCota
+        od.OriginIndicatorLayer = cCota
+        od.HoleNoteStyle = dCota : od.HoleNoteLayer = cCota
+        od.ThreadNoteStyle = dCota : od.ThreadNoteLayer = cCota
+        od.ChamferNoteStyle = dCota : od.ChamferNoteLayer = cCota
+        od.BendNoteStyle = dCota : od.BendNoteLayer = cCota
+        od.PunchNoteStyle = dCota : od.PunchNoteLayer = cCota
+        od.LeaderTextStyle = dNota : od.LeaderTextLayer = cTxt
+        od.GeneralNoteStyle = t25 : od.GeneralNoteLayer = cTxt
+        od.SketchTextStyle = t25 : od.SketchTextLayer = cTxt
+        od.SketchedSymbolTextStyle = t25
+        od.ViewLabelStyle = tVista : od.ViewLabelLayer = cDet
+        od.SectionViewLineLayer = cCorte : od.AuxiliaryViewLineLayer = cCorte
+        od.DetailViewCalloutLayer = cDet : od.DetailCutLineLayer = cRot
+        od.SectionBreakLineLayer = cRot : od.CropCutLineLayer = cRot
+        od.CentermarkLayer = cCm : od.CenterOfGravityLayer = cCm : od.CenterlineLayer = cEje
+        od.FeatureControlFrameLayer = cSim : od.SurfaceTextureLayer = cSim : od.WeldSymbolLayer = cSim
+        od.EdgeSymbolLayer = cSim : od.TransitionSymbolLayer = cSim : od.RevisionTagLayer = cSim
+        od.HoleTagLayer = cSim : od.BendTagLayer = cSim
+        od.BalloonLayer = cGlobo
+        od.PartsListLayer = cBom : od.TableLayer = cBom : od.HoleTableLayer = cBom
+        od.RevisionTableLayer = cBom : od.BendTableLayer = cBom : od.ConfigurationTableLayer = cBom
+        od.BorderTextStyle = t25 : od.TitleBlockTextStyle = t25
+    Catch ex As Exception
+        log.AppendLine("valores por defecto: " & ex.Message)
+    End Try
+    Try : od.BalloonStyle.TextStyle = t25 : Catch : End Try
+    Dim pls As PartsListStyle = od.PartsListStyle
+    Try
+        pls.TitleTextStyle = t35b
+        pls.ColumnHeaderTextStyle = t25b
+        pls.DataTextStyle = t25
+    Catch ex As Exception
+        log.AppendLine("estilo BOM: " & ex.Message)
+    End Try
+    For Each tbs As Object In New Object() {od.TableStyle, od.HoleTableStyle, od.RevisionTableStyle, od.BendTableStyle, od.ConfigurationTableStyle}
+        Try
+            tbs.TitleTextStyle = t35b
+            tbs.ColumnHeaderTextStyle = t25b
+            tbs.DataTextStyle = t25
+        Catch
+        End Try
+    Next
+
+    ' ---------- 4) objetos ya dibujados ----------
+    If Not RuleArguments.Exists("solo_estilos") Then
+        For Each sh As Sheet In dwg.Sheets
+            For Each dd As DrawingDimension In sh.DrawingDimensions
+                Try : dd.Layer = cCota : Catch : End Try
+                Try
+                    If TypeOf dd Is GeneralDimension Then CType(dd, GeneralDimension).Style = dCota
+                Catch
+                End Try
+            Next
+            For Each b As Balloon In sh.Balloons
+                Try : b.Layer = cGlobo : Catch : End Try
+                Try : b.Style = od.BalloonStyle : Catch : End Try
+            Next
+            For Each gn As GeneralNote In sh.DrawingNotes.GeneralNotes
+                Try : gn.Layer = cTxt : Catch : End Try
+                Try : gn.TextStyle = t25 : Catch : End Try
+            Next
+            For Each ln As LeaderNote In sh.DrawingNotes.LeaderNotes
+                Try : ln.Layer = cTxt : Catch : End Try
+                Try : ln.DimensionStyle = dNota : Catch : End Try
+            Next
+            ' listas: se vuelven a crear (Inventor no achica la cabecera de una lista existente)
+            For Each pl As PartsList In New List(Of PartsList)(ListasDe(sh))
+                If RuleArguments.Exists("sin_listas") Then
+                    ' llamada desde GENERAR_PLANOS: solo estilo, capa y columnas
+                    Try : pl.Style = pls : Catch : End Try
+                    Try : pl.Layer = cBom : Catch : End Try
+                    AjustarColumnas(pl, 2.5)
+                Else
+                    RehacerLista(sh, pl, pls, cBom)
+                End If
+            Next
+            For Each ct As CustomTable In sh.CustomTables
+                Try : ct.Layer = cBom : Catch : End Try
+                Try : ct.Style = od.TableStyle : Catch : End Try
+                Try
+                    ct.TitleTextStyle = t35b
+                    ct.ColumnHeaderTextStyle = t25b
+                    ct.DataTextStyle = t25
+                Catch
+                End Try
+            Next
+            For Each cm As Centermark In sh.Centermarks
+                Try : cm.Layer = cCm : Catch : End Try
+            Next
+            For Each cl As Centerline In sh.Centerlines
+                Try : cl.Layer = cEje : Catch : End Try
+            Next
+            For Each v As DrawingView In sh.DrawingViews
+                Try
+                    v.Label.TextStyle = tVista
+                    v.Label.Layer = cDet
+                Catch
+                End Try
+            Next
+        Next
+    End If
+
+    ' ---------- 5) capas sin uso fuera (lista de capas limpia) ----------
+    Dim nBorradas As Integer = 0
+    For Each ly As Layer In New List(Of Layer)(CapasLista(sm))
+        If ly.InUse OrElse ly.Name.StartsWith("COIMSER") OrElse ly.Name.StartsWith("FORMATO") OrElse ly.Name.StartsWith("TEXTO") Then Continue For
+        Try
+            ly.Delete()
+            nBorradas += 1
+        Catch
+        End Try
+    Next
+    log.AppendLine("Capas sin uso eliminadas: " & nBorradas)
+
+    Try : dwg.Update() : Catch : End Try
+    If Not RuleArguments.Exists("no_guardar") Then
+        Try
+            dwg.Save()
+            log.AppendLine("Guardado: " & dwg.FullFileName)
+        Catch ex As Exception
+            log.AppendLine("No se pudo guardar: " & ex.Message)
+        End Try
+    End If
+    Try
+        System.IO.File.WriteAllText(System.IO.Path.ChangeExtension(dwg.FullFileName, ".estilo.log"), log.ToString())
+    Catch
+    End Try
+    If Not RuleArguments.Exists("silencioso") Then MessageBox.Show("Estilo COIMSER aplicado." & vbCrLf & log.ToString(), "ESTILO_PLANO")
+End Sub
+
+Private log As New System.Text.StringBuilder
+Private NEGRO() As Integer = {10, 10, 10}     ' (0,0,0) Inventor lo toma como "por capa"
+Private MAGENTA() As Integer = {255, 0, 255}
+Private GRIS() As Integer = {128, 128, 128}
+
+Function Clr(c() As Integer) As Color
+    Dim k As Color = ThisApplication.TransientObjects.CreateColor(c(0), c(1), c(2))
+    Return k
+End Function
+
+Function CapasLista(sm As DrawingStylesManager) As List(Of Layer)
+    Dim l As New List(Of Layer)
+    For Each ly As Layer In sm.Layers
+        l.Add(ly)
+    Next
+    Return l
+End Function
+
+' Capa nueva o renombrada (la capa ISO de origen pasa a llamarse COIMSER-...)
+Function Capa(sm As DrawingStylesManager, nombre As String, origen As String, c() As Integer, lt As LineTypeEnum, grosorMm As Double) As Layer
+    Dim ly As Layer = Nothing
+    For Each x As Layer In sm.Layers
+        If x.Name = nombre Then ly = x
+    Next
+    If ly Is Nothing AndAlso origen <> "" Then
+        ' origen: nombres alternativos separados por | (Inventor en espanol | en ingles)
+        For Each alt As String In origen.Split("|"c)
+            If ly IsNot Nothing Then Exit For
+            For Each x As Layer In sm.Layers
+                If ly Is Nothing AndAlso SinTilde(x.Name) = alt Then
+                    ly = x
+                    Try : ly.Name = nombre : Catch : End Try
+                End If
+            Next
+        Next
+    End If
+    If ly Is Nothing Then
+        Dim base As Layer = Nothing
+        For Each x As Layer In sm.Layers
+            If base Is Nothing AndAlso x.StyleLocation <> StyleLocationEnum.kLibraryStyleLocation Then base = x
+        Next
+        ly = base.Copy(nombre)
+    End If
+    Try : ly.Color = Clr(c) : Catch : End Try
+    Try : ly.LineType = lt : Catch : End Try
+    Try : ly.LineWeight = grosorMm / 10 : Catch : End Try
+    Try : ly.ScaleByLineWeight = False : Catch : End Try
+    Return ly
+End Function
+
+' "Linea de seccion (ISO)" con tilde -> sin tilde (el archivo de la regla queda solo en ASCII)
+Function SinTilde(s0 As String) As String
+    Dim sb As New System.Text.StringBuilder()
+    For Each ch As Char In s0.Normalize(System.Text.NormalizationForm.FormD)
+        If Globalization.CharUnicodeInfo.GetUnicodeCategory(ch) <> Globalization.UnicodeCategory.NonSpacingMark Then sb.Append(ch)
+    Next
+    Return sb.ToString()
+End Function
+
+Function Texto(sm As DrawingStylesManager, nombre As String, fuente As String, altoMm As Double, negrita As Boolean, c() As Integer) As TextStyle
+    Dim ts As TextStyle = Nothing
+    For Each x As TextStyle In sm.TextStyles
+        If x.Name = nombre Then ts = x
+    Next
+    If ts Is Nothing Then
+        Dim base As TextStyle = Nothing
+        For Each x As TextStyle In sm.TextStyles
+            If base Is Nothing AndAlso x.StyleLocation <> StyleLocationEnum.kLibraryStyleLocation Then base = x
+        Next
+        ts = base.Copy(nombre)
+    End If
+    ts.Font = fuente
+    ts.FontSize = altoMm / 10
+    ts.Italic = False
+    ts.Bold = negrita
+    ts.Underline = False
+    ts.WidthScale = 1
+    ts.Color = Clr(c)
+    Return ts
+End Function
+
+Function Cota(sm As DrawingStylesManager, nombre As String, base As DimensionStyle, t As TextStyle, tTol As TextStyle) As DimensionStyle
+    Dim ds As DimensionStyle = Nothing
+    For Each x As DimensionStyle In sm.DimensionStyles
+        If x.Name = nombre Then ds = x
+    Next
+    If ds Is Nothing Then ds = base.Copy(nombre)
+    Try : ds.TextStyle = t : Catch : End Try
+    Try : ds.ToleranceTextStyle = tTol : Catch : End Try
+    Return ds
+End Function
+
+' Fuente mas usada en el rotulo (sin contar Tahoma, la de Inventor por defecto)
+Function FuenteRotulo(dwg As DrawingDocument) As String
+    Dim cuenta As New Dictionary(Of String, Integer)
+    For Each tbd As TitleBlockDefinition In dwg.TitleBlockDefinitions
+        Try
+            For Each tb As Inventor.TextBox In tbd.Sketch.TextBoxes
+                Dim f As String = tb.Style.Font
+                If f = "" OrElse f = "Tahoma" Then Continue For
+                If cuenta.ContainsKey(f) Then cuenta(f) += 1 Else cuenta(f) = 1
+            Next
+        Catch
+        End Try
+    Next
+    Dim mejor As String = ""
+    Dim n As Integer = 0
+    For Each kv As KeyValuePair(Of String, Integer) In cuenta
+        If kv.Value > n Then
+            mejor = kv.Key
+            n = kv.Value
+        End If
+    Next
+    Return mejor
+End Function
+
+Function ListasDe(sh As Sheet) As List(Of PartsList)
+    Dim l As New List(Of PartsList)
+    For Each pl As PartsList In sh.PartsLists
+        l.Add(pl)
+    Next
+    Return l
+End Function
+
+' Misma vista, mismo nivel y misma esquina superior derecha; orden por MARCA como GENERAR_PLANOS
+Sub RehacerLista(sh As Sheet, pl As PartsList, pls As PartsListStyle, capaBom As Layer)
+    Try
+        Dim v As DrawingView = pl.ParentView
+        Dim nivel As PartsListLevelEnum = pl.Level
+        Dim esq As Point2d = pl.RangeBox.MaxPoint
+        Dim titulo As String = pl.Title
+        Dim conMarca As Boolean = False
+        For i As Integer = 1 To pl.PartsListColumns.Count
+            If pl.PartsListColumns.Item(i).Title.ToUpper().Contains("MARCA") Then conMarca = True
+        Next
+        pl.Delete()
+        Dim tg As TransientGeometry = ThisApplication.TransientGeometry
+        Dim nl As PartsList = sh.PartsLists.Add(v, tg.CreatePoint2d(esq.X - 10, esq.Y), nivel)
+        Try : nl.Style = pls : Catch : End Try
+        Try : nl.Layer = capaBom : Catch : End Try
+        Try : nl.Title = titulo : Catch : End Try
+        If conMarca Then
+            Try
+                nl.Sort("MARCA")
+                nl.Renumber()
+            Catch
+            End Try
+        End If
+        AjustarColumnas(nl, 2.5)
+        Dim r As Box2d = nl.RangeBox
+        nl.Position = tg.CreatePoint2d(nl.Position.X + (esq.X - r.MaxPoint.X), nl.Position.Y + (esq.Y - r.MaxPoint.Y))
+    Catch ex As Exception
+        log.AppendLine("lista de " & sh.Name & ": " & ex.Message)
+    End Try
+End Sub
+
+' Ancho de cada columna segun su texto mas largo (fuente tipo ISOCP: ~0.8 x altura por
+' caracter). El titulo se reparte en 2 lineas (cabecera de 2 lineas, como la plantilla).
+Sub AjustarColumnas(pl As PartsList, altoMm As Double)
+    Try
+        For i As Integer = 1 To pl.PartsListColumns.Count
+            Dim c As PartsListColumn = pl.PartsListColumns.Item(i)
+            Dim maxc As Integer = LargoTitulo(c.Title)
+            For Each r As PartsListRow In pl.PartsListRows
+                Try
+                    maxc = Math.Max(maxc, r.Item(i).Value.Length)
+                Catch
+                End Try
+            Next
+            c.Width = Math.Max(1.0, (maxc * altoMm * 0.8 + 3) / 10)
+        Next
+    Catch ex As Exception
+        log.AppendLine("columnas BOM: " & ex.Message)
+    End Try
+End Sub
+
+' "PESO UNIT. (kg)" -> la linea mas larga al partirlo en 2 lineas por un espacio
+Function LargoTitulo(t As String) As Integer
+    t = t.Replace(vbCrLf, " ").Replace(vbLf, " ").Trim()
+    Dim mejor As Integer = t.Length
+    For k As Integer = 1 To t.Length - 2
+        If t(k) = " "c Then mejor = Math.Min(mejor, Math.Max(k, t.Length - k - 1))
+    Next
+    Return mejor
+End Function
+
+Function Arg(n As String) As String
+    Try
+        If RuleArguments.Exists(n) Then Return CStr(RuleArguments.Value(n))
+    Catch
+    End Try
+    Return ""
+End Function

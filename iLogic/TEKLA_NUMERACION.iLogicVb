@@ -1,0 +1,1681 @@
+' =====================================================================
+'  TEKLA_NUMERACION  v3.6  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Marcacion jerarquica segun A0.61 MARCACION DE PIEZAS (TABLA_MARCAS.csv)
+'
+'   PROYECTO   ANTAPACCAY          -> propiedad PROYECTO del ensamble principal (registro unico)
+'   PLANTA     EE, AEE, EBP...     -> propiedad PLANTA del ensamble principal
+'   CONJUNTO   EE-C1, EE-V2        -> subensamble con propiedad PREFIJO (C, V, BA... de la tabla)
+'   PARTE      EE-C1-p1, EE-C1-xs1 -> codigo segun material y fabricacion
+'
+'  - Pieza o conjunto identico = MISMA marca (se conserva la del primer conjunto).
+'  - Numera de abajo hacia arriba: subensambles primero.
+'  - Subensamble Fantasma o sin PREFIJO = transparente (sus piezas son del conjunto de arriba).
+'  - Perneria / Content Center / solo lectura / Comprado = sin marca, va a PERNERIA.
+'  - Propiedad CODIGO en una pieza fuerza su codigo (h, hp, wr, mq, k...).
+'  - Propiedad BLOQUEADO = SI conserva la marca que ya tiene.
+'  No cambia geometria ni nombres de archivo.
+'  v2.1 - REGISTRO DE TRAZABILIDAD  _MARCAS_<PROYECTO>.csv
+'     CLAVE;MARCA;TIPO;PLANTA;DESCRIPCION;ALTA;ULTIMA_NUMERACION;REV;ESTADO;ARCHIVOS
+'     ARCHIVOS = todos los .ipt/.iam que tienen esa marca (rutas relativas, separadas por |)
+'     ESTADO   = ACTIVA / BLOQUEADO / SIN USO desde <fecha> (la marca no se reutiliza nunca)
+'  v2.2 - JERARQUIA como informacion (la marca sigue corta: PLANTA-CONJUNTO-parte)
+'     PADRE       = conjunto inmediato que la contiene (o la planta)
+'     PERTENECE_A = todos los conjuntos donde aparece: "EE-SP1 x2, EE-SP2 x1"
+'     RUTA        = EE > EE-ES1 > EE-SP1 > EE-C2      NIVEL = profundidad (planta = 0)
+'  v3.0 - HUELLA COMO TEKLA: ademas de perfil/largo/grado/peso/caras se comparan los MOMENTOS
+'     PRINCIPALES DE INERCIA (detecta agujeros en otra posicion y piezas armadas en otra
+'     posicion dentro del conjunto) con tolerancia: argumento cifras=4 (cifras significativas).
+'     Conjuntos: ademas, FIRMA DE ARMADO = posicion de cada pieza en los ejes de la pieza
+'     principal (no cambia si el conjunto esta girado, SI distingue izquierda / derecha).
+'     Propiedad ACABADO (pintado, galvanizado...) tambien diferencia piezas y conjuntos.
+'     El registro anterior se MIGRA solo: la primera pieza que coincide conserva su marca.
+'  v3.1 - CONFIGURACIONES COMO TEKLA (propiedad FASE_NUMERACION del ensamble principal; al
+'     ejecutar a mano se elige de una lista):
+'     1 INICIAL           renumera TODA la planta desde 1 (archiva el registro). Solo antes
+'                         de emitir. Respeta BLOQUEADO y lo enviado a corte.
+'     2 ANTES DE PLANOS   nueva/modificada: comparar con antiguo; reutiliza huecos
+'     3 DESPUES DE PLANOS modificada: CONSERVA su marca; reutiliza huecos
+'     4 DESPUES DE EMITIR modificada: CONSERVA su marca; NO reutiliza numeros
+'  v3.2 - CODIGOS A0.61 automaticos adicionales:
+'     canal / C plegado (familias cold formed, lipped, plegado, conformado) -> cu / ca (cup / cap)
+'     perfil rolado (miembro con barrido: Frame Generator curvo)            -> wr, cr, ar, wtr, xd, hr, plr
+'     plancha rolada (chapa con pestana de rolado / contour roll)           -> r
+'     CODIGO puesto a mano (h, t, cu, ca, w...) + agujeros                  -> se agrega la "p" (hp, tp...)
+'  v3.3 - PIEZA YA ENVIADA A CORTE (historial de EXPORTAR_PLASMA) que se MODIFICA: toma MARCA
+'     NUEVA en cualquier configuracion (como Tekla: lo fabricado no cambia de geometria bajo la
+'     misma marca). La marca vieja queda quemada "MODIFICADA DESPUES DE CORTE -> nueva" y el
+'     resumen pide avisar al taller. Si la pieza esta BLOQUEADO=SI conserva la marca y
+'     EXPORTAR_PLASMA la bloquea al exportar.
+'  v3.4 - DESIGN ACCELERATOR: sus piezas ya no se toman como planchas.
+'     poleas, engranajes, pinones, ejes, levas -> mq (MECANIZADO), descripcion "POLEA (diam)424x95"
+'     correas, cadenas, rodamientos, chavetas, resortes, anillos -> COMERCIAL: sin marca, a la
+'     lista de compras (propiedad PERNERIA). Se guarda la propiedad DA_TIPO (se puede corregir).
+'     GRADO de la pieza DA = material de Inventor (corrigelo si es otro).
+'     REVISAR avisa si piezas DISTINTAS tienen el mismo Part Number (el BOM las juntaria).
+'  v3.5 - SIN REDONDEOS: el perfil de plancha y la LONGITUD respetan los decimales del modelo
+'     (PL4.5x232.4, L=4076.5). La huella sigue comparando en mm enteros, asi las marcas ya
+'     asignadas no cambian por este ajuste.
+'  v3.6 - TRABAJO CON VAULT:
+'     - Antes de numerar revisa el registro _MARCAS_ y los archivos de la obra: si estan
+'       protegidos en Vault (solo lectura, sin check-out) avisa ANTES de tocar nada.
+'       Registro protegido -> se detiene (haz check-out del registro en Vault).
+'     - Las piezas protegidas que se saltan se listan al final (antes se saltaban en silencio).
+'     - Al terminar GUARDA los modelos y DESPUES escribe el registro (quedan sincronizados).
+'       Argumento no_guardar = no guarda (el registro igual se escribe; guarda tu a mano).
+'     - Respaldos del registro (.bak y _ARCHIVO_) van a la subcarpeta _HISTORIAL de la obra.
+'  MODOS internos (argumento modo= para pruebas):
+'     comparar     (defecto) pieza igual a una ya numerada -> misma marca
+'     tomar_nuevo  pieza NUEVA igual a una ya numerada -> numero nuevo
+'     conservar    pieza MODIFICADA conserva su marca si esta libre (aunque quede igual a otra)
+'     renumerar    (ver abajo)
+'  REUTILIZAR: argumento reutilizar o propiedad REUTILIZAR = SI -> llena huecos con marcas
+'     SIN USO que nunca se bloquearon ni se enviaron a corte (historial de plasma).
+'  RENUMERAR: argumento "renumerar" o propiedad RENUMERAR = SI en el ensamble (se usa una
+'     vez y se borra). Da marca nueva a todo lo que NO tenga BLOQUEADO = SI; las marcas
+'     anteriores quedan quemadas en el registro (no se reutilizan).
+' =====================================================================
+Imports System.Text
+Imports System.Globalization
+Imports System.Collections.Generic
+Imports System.Text.RegularExpressions
+
+Sub Main()
+    Dim asm As AssemblyDocument = TryCast(ThisDoc.Document, AssemblyDocument)
+    If asm Is Nothing Then
+        MessageBox.Show("Abre un ensamble (.iam) y ejecuta la regla desde ahi.", "TEKLA_NUMERACION")
+        Exit Sub
+    End If
+    ' ensamble GENERAL de la obra (NUEVO_PROYECTO): las reglas se corren en cada planta
+    Try
+        If CStr(asm.PropertySets.Item("Inventor User Defined Properties").Item("TIPO_ENSAMBLE").Value).ToUpper() = "GENERAL" Then
+            MessageBox.Show("Este es el ensamble GENERAL de la obra." & vbCrLf & "Abre el ensamble de la planta (ej. ANT-EE.iam) y ejecuta la regla ahi.", "TEKLA_NUMERACION")
+            Exit Sub
+        End If
+    Catch
+    End Try
+
+    proy = LeerProp(asm, "PROYECTO")
+    If proy = "" Then proy = InputBox("Proyecto / obra (ej. ANTAPACCAY):", "TEKLA_NUMERACION", "")
+    proy = proy.Trim().ToUpper()
+    planta = LeerProp(asm, "PLANTA")
+    If planta = "" Then planta = InputBox("Codigo de planta / area (ej. EE, AEE, EBP):", "TEKLA_NUMERACION", "EE")
+    planta = planta.Trim().ToUpper()
+    If proy = "" Or planta = "" Then Exit Sub
+    If Not RevisarVault(asm) Then Exit Sub
+    EscribirProp(asm, "PROYECTO", proy)
+    EscribirProp(asm, "PLANTA", planta)
+
+    ' ---------- configuracion de numeracion (como Tekla 1..4) ----------
+    Dim sil As Boolean = RuleArguments.Exists("silencioso")
+    fase = ArgT("fase")
+    If fase = "" Then fase = LeerProp(asm, "FASE_NUMERACION")
+    If fase = "" OrElse "1234".IndexOf(fase.Substring(0, 1)) < 0 Then fase = "2"
+    fase = fase.Substring(0, 1)
+    If Not sil AndAlso ArgT("fase") = "" Then
+        Dim ops As New List(Of String)
+        For Each t As String In FASES
+            ops.Add(t)
+        Next
+        Dim r As String = InputListBox("Configuracion de numeracion (como Tekla)." & vbCrLf & "Ultima usada en este ensamble: " & fase, ops, ops(CInt(fase) - 1), "TEKLA_NUMERACION", "Configuracion")
+        If r Is Nothing OrElse r = "" Then Exit Sub
+        fase = r.Substring(0, 1)
+    End If
+    Select Case fase
+        Case "1"
+            reinicio = True
+            modo = "comparar"
+            reutilizar = False
+        Case "2"
+            modo = "comparar"
+            reutilizar = True
+        Case "3"
+            modo = "conservar"
+            reutilizar = True
+        Case Else
+            modo = "conservar"
+            reutilizar = False
+    End Select
+    ' argumentos para pruebas (mandan sobre la configuracion)
+    If ArgT("modo") <> "" Then modo = ArgT("modo").ToLower()
+    If modo <> "tomar_nuevo" AndAlso modo <> "conservar" Then modo = "comparar"
+    If RuleArguments.Exists("reutilizar") Then reutilizar = True
+    If RuleArguments.Exists("no_reutilizar") Then reutilizar = False
+    If reinicio AndAlso Not sil Then
+        If MessageBox.Show("CONFIGURACION 1 - INICIAL" & vbCrLf & vbCrLf & "Se renumera TODA la planta " & planta & " desde 1 (EE-SP1, EE-SP1-n1...)." & vbCrLf & "El registro actual se archiva como copia. Lo que tenga BLOQUEADO = SI y lo ya enviado a corte conserva su marca y su numero no se repite." & vbCrLf & vbCrLf & "Usala solo ANTES de emitir planos. Continuar?", "TEKLA_NUMERACION", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) <> DialogResult.Yes Then Exit Sub
+    End If
+    EscribirProp(asm, "FASE_NUMERACION", fase)
+
+    ' ---------- registro de la obra ----------
+    Dim carpeta As String = CarpetaObra(asm)
+    Dim regPath As String = System.IO.Path.Combine(carpeta, "_MARCAS_" & proy & ".csv")
+    regDir = carpeta
+    If System.IO.File.Exists(regPath) Then
+        For Each ln As String In System.IO.File.ReadAllLines(regPath, Encoding.UTF8)
+            Dim c() As String = ln.Split(";"c)
+            If c.Length >= 2 AndAlso c(0) <> "CLAVE" Then
+                reg(c(0)) = c(1)
+                Dim fila(NCOL - 1) As String
+                For i As Integer = 0 To NCOL - 1
+                    If i < c.Length Then fila(i) = c(i) Else fila(i) = ""
+                Next
+                regFilas(c(0)) = fila
+                Dim m As Match = Regex.Match(c(1), "^(.*?)(\d+)$")
+                If m.Success Then
+                    Dim n As Integer = CInt(m.Groups(2).Value)
+                    If Not cont.ContainsKey(m.Groups(1).Value) OrElse cont(m.Groups(1).Value) < n Then cont(m.Groups(1).Value) = n
+                End If
+            End If
+        Next
+    End If
+    If reinicio Then ReiniciarPlanta(regPath, asm)
+    CargarTabla(asm, carpeta)
+
+    ' ---------- renumerar (opcional): marcas nuevas para todo lo NO bloqueado ----------
+    renumerar = RuleArguments.Exists("renumerar") OrElse LeerProp(asm, "RENUMERAR").ToUpper() = "SI"
+    If renumerar AndAlso Not RuleArguments.Exists("silencioso") Then
+        If MessageBox.Show("RENUMERAR: todas las piezas y conjuntos de este ensamble que NO tengan BLOQUEADO = SI recibiran marca nueva." & vbCrLf & "Las marcas anteriores no se reutilizan. Continuar?", "TEKLA_NUMERACION", MessageBoxButtons.YesNo) <> DialogResult.Yes Then Exit Sub
+    End If
+    If LeerProp(asm, "RENUMERAR") <> "" Then EscribirProp(asm, "RENUMERAR", "")
+    If ArgT("cifras") <> "" Then Integer.TryParse(ArgT("cifras"), cifras)
+    If cifras < 2 OrElse cifras > 8 Then cifras = 4
+    CargarEnviadas(asm)
+
+    ' quien tiene hoy cada marca (para "conservar" sin quitarsela a una pieza sin cambios)
+    Dim todos As New List(Of Document)
+    todos.Add(asm)
+    For Each d As Document In asm.AllReferencedDocuments
+        todos.Add(d)
+    Next
+    For Each d As Document In todos
+        Dim mk As String = LeerProp(d, "MARCA")
+        If mk = "" Then Continue For
+        If Not duenosMarca.ContainsKey(mk) Then duenosMarca(mk) = New List(Of String)
+        If Not duenosMarca(mk).Contains(d.FullFileName) Then duenosMarca(mk).Add(d.FullFileName)
+    Next
+
+    ' ---------- recorrer la jerarquia ----------
+    Procesar(asm)
+    EscribirJerarquia(asm)
+    RevisarPartNumber(asm)
+
+    If cantCambiada Then
+        Try : asm.Rebuild2(True) : Catch : End Try
+    End If
+    Try : asm.ComponentDefinition.BOM.SetPartNumberMergeSettings(True) : Catch : End Try
+
+    Dim guardado As String = GuardarModelos(asm)
+    GuardarRegistro(regPath)
+
+    Dim msg As String = "Proyecto " & proy & "  |  Planta " & planta & vbCrLf & vbCrLf & resumen.ToString() & vbCrLf
+    If cambios.Count > 0 Then msg &= "RENUMERADAS: " & String.Join(", ", cambios) & vbCrLf & vbCrLf
+    If nMigradas > 0 Then msg &= "Registro migrado a huella v3 (inercia): " & nMigradas & " marcas conservadas." & vbCrLf & vbCrLf
+    If conservadas.Count > 0 Then msg &= "CONSERVADAS (modo conservar): " & String.Join(", ", conservadas) & vbCrLf & vbCrLf
+    msg = "Configuracion: " & FASES(CInt(fase) - 1) & vbCrLf & "Modo: " & modo.ToUpper() & If(reutilizar, " + REUTILIZAR", "") & If(renumerar, " + RENUMERAR", "") & "   (tolerancia " & cifras & " cifras)" & vbCrLf & msg
+    If cortadasMod.Count > 0 Then
+        msg &= "YA CORTADAS Y MODIFICADAS -> MARCA NUEVA (avisar al taller, la pieza cortada no sirve):" & vbCrLf
+        For Each kv As KeyValuePair(Of String, String) In cortadasMod
+            msg &= "  " & kv.Key & " -> " & kv.Value & vbCrLf
+        Next
+        msg &= vbCrLf
+    End If
+    If revisar.Length > 0 Then msg &= "REVISAR:" & vbCrLf & revisar.ToString() & vbCrLf
+    If protegidas.Count > 0 Then
+        msg &= "PROTEGIDAS EN VAULT - NO SE NUMERARON (" & protegidas.Count & "): haz Check Out y vuelve a correr la regla" & vbCrLf
+        For Each p As String In protegidas
+            msg &= "  " & p & vbCrLf
+        Next
+        msg &= vbCrLf
+    End If
+    msg &= "Registro: " & regPath & vbCrLf & guardado
+    Try
+        System.IO.File.WriteAllText(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(asm.FullFileName), "_ultimo_resumen.txt"), msg, Encoding.UTF8)
+    Catch
+    End Try
+    If Not RuleArguments.Exists("silencioso") Then MessageBox.Show(msg, "TEKLA_NUMERACION")
+End Sub
+
+' ---- variables de la regla (iLogic exige declararlas despues de Sub Main) ----
+Private reg As New Dictionary(Of String, String)
+Private cont As New Dictionary(Of String, Integer)
+Private nuevas As New List(Of String)
+Private planta As String = ""
+Private proy As String = ""
+Private resumen As New StringBuilder()
+Private revisar As New StringBuilder()
+Private infoCache As New Dictionary(Of String, String())
+Private marcaDoc As New Dictionary(Of String, String)
+Private tablaConj As New Dictionary(Of String, String)
+Private tablaPart As New Dictionary(Of String, String)
+Private cantCambiada As Boolean = False
+Private INV As CultureInfo = CultureInfo.InvariantCulture
+Private regFilas As New Dictionary(Of String, String())
+Private padres As New Dictionary(Of String, Dictionary(Of String, Integer))
+Private renumerar As Boolean = False
+Private modo As String = "comparar"
+Private fase As String = "2"
+Private reinicio As Boolean = False
+Private reservadas As New List(Of String)
+Private duenosMarca As New Dictionary(Of String, List(Of String))
+Private FASES() As String = {"1 - INICIAL: renumera toda la planta desde 1 (solo antes de emitir)", "2 - ANTES DE PLANOS: compara con lo numerado, reutiliza huecos", "3 - DESPUES DE PLANOS: lo modificado CONSERVA su marca, reutiliza huecos", "4 - DESPUES DE EMITIR: lo modificado CONSERVA su marca, NO reutiliza numeros"}
+Private reutilizar As Boolean = False
+Private cifras As Integer = 4
+Private migradas As New List(Of String)
+Private enviadas As New List(Of String)
+Private cortadasMod As New Dictionary(Of String, String)
+Private daCache As New Dictionary(Of String, String)
+Private daNuevo As New List(Of String)
+Private usadasRun As New Dictionary(Of String, String)
+Private tomadoNuevo As New Dictionary(Of String, String)
+Private nMigradas As Integer = 0
+Private conservadas As New List(Of String)
+Private renumeradas As New List(Of String)
+Private cambios As New List(Of String)
+Private padreDoc As New Dictionary(Of String, String)
+Private docObj As New Dictionary(Of String, Document)
+Private vistas As New List(Of String)
+Private regDir As String = ""
+Private protegidas As New List(Of String)
+Private HOY As String = DateTime.Now.ToString("yyyy-MM-dd HH:mm")
+Private Const NCOL As Integer = 10
+Private Const R_TIPO As Integer = 2, R_PLANTA As Integer = 3, R_DESC As Integer = 4, R_ALTA As Integer = 5
+Private Const R_ULT As Integer = 6, R_REV As Integer = 7, R_EST As Integer = 8, R_ARCH As Integer = 9
+
+
+' Procesa un ensamble (principal o conjunto). Devuelve su marca ("" si no es conjunto).
+Function Procesar(a As AssemblyDocument) As String
+    If marcaDoc.ContainsKey(a.FullFileName) Then Return marcaDoc(a.FullFileName)
+    Dim pref As String = LeerProp(a, "PREFIJO").ToUpper()
+    Dim esConj As Boolean = (pref <> "")
+    If esConj And tablaConj.Count > 0 And Not tablaConj.ContainsKey(pref) Then
+        revisar.AppendLine("  " & System.IO.Path.GetFileName(a.FullFileName) & ": PREFIJO '" & pref & "' no esta en TABLA_MARCAS")
+    End If
+
+    Dim partes As New Dictionary(Of String, Integer)
+    Dim conjs As New Dictionary(Of String, Integer)
+    Dim compras As New Dictionary(Of String, Integer)
+    Dim docs As New Dictionary(Of String, Document)
+    Recoger(a.ComponentDefinition.Occurrences, partes, conjs, compras, docs)
+
+    ' 1) subconjuntos primero (de abajo hacia arriba)
+    Dim firma As New List(Of String)
+    Dim firmaV As New List(Of String)
+    Dim llavesC As New List(Of String)(conjs.Keys)
+    llavesC.Sort()
+    For Each k As String In llavesC
+        Dim mh As String = Procesar(CType(docs(k), AssemblyDocument))
+        firma.Add(mh & "x" & conjs(k))
+        firmaV.Add(mh & "x" & conjs(k))
+    Next
+    ' 2) firma de las partes
+    Dim llavesP As New List(Of String)(partes.Keys)
+    llavesP.Sort()
+    For Each k As String In llavesP
+        Dim inf() As String = Info(CType(docs(k), PartDocument))
+        If inf IsNot Nothing Then
+            firma.Add(inf(5) & "x" & partes(k))
+            firmaV.Add(inf(6) & "x" & partes(k))
+        End If
+    Next
+    firma.Sort()
+    firmaV.Sort()
+
+    ' 3) marca del conjunto
+    Dim miMarca As String = planta
+    If esConj Then
+        Dim claveV As String = "A|" & planta & "|" & pref & "|" & String.Join(",", firmaV)
+        Dim acA As String = LeerProp(a, "ACABADO").Trim().ToUpper()
+        Dim clave As String = claveV & "|I:" & FirmaInercia(a.ComponentDefinition) & "|G:" & FirmaArmado(a) & If(acA <> "", "|AC:" & acA, "")
+        miMarca = Asignar(clave, planta & "-" & pref, Existente(a), claveV, LeerProp(a, "MARCA"), a.FullFileName)
+        clave = ClaveDe(clave, miMarca)
+        Dim dt As PropertySet = a.PropertySets.Item("Design Tracking Properties")
+        Dim descC As String = pref
+        If tablaConj.ContainsKey(pref) Then descC = tablaConj(pref)
+        Vincular(clave, a, "CONJUNTO", descC)
+        dt.Item("Part Number").Value = miMarca
+        If tablaConj.ContainsKey(pref) Then dt.Item("Description").Value = tablaConj(pref) Else dt.Item("Description").Value = pref
+        dt.Item("Stock Number").Value = miMarca
+        If CStr(dt.Item("Project").Value).Trim() = "" Then dt.Item("Project").Value = proy
+        EscribirProp(a, "MARCA", miMarca)
+        EscribirProp(a, "PLANTA", planta)
+        ' peso de FABRICACION = piezas marcadas + subconjuntos (sin perneria, compras ni equipos)
+        Dim pesoA As Double = 0
+        For Each k As String In llavesP
+            Dim infP() As String = Info(CType(docs(k), PartDocument))
+            If infP IsNot Nothing Then pesoA += Double.Parse(infP(4), INV) * partes(k)
+        Next
+        For Each k As String In llavesC
+            Dim pc As Double = 0
+            Double.TryParse(LeerProp(docs(k), "PESO"), NumberStyles.Any, INV, pc)
+            pesoA += pc * conjs(k)
+        Next
+        EscribirProp(a, "PESO", pesoA.ToString("0.00", INV))
+        marcaDoc(a.FullFileName) = miMarca
+        resumen.AppendLine(miMarca.PadRight(14) & "CONJUNTO  " & CStr(dt.Item("Description").Value) & "  " & pesoA.ToString("0.00") & " kg")
+    End If
+
+    ' 4) partes de este conjunto
+    For Each k As String In llavesP
+        NumerarParte(CType(docs(k), PartDocument), miMarca)
+    Next
+    ' relaciones padre -> hijo (jerarquia)
+    For Each k As String In llavesC
+        Relacion(docs(k), a, miMarca, conjs(k))
+    Next
+    For Each k As String In llavesP
+        Relacion(docs(k), a, miMarca, partes(k))
+    Next
+
+    ' 5) perneria (comprado) del conjunto o del ensamble principal
+    Dim sb As New StringBuilder()
+    Dim llavesB As New List(Of String)(compras.Keys)
+    llavesB.Sort()
+    For Each k As String In llavesB
+        sb.AppendLine(compras(k).ToString() & "  " & k)
+    Next
+    EscribirProp(a, "PERNERIA", sb.ToString().Trim())
+    If compras.Count > 0 Then resumen.AppendLine("   perneria: " & compras.Count & " tipos (propiedad PERNERIA)")
+    Try : a.ComponentDefinition.BOM.SetPartNumberMergeSettings(True) : Catch : End Try
+
+    If esConj Then Return miMarca
+    Return ""
+End Function
+
+' Junta las piezas y conjuntos de un nivel, atravesando subensambles transparentes
+Sub Recoger(occs As Object, partes As Dictionary(Of String, Integer), conjs As Dictionary(Of String, Integer), _
+            compras As Dictionary(Of String, Integer), docs As Dictionary(Of String, Document))
+    For Each o As ComponentOccurrence In occs
+        If o.Suppressed Then Continue For
+        Dim bs As BOMStructureEnum = o.BOMStructure
+        If bs = BOMStructureEnum.kReferenceBOMStructure Then Continue For
+        Dim d As Document = o.Definition.Document
+        If LeerProp(d, "EQUIPO").ToUpper() = "SI" Then Continue For   ' equipo: TAG_EQUIPOS, no se marca ni va a perneria
+        If o.DefinitionDocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+            Dim pref As String = LeerProp(d, "PREFIJO")
+            If pref <> "" And bs <> BOMStructureEnum.kPhantomBOMStructure Then
+                Sumar(conjs, d.FullFileName)
+                docs(d.FullFileName) = d
+            ElseIf bs = BOMStructureEnum.kPurchasedBOMStructure Then
+                Sumar(compras, DescCompra(d))
+            Else
+                If pref = "" And bs <> BOMStructureEnum.kPhantomBOMStructure Then
+                    Dim av As String = "  " & System.IO.Path.GetFileName(d.FullFileName) & ": subensamble sin PREFIJO (se trata como transparente)"
+                    If Not revisar.ToString().Contains(av) Then revisar.AppendLine(av)
+                End If
+                Recoger(o.SubOccurrences, partes, conjs, compras, docs)
+            End If
+        Else
+            If bs = BOMStructureEnum.kPhantomBOMStructure Then Continue For
+            Dim daT As String = DaTipo(d)
+            If daT.StartsWith("COMERCIAL") Then
+                DaComercial(d, daT)
+                Sumar(compras, DescCompra(d))
+                Continue For
+            End If
+            If EsComprado(d, bs) Then
+                If bs <> BOMStructureEnum.kPurchasedBOMStructure Then
+                    Try : o.BOMStructure = BOMStructureEnum.kPurchasedBOMStructure : Catch : End Try
+                End If
+                Sumar(compras, DescCompra(d))
+                Continue For
+            End If
+            Sumar(partes, d.FullFileName)
+            docs(d.FullFileName) = d
+        End If
+    Next
+End Sub
+
+Sub NumerarParte(p As PartDocument, dueno As String)
+    If marcaDoc.ContainsKey(p.FullFileName) Then Exit Sub
+    Dim inf() As String = Info(p)
+    If inf Is Nothing Then Exit Sub
+    Dim claveP As String = "P|" & planta & "|" & inf(5)
+    Dim marca As String = Asignar(claveP, dueno & "-" & inf(0), Existente(p), "P|" & planta & "|" & inf(6), LeerProp(p, "MARCA"), p.FullFileName)
+    claveP = ClaveDe(claveP, marca)
+    marcaDoc(p.FullFileName) = marca
+    Vincular(claveP, p, "PARTE", inf(1))
+
+    Dim dt As PropertySet = p.PropertySets.Item("Design Tracking Properties")
+    dt.Item("Part Number").Value = marca
+    dt.Item("Description").Value = inf(1)
+    dt.Item("Stock Number").Value = inf(1)
+    If CStr(dt.Item("Project").Value).Trim() = "" Then dt.Item("Project").Value = proy
+    EscribirProp(p, "MARCA", marca)
+    EscribirProp(p, "CODIGO_PIEZA", inf(0))
+    EscribirProp(p, "LONGITUD", inf(2))
+    EscribirProp(p, "PESO", inf(4))
+    EscribirProp(p, "GRADO", inf(3))
+    EscribirProp(p, "PLANTA", planta)
+    EscribirProp(p, "CONJUNTO", dueno)
+    EscribirProp(p, "ENSAMBLE", dueno)
+
+    ' Frame Generator / Content Center: cantidad por pieza, no por longitud
+    If LeerParam(p, "G_L") > 0 Or LeerParam(p, "B_L") > 0 Then
+        Try
+            Dim bq As BOMQuantity = p.ComponentDefinition.BOMQuantity
+            Dim tipo As BOMQuantityTypeEnum
+            Dim prm As Parameter = Nothing
+            bq.GetBaseQuantity(tipo, prm)
+            If tipo <> BOMQuantityTypeEnum.kEachBOMQuantity Then
+                bq.SetBaseQuantity(BOMQuantityTypeEnum.kEachBOMQuantity)
+                cantCambiada = True
+            End If
+        Catch
+        End Try
+    End If
+    resumen.AppendLine("   " & marca.PadRight(14) & inf(1).PadRight(14) & "L=" & inf(2) & "  " & inf(4) & " kg")
+End Sub
+
+' ---------- jerarquia ----------
+Sub Relacion(hijo As Document, padre As Document, marcaPadre As String, n As Integer)
+    Dim k As String = hijo.FullFileName
+    docObj(k) = hijo
+    If Not padres.ContainsKey(k) Then padres(k) = New Dictionary(Of String, Integer)
+    padres(k)(marcaPadre) = n          ' marca igual = conjunto identico = misma cantidad
+    If Not padreDoc.ContainsKey(k) Then padreDoc(k) = padre.FullFileName
+End Sub
+
+Function RutaDe(k As String, prof As Integer) As String
+    If prof > 20 Then Return planta
+    If padreDoc.ContainsKey(k) Then
+        Dim pr As String = RutaDe(padreDoc(k), prof + 1)
+        If marcaDoc.ContainsKey(k) Then Return pr & " > " & marcaDoc(k)
+        Return pr
+    End If
+    ' raiz
+    If marcaDoc.ContainsKey(k) Then Return planta & " > " & marcaDoc(k)
+    Return planta
+End Function
+
+Sub EscribirJerarquia(asm As AssemblyDocument)
+    For Each kv As KeyValuePair(Of String, Dictionary(Of String, Integer)) In padres
+        If Not marcaDoc.ContainsKey(kv.Key) Then Continue For
+        Dim d As Document = docObj(kv.Key)
+        Dim lista As New List(Of String)
+        Dim primero As String = ""
+        For Each pk As KeyValuePair(Of String, Integer) In kv.Value
+            lista.Add(pk.Key & " x" & pk.Value)
+            If primero = "" Then primero = pk.Key
+        Next
+        Dim ruta As String = RutaDe(kv.Key, 0)
+        Dim nivel As Integer = (ruta.Length - ruta.Replace(" > ", "").Length) \ 3
+        Try
+            EscribirProp(d, "PADRE", primero)
+            EscribirProp(d, "PERTENECE_A", String.Join(", ", lista))
+            EscribirProp(d, "RUTA", ruta)
+            EscribirProp(d, "NIVEL", nivel.ToString())
+        Catch
+        End Try
+    Next
+    ' el ensamble principal, si es conjunto
+    If marcaDoc.ContainsKey(asm.FullFileName) Then
+        EscribirProp(asm, "PADRE", planta)
+        EscribirProp(asm, "RUTA", RutaDe(asm.FullFileName, 0))
+        EscribirProp(asm, "NIVEL", "1")
+    End If
+End Sub
+
+' ---------- registro de trazabilidad ----------
+Sub Vincular(clave As String, d As Document, tipo As String, desc As String)
+    Dim f() As String
+    If regFilas.ContainsKey(clave) Then
+        f = regFilas(clave)
+    Else
+        ReDim f(NCOL - 1)
+        For i As Integer = 0 To NCOL - 1
+            f(i) = ""
+        Next
+        f(0) = clave
+        regFilas(clave) = f
+    End If
+    f(1) = reg(clave)
+    f(R_TIPO) = tipo
+    f(R_PLANTA) = planta
+    f(R_DESC) = desc.Replace(";", ",")
+    If f(R_ALTA) = "" Then f(R_ALTA) = HOY
+    f(R_ULT) = HOY
+    Try
+        f(R_REV) = CStr(d.PropertySets.Item("Inventor Summary Information").Item("Revision Number").Value)
+    Catch
+    End Try
+    If Existente(d) <> "" Then f(R_EST) = "BLOQUEADO" Else f(R_EST) = "ACTIVA"
+    Dim rel As String = d.FullFileName
+    Dim pre As String = regDir.TrimEnd("\"c) & "\"
+    If rel.StartsWith(pre, StringComparison.OrdinalIgnoreCase) Then rel = rel.Substring(pre.Length)
+    Dim lista As New List(Of String)
+    If f(R_ARCH) <> "" Then lista.AddRange(f(R_ARCH).Split("|"c))
+    If Not lista.Contains(rel) Then lista.Add(rel)
+    f(R_ARCH) = String.Join("|", lista)
+    If Not vistas.Contains(clave) Then vistas.Add(clave)
+End Sub
+
+Sub GuardarRegistro(regPath As String)
+    Dim filas As New List(Of String())
+    For Each kv As KeyValuePair(Of String, String()) In regFilas
+        Dim f() As String = kv.Value
+        If f(1) = "" AndAlso reg.ContainsKey(kv.Key) Then f(1) = reg(kv.Key)
+        Dim especial As Boolean = kv.Key.StartsWith("X|") OrElse kv.Key.StartsWith("M|") OrElse kv.Key.StartsWith("R|")
+        If Not especial AndAlso f(R_PLANTA) = planta AndAlso Not vistas.Contains(kv.Key) AndAlso Not f(R_EST).StartsWith("SIN USO") AndAlso f(R_EST) <> "BLOQUEADO" Then
+            f(R_EST) = "SIN USO desde " & HOY
+        End If
+        filas.Add(f)
+    Next
+    ' marcas nuevas que no pasaron por Vincular (por seguridad)
+    For Each kv As KeyValuePair(Of String, String) In reg
+        If Not regFilas.ContainsKey(kv.Key) Then
+            Dim f(NCOL - 1) As String
+            For i As Integer = 0 To NCOL - 1
+                f(i) = ""
+            Next
+            f(0) = kv.Key
+            f(1) = kv.Value
+            filas.Add(f)
+        End If
+    Next
+    filas.Sort(AddressOf CompararFilaReg)
+    Dim sb As New StringBuilder()
+    sb.AppendLine("CLAVE;MARCA;TIPO;PLANTA;DESCRIPCION;ALTA;ULTIMA_NUMERACION;REV;ESTADO;ARCHIVOS")
+    For Each f() As String In filas
+        sb.AppendLine(String.Join(";", f))
+    Next
+    Dim tmp As String = regPath & ".tmp"
+    System.IO.File.WriteAllText(tmp, sb.ToString(), New UTF8Encoding(True))
+    If System.IO.File.Exists(regPath) Then
+        Try
+            System.IO.File.Copy(regPath, System.IO.Path.Combine(CarpetaHistorial(regPath), System.IO.Path.GetFileName(regPath) & ".bak"), True)
+        Catch
+        End Try
+        System.IO.File.Delete(regPath)
+    End If
+    System.IO.File.Move(tmp, regPath)
+End Sub
+
+Function CompararFilaReg(x As String(), y As String()) As Integer
+    Return String.Compare(x(1), y(1), StringComparison.OrdinalIgnoreCase)
+End Function
+
+Function Asignar(clave As String, serie As String, existente As String, claveVieja As String, actual As String, archivo As String) As String
+    ' 0) migracion desde la huella v2 (sin inercia): la primera pieza que coincide conserva la marca
+    If Not reg.ContainsKey(clave) AndAlso claveVieja <> "" AndAlso claveVieja <> clave AndAlso reg.ContainsKey(claveVieja) AndAlso Not migradas.Contains(claveVieja) Then
+        migradas.Add(claveVieja)
+        Dim mv As String = reg(claveVieja)
+        reg.Remove(claveVieja)
+        reg(clave) = mv
+        If regFilas.ContainsKey(claveVieja) Then
+            Dim fr() As String = regFilas(claveVieja)
+            regFilas.Remove(claveVieja)
+            fr(0) = clave
+            fr(R_ARCH) = ""
+            regFilas(clave) = fr
+        End If
+        nMigradas += 1
+    End If
+    ' 1) bloqueada: conserva su marca siempre
+    If existente <> "" Then
+        If Not reg.ContainsKey(clave) Then
+            reg(clave) = existente
+            nuevas.Add(clave & ";" & existente)
+        ElseIf reg(clave) <> existente Then
+            reg(clave & "#" & existente) = existente
+        End If
+        Return Usar(existente, clave)
+    End If
+    ' 2) ya tenia una marca alternativa para esta huella (de tomar_nuevo / conservar)
+    If actual <> "" AndAlso reg.ContainsKey(clave & "#" & actual) AndAlso Not renumerar Then Return Usar(actual, clave)
+    ' 3) huella conocida
+    If reg.ContainsKey(clave) Then
+        Dim m As String = reg(clave)
+        If renumerar AndAlso Not renumeradas.Contains(clave) Then
+            renumeradas.Add(clave)
+            Dim nueva As String = NuevoNumero(serie)
+            cambios.Add(m & " -> " & nueva)
+            Quemar(m, nueva)
+            reg(clave) = nueva
+            nuevas.Add(clave & ";" & nueva)
+            Return Usar(nueva, clave)
+        End If
+        If renumerar Then Return Usar(m, clave)
+        If modo = "conservar" AndAlso actual <> "" AndAlso actual <> m AndAlso Libre(actual, clave, archivo) AndAlso MismaSerie(actual, serie) Then
+            Liberar(actual, clave)
+            reg(clave & "#" & actual) = actual
+            conservadas.Add(actual)
+            Return Usar(actual, clave)
+        End If
+        If modo = "tomar_nuevo" AndAlso actual = "" Then
+            If tomadoNuevo.ContainsKey(clave) Then Return Usar(tomadoNuevo(clave), clave)
+            Dim nueva As String = NuevoNumero(serie)
+            reg(clave & "#" & nueva) = nueva
+            tomadoNuevo(clave) = nueva
+            nuevas.Add(clave & ";" & nueva)
+            Return Usar(nueva, clave)
+        End If
+        Return Usar(m, clave)
+    End If
+    ' 4) huella nueva (pieza nueva o modificada)
+    If modo = "conservar" AndAlso actual <> "" AndAlso Libre(actual, clave, archivo) AndAlso MismaSerie(actual, serie) Then
+        Liberar(actual, clave)
+        reg(clave) = actual
+        conservadas.Add(actual)
+        Return Usar(actual, clave)
+    End If
+    Dim marca As String = NuevoNumero(serie)
+    reg(clave) = marca
+    nuevas.Add(clave & ";" & marca)
+    ' la pieza tenia una marca ya cortada y su geometria cambio
+    If actual <> "" AndAlso actual <> marca AndAlso enviadas.Contains(actual) AndAlso Not cortadasMod.ContainsKey(actual) Then
+        Dim otro As Boolean = False
+        If duenosMarca.ContainsKey(actual) Then
+            For Each f0 As String In duenosMarca(actual)
+                If String.Compare(f0, archivo, True) <> 0 Then otro = True
+            Next
+        End If
+        cortadasMod(actual) = marca
+        If Not otro Then
+            For Each k As String In New List(Of String)(reg.Keys)
+                If reg(k) = actual AndAlso Not k.StartsWith("X|") AndAlso Not k.StartsWith("M|") AndAlso Not k.StartsWith("R|") Then Retirar(k, "MODIFICADA DESPUES DE CORTE " & HOY & " -> " & marca)
+            Next
+        End If
+    End If
+    Return Usar(marca, clave)
+End Function
+
+Function Usar(m As String, clave As String) As String
+    usadasRun(m) = clave
+    Return m
+End Function
+
+' Clave del registro que corresponde a la marca usada (principal o alternativa)
+Function ClaveDe(clave As String, marca As String) As String
+    If reg.ContainsKey(clave) AndAlso reg(clave) = marca Then Return clave
+    Return clave & "#" & marca
+End Function
+
+Function MismaSerie(m As String, serie As String) As Boolean
+    If Not m.StartsWith(serie) OrElse m.Length = serie.Length Then Return False
+    Dim n As Integer
+    Return Integer.TryParse(m.Substring(serie.Length), n)
+End Function
+
+' La marca no la usa OTRA huella en esta corrida, ni esta bloqueada por otra pieza
+Function Libre(m As String, clave As String, archivo As String) As Boolean
+    If usadasRun.ContainsKey(m) AndAlso usadasRun(m) <> clave Then Return False
+    ' ya fue a corte con otra geometria: no se conserva (marca nueva, como Tekla)
+    If enviadas.Contains(m) Then Return False
+    ' otro archivo todavia tiene esa marca (p. ej. la copia que NO se modifico): se queda con ella
+    If duenosMarca.ContainsKey(m) Then
+        For Each f As String In duenosMarca(m)
+            If String.Compare(f, archivo, True) <> 0 Then Return False
+        Next
+    End If
+    For Each kv As KeyValuePair(Of String, String()) In regFilas
+        If kv.Value(1) = m AndAlso kv.Value(R_EST) = "BLOQUEADO" AndAlso Not kv.Key.StartsWith(clave) Then Return False
+    Next
+    Return True
+End Function
+
+' La huella anterior que tenia la marca m deja de tenerla (para no duplicar)
+Sub Liberar(m As String, clave As String)
+    For Each k As String In New List(Of String)(reg.Keys)
+        If reg(k) <> m OrElse k = clave OrElse k.StartsWith(clave & "#") OrElse k.Contains("|") = False Then Continue For
+        If k.StartsWith("X|") OrElse k.StartsWith("M|") OrElse k.StartsWith("R|") Then Continue For
+        Retirar(k, "MODIFICADA " & HOY & " (marca pasa a la pieza modificada)")
+    Next
+End Sub
+
+Sub Retirar(k As String, estado As String)
+    Dim m As String = reg(k)
+    reg.Remove(k)
+    Dim f() As String
+    If regFilas.ContainsKey(k) Then
+        f = regFilas(k)
+        regFilas.Remove(k)
+    Else
+        ReDim f(NCOL - 1)
+        For i As Integer = 0 To NCOL - 1
+            f(i) = ""
+        Next
+        f(1) = m
+    End If
+    f(0) = "M|" & k
+    f(R_EST) = estado
+    regFilas(f(0)) = f
+    reg(f(0)) = m
+End Sub
+
+' Siguiente numero de la serie (o el primer hueco libre si REUTILIZAR)
+Function NuevoNumero(serie As String) As String
+    Dim tope As Integer = 0
+    If cont.ContainsKey(serie) Then tope = cont(serie)
+    If reutilizar Then
+        For n As Integer = 1 To tope
+            Dim mk As String = serie & n.ToString()
+            If MarcaReutilizable(mk) Then
+                For Each k As String In New List(Of String)(reg.Keys)
+                    If reg(k) = mk Then Retirar(k, "REUTILIZADA " & HOY)
+                Next
+                resumen.AppendLine("  reutilizada: " & mk)
+                Return mk
+            End If
+        Next
+    End If
+    Dim nn As Integer = tope + 1
+    Do While reservadas.Contains(serie & nn.ToString()) OrElse usadasRun.ContainsKey(serie & nn.ToString())
+        nn += 1
+    Loop
+    cont(serie) = nn
+    Return serie & nn.ToString()
+End Function
+
+' Hueco reutilizable: nadie la usa en esta corrida, no esta activa ni bloqueada y nunca fue a corte
+Function MarcaReutilizable(mk As String) As Boolean
+    If usadasRun.ContainsKey(mk) OrElse enviadas.Contains(mk) OrElse reservadas.Contains(mk) Then Return False
+    For Each kv As KeyValuePair(Of String, String()) In regFilas
+        If kv.Value(1) <> mk Then Continue For
+        Dim est As String = kv.Value(R_EST)
+        If Not est.StartsWith("SIN USO") Then Return False
+    Next
+    For Each kv As KeyValuePair(Of String, String) In reg
+        If kv.Value = mk AndAlso Not regFilas.ContainsKey(kv.Key) Then Return False
+    Next
+    Return True
+End Function
+
+' Configuracion 1: archiva el registro y quita las filas de ESTA planta (las otras plantas
+' del proyecto no se tocan). Reserva las marcas bloqueadas y las enviadas a corte.
+Sub ReiniciarPlanta(regPath As String, asm As AssemblyDocument)
+    If System.IO.File.Exists(regPath) Then
+        System.IO.File.Copy(regPath, System.IO.Path.Combine(CarpetaHistorial(regPath), System.IO.Path.GetFileNameWithoutExtension(regPath) & "_ARCHIVO_" & DateTime.Now.ToString("yyyyMMdd_HHmm") & ".csv"), True)
+    End If
+    CargarEnviadas(asm)
+    For Each m As String In enviadas
+        If Not reservadas.Contains(m) Then reservadas.Add(m)
+    Next
+    For Each d As Document In asm.AllReferencedDocuments
+        Dim mb As String = Existente(d)
+        If mb <> "" AndAlso Not reservadas.Contains(mb) Then reservadas.Add(mb)
+    Next
+    Dim mb0 As String = Existente(asm)
+    If mb0 <> "" AndAlso Not reservadas.Contains(mb0) Then reservadas.Add(mb0)
+    For Each k As String In New List(Of String)(reg.Keys)
+        Dim f() As String = Nothing
+        If regFilas.ContainsKey(k) Then f = regFilas(k)
+        Dim esPlanta As Boolean = reg(k).StartsWith(planta & "-") OrElse (f IsNot Nothing AndAlso f(R_PLANTA) = planta)
+        If esPlanta AndAlso Not reservadas.Contains(reg(k)) Then
+            reg.Remove(k)
+            If regFilas.ContainsKey(k) Then regFilas.Remove(k)
+        End If
+    Next
+    ' contadores desde cero para esta planta
+    For Each k As String In New List(Of String)(cont.Keys)
+        If k.StartsWith(planta & "-") Then cont.Remove(k)
+    Next
+    If reservadas.Count > 0 Then resumen.AppendLine("Marcas reservadas (bloqueadas o enviadas a corte): " & String.Join(", ", reservadas))
+End Sub
+
+' Marca vieja quemada al renumerar
+Sub Quemar(vieja As String, nueva As String)
+    Dim fx(NCOL - 1) As String
+    For i As Integer = 0 To NCOL - 1
+        fx(i) = ""
+    Next
+    fx(0) = "X|" & vieja
+    fx(1) = vieja
+    fx(R_DESC) = "renumerada"
+    fx(R_ULT) = HOY
+    fx(R_EST) = "RENUMERADA a " & nueva
+    regFilas(fx(0)) = fx
+End Sub
+
+' Firma de armado del conjunto: centros de masa de sus piezas expresados en los ejes
+' principales de la pieza principal (la mas pesada). Se prueban las 4 rotaciones propias
+' de esos ejes y se toma la menor -> independiente de como este girado el conjunto,
+' pero distingue el conjunto espejo (izquierda / derecha).
+Function FirmaArmado(a As AssemblyDocument) As String
+    Try
+        Dim TGx As TransientGeometry = ThisApplication.TransientGeometry
+        Dim occs As New List(Of ComponentOccurrence)
+        Dim masas As New List(Of Double)
+        Dim cx As New List(Of Double), cy As New List(Of Double), cz As New List(Of Double)
+        Dim iMain As Integer = -1
+        For Each o As ComponentOccurrence In a.ComponentDefinition.Occurrences.AllLeafOccurrences
+            If o.Suppressed Then Continue For
+            Dim d As Document = Nothing
+            Try
+                d = o.Definition.Document
+            Catch
+                Continue For
+            End Try
+            If d.DocumentType <> DocumentTypeEnum.kPartDocumentObject Then Continue For
+            If o.BOMStructure = BOMStructureEnum.kPurchasedBOMStructure OrElse o.BOMStructure = BOMStructureEnum.kReferenceBOMStructure Then Continue For
+            If LeerProp(d, "EQUIPO").ToUpper() = "SI" Then Continue For
+            Dim mp As MassProperties = CType(d, PartDocument).ComponentDefinition.MassProperties
+            Dim c0 As Point = mp.CenterOfMass
+            Dim cp As Point = TGx.CreatePoint(c0.X, c0.Y, c0.Z)
+            cp.TransformBy(o.Transformation)
+            occs.Add(o)
+            masas.Add(mp.Mass)
+            cx.Add(cp.X)
+            cy.Add(cp.Y)
+            cz.Add(cp.Z)
+            If iMain < 0 OrElse mp.Mass > masas(iMain) + 0.000001 Then iMain = occs.Count - 1
+        Next
+        If occs.Count < 2 Then Return "1"
+        Dim mpm As MassProperties = CType(occs(iMain).Definition.Document, PartDocument).ComponentDefinition.MassProperties
+        Dim ixx As Double, iyy As Double, izz As Double, ixy As Double, iyz As Double, ixz As Double
+        mpm.XYZMomentsOfInertia(ixx, iyy, izz, ixy, iyz, ixz)
+        Dim t(,) As Double = {{ixx, ixy, ixz}, {ixy, iyy, iyz}, {ixz, iyz, izz}}
+        Dim ej(,) As Double = Jacobi(t)
+        Dim ex(2) As Double, ey(2) As Double, ez(2) As Double
+        For j As Integer = 0 To 2
+            Dim v As Vector = TGx.CreateVector(ej(0, j), ej(1, j), ej(2, j))
+            v.TransformBy(occs(iMain).Transformation)
+            ex(j) = v.X
+            ey(j) = v.Y
+            ez(j) = v.Z
+        Next
+        Dim sg(,) As Integer = {{1, 1, 1}, {1, -1, -1}, {-1, 1, -1}, {-1, -1, 1}}
+        Dim mejor As String = Nothing
+        For s As Integer = 0 To 3
+            Dim pts As New List(Of String)
+            For i As Integer = 0 To occs.Count - 1
+                If i = iMain Then Continue For
+                Dim dx As Double = cx(i) - cx(iMain), dy As Double = cy(i) - cy(iMain), dz As Double = cz(i) - cz(iMain)
+                Dim u As New System.Text.StringBuilder(Cif(masas(i)) & "@")
+                For j As Integer = 0 To 2
+                    Dim val As Double = sg(s, j) * (dx * ex(j) + dy * ey(j) + dz * ez(j))
+                    Dim r As Double = Math.Round(val, 1)
+                    If Math.Abs(r) < 0.05 Then r = 0
+                    u.Append(r.ToString("0.0", INV))
+                    If j < 2 Then u.Append(",")
+                Next
+                pts.Add(u.ToString())
+            Next
+            pts.Sort(StringComparer.Ordinal)
+            Dim txt As String = String.Join(";", pts)
+            If mejor Is Nothing OrElse String.CompareOrdinal(txt, mejor) < 0 Then mejor = txt
+        Next
+        Return Hash(mejor)
+    Catch
+        Return "?"
+    End Try
+End Function
+
+' Hash propio (dos polinomios modulares), sin librerias externas (iLogic corre en .NET 8)
+Function Hash(txt As String) As String
+    Dim h1 As Long = 7, h2 As Long = 11
+    For Each ch As Char In txt
+        Dim c As Long = AscW(ch)
+        h1 = (h1 * 131 + c) Mod 1000000007L
+        h2 = (h2 * 257 + c) Mod 998244353L
+    Next
+    Return h1.ToString("000000000") & h2.ToString("000000000")
+End Function
+
+' Vectores propios (columnas) de una matriz simetrica 3x3, ordenados por valor propio, mano derecha
+Function Jacobi(a0(,) As Double) As Double(,)
+    Dim a(2, 2) As Double, v(2, 2) As Double
+    For i As Integer = 0 To 2
+        For j As Integer = 0 To 2
+            a(i, j) = a0(i, j)
+            v(i, j) = If(i = j, 1.0, 0.0)
+        Next
+    Next
+    For sw As Integer = 1 To 60
+        Dim off As Double = a(0, 1) * a(0, 1) + a(0, 2) * a(0, 2) + a(1, 2) * a(1, 2)
+        Dim dia As Double = a(0, 0) * a(0, 0) + a(1, 1) * a(1, 1) + a(2, 2) * a(2, 2)
+        If off <= 1.0E-24 * (dia + 1.0E-30) Then Exit For
+        For p As Integer = 0 To 1
+            For q As Integer = p + 1 To 2
+                If Math.Abs(a(p, q)) < 1.0E-300 Then Continue For
+                Dim th As Double = (a(q, q) - a(p, p)) / (2 * a(p, q))
+                Dim t As Double = 1
+                If th <> 0 Then t = Math.Sign(th) / (Math.Abs(th) + Math.Sqrt(th * th + 1))
+                Dim c As Double = 1 / Math.Sqrt(t * t + 1)
+                Dim sn As Double = t * c
+                For k As Integer = 0 To 2
+                    Dim akp As Double = a(k, p), akq As Double = a(k, q)
+                    a(k, p) = c * akp - sn * akq
+                    a(k, q) = sn * akp + c * akq
+                Next
+                For k As Integer = 0 To 2
+                    Dim apk As Double = a(p, k), aqk As Double = a(q, k)
+                    a(p, k) = c * apk - sn * aqk
+                    a(q, k) = sn * apk + c * aqk
+                Next
+                For k As Integer = 0 To 2
+                    Dim vkp As Double = v(k, p), vkq As Double = v(k, q)
+                    v(k, p) = c * vkp - sn * vkq
+                    v(k, q) = sn * vkp + c * vkq
+                Next
+            Next
+        Next
+    Next
+    Dim idx() As Integer = {0, 1, 2}
+    For i As Integer = 0 To 1
+        For j As Integer = i + 1 To 2
+            If a(idx(j), idx(j)) < a(idx(i), idx(i)) Then
+                Dim tmp As Integer = idx(i)
+                idx(i) = idx(j)
+                idx(j) = tmp
+            End If
+        Next
+    Next
+    Dim r(2, 2) As Double
+    For j As Integer = 0 To 2
+        For i As Integer = 0 To 2
+            r(i, j) = v(i, idx(j))
+        Next
+    Next
+    Dim det As Double = r(0, 0) * (r(1, 1) * r(2, 2) - r(1, 2) * r(2, 1)) - r(0, 1) * (r(1, 0) * r(2, 2) - r(1, 2) * r(2, 0)) + r(0, 2) * (r(1, 0) * r(2, 1) - r(1, 1) * r(2, 0))
+    If det < 0 Then
+        For i As Integer = 0 To 2
+            r(i, 2) = -r(i, 2)
+        Next
+    End If
+    Return r
+End Function
+
+' Momentos principales de inercia, redondeados a N cifras significativas (tolerancia)
+Function FirmaInercia(cd As Object) As String
+    Try
+        Dim mp As MassProperties = cd.MassProperties
+        Dim i1 As Double, i2 As Double, i3 As Double
+        mp.PrincipalMomentsOfInertia(i1, i2, i3)
+        Dim v() As Double = {Math.Abs(i1), Math.Abs(i2), Math.Abs(i3)}
+        Array.Sort(v)
+        Return Cif(v(0)) & "/" & Cif(v(1)) & "/" & Cif(v(2))
+    Catch
+        Return "?"
+    End Try
+End Function
+
+Function Cif(x As Double) As String
+    If x < 0.000001 Then Return "0"
+    Return Double.Parse(x.ToString("G" & cifras, INV), INV).ToString("R", INV)
+End Function
+
+' Marcas que ya fueron a corte (historial de EXPORTAR_PLASMA): nunca se reutilizan
+Sub CargarEnviadas(asm As Document)
+    Try
+        Dim h As String = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(asm.FullFileName), "PLANOS\PLASMA\_HISTORIAL_CORTE.csv")
+        If Not System.IO.File.Exists(h) Then Exit Sub
+        For Each ln As String In System.IO.File.ReadAllLines(h, Encoding.UTF8)
+            Dim c() As String = ln.Split(";"c)
+            If c.Length > 2 AndAlso c(0) <> "FECHA" AndAlso Not enviadas.Contains(c(2)) Then enviadas.Add(c(2))
+        Next
+    Catch
+    End Try
+End Sub
+
+' Carpeta de la obra: la que tiene _OBRA.txt (NUEVO_PROYECTO); si no hay, la del ensamble
+Function CarpetaObra(asm As Document) As String
+    Dim d As String = System.IO.Path.GetDirectoryName(asm.FullFileName)
+    Dim x As String = d
+    For i As Integer = 0 To 8
+        If x Is Nothing OrElse x = "" Then Exit For
+        If System.IO.File.Exists(System.IO.Path.Combine(x, "_OBRA.txt")) Then Return x
+        x = System.IO.Path.GetDirectoryName(x)
+    Next
+    Return d
+End Function
+
+Function ArgT(n As String) As String
+    Try
+        If RuleArguments.Exists(n) Then Return CStr(RuleArguments.Value(n))
+    Catch
+    End Try
+    Return ""
+End Function
+
+Function Existente(d As Document) As String
+    Dim b As String = LeerProp(d, "BLOQUEADO").ToUpper()
+    If b = "SI" Or b = "SÍ" Or b = "YES" Then Return LeerProp(d, "MARCA")
+    Return ""
+End Function
+
+' {codigo, perfil, largo, grado, peso, clave v3 (con inercia), clave v2 (para migrar)}
+Function Info(p As PartDocument) As String()
+    If infoCache.ContainsKey(p.FullFileName) Then Return infoCache(p.FullFileName)
+    Dim res() As String = Nothing
+    Try
+        Dim peso As Double = 0
+        Try : peso = p.ComponentDefinition.MassProperties.Mass : Catch : End Try
+        Dim gl As Double = LeerParam(p, "G_L")
+        If gl <= 0 Then gl = LeerParam(p, "B_L")
+        If peso <= 0.001 Or (gl > 0 And gl < 1) Then
+            revisar.AppendLine("  " & System.IO.Path.GetFileName(p.FullFileName) & ": vacia o degenerada (masa " & peso.ToString("0.000") & " kg)")
+            infoCache(p.FullFileName) = Nothing
+            Return Nothing
+        End If
+
+        Dim perfil As String = "", largo As Double = 0
+        Dim esPerfil As Boolean = False, esPlancha As Boolean = False, plegado As Boolean = False
+        Dim codigo As String = Clasificar(p, gl, perfil, largo, esPerfil, esPlancha, plegado)
+        ' Design Accelerator: polea, engranaje, eje... = mecanizado (nunca plancha ni perfil)
+        Dim daT As String = DaTipo(p)
+        Dim esDA As Boolean = (daT <> "" AndAlso Not daT.StartsWith("COMERCIAL"))
+        If esDA Then
+            codigo = "mq"
+            esPerfil = False
+            esPlancha = False
+            plegado = False
+            perfil = DescDA(p, daT)
+        End If
+
+        ' ejes: longitud = dimension mayor, espesor = dimension menor
+        Dim rb As Box = p.ComponentDefinition.RangeBox
+        Dim ex() As Double = {rb.MaxPoint.X - rb.MinPoint.X, rb.MaxPoint.Y - rb.MinPoint.Y, rb.MaxPoint.Z - rb.MinPoint.Z}
+        Dim iMax As Integer = 0, iMin As Integer = 0
+        For i As Integer = 1 To 2
+            If ex(i) > ex(iMax) Then iMax = i
+            If ex(i) < ex(iMin) Then iMin = i
+        Next
+        If esDA Then largo = ex(iMax) * 10
+        Dim ejePerfil As Integer = -1
+        If esPerfil Then ejePerfil = iMax
+        Dim agujeros As Boolean = TieneAgujeros(p, ejePerfil)
+        Dim bisel As Boolean = False
+        If esPlancha Then bisel = TieneBisel(p, iMin)
+
+        ' rolado: perfil hecho por barrido (Frame Generator curvo) o chapa con rolado
+        Dim rolado As Boolean = False
+        Try
+            If esPerfil AndAlso CType(p.ComponentDefinition, PartComponentDefinition).Features.SweepFeatures.Count > 0 Then rolado = True
+        Catch
+        End Try
+        Try
+            If p.SubType = "{9C464203-9BAE-11D3-8BAD-0060B0CE6BB4}" AndAlso CType(p.ComponentDefinition, SheetMetalComponentDefinition).Features.ContourRollFeatures.Count > 0 Then rolado = True
+        Catch
+        End Try
+        Dim forzado As String = LeerProp(p, "CODIGO").Trim().ToLower()
+        If forzado <> "" Then
+            codigo = forzado
+            ' piezas con CODIGO puesto (ej. perfil soldado h): si tiene agujeros -> version perforada
+            If agujeros Then
+                Select Case codigo
+                    Case "h" : codigo = "hp"
+                    Case "t" : codigo = "tp"
+                    Case "cu" : codigo = "cup"
+                    Case "ca" : codigo = "cap"
+                    Case "w" : codigo = "wp"
+                    Case "wt" : codigo = "wtp"
+                    Case "c" : codigo = "cp"
+                    Case "a" : codigo = "ap"
+                    Case "z" : codigo = "zp"
+                    Case "n" : codigo = "p"
+                    Case "f" : codigo = "fp"
+                End Select
+            End If
+        ElseIf rolado AndAlso esPerfil Then
+            Select Case codigo
+                Case "w" : codigo = "wr"
+                Case "c" : codigo = "cr"
+                Case "a" : codigo = "ar"
+                Case "wt" : codigo = "wtr"
+                Case "xc" : codigo = "xd"
+                Case "h" : codigo = "hr"
+                Case "pl" : codigo = "plr"
+            End Select
+        ElseIf rolado AndAlso esPlancha Then
+            codigo = "r"
+        ElseIf codigo = "" Then
+            revisar.AppendLine("  " & System.IO.Path.GetFileName(p.FullFileName) & ": no se pudo clasificar; pon la propiedad CODIGO (ej. mq, h, k)")
+            infoCache(p.FullFileName) = Nothing
+            Return Nothing
+        ElseIf esPlancha Then
+            If plegado Then
+                If agujeros Then codigo = "fp" Else codigo = "f"
+            ElseIf agujeros Then
+                codigo = "p"
+            ElseIf bisel Then
+                codigo = "b"
+            Else
+                codigo = "n"
+            End If
+        ElseIf agujeros Then
+            Select Case codigo
+                Case "w" : codigo = "wp"
+                Case "wt" : codigo = "wtp"
+                Case "c" : codigo = "cp"
+                Case "a" : codigo = "ap"
+                Case "z" : codigo = "zp"
+                Case "h" : codigo = "hp"
+                Case "t" : codigo = "tp"
+                Case "cu" : codigo = "cup"
+                Case "ca" : codigo = "cap"
+            End Select
+        End If
+        If tablaPart.Count > 0 And Not tablaPart.ContainsKey(codigo) Then
+            revisar.AppendLine("  " & System.IO.Path.GetFileName(p.FullFileName) & ": codigo '" & codigo & "' no esta en TABLA_MARCAS")
+        End If
+
+        Dim grado As String = LeerProp(p, "GRADO")
+        ' pieza DA vista por primera vez: el GRADO "ASTM A36" venia de tomarla como plancha
+        If esDA AndAlso daNuevo.Contains(p.FullFileName) AndAlso grado.ToUpper() = "ASTM A36" Then grado = ""
+        If grado = "" Then
+            Dim mat As String = ""
+            Try : mat = p.ActiveMaterial.DisplayName : Catch : End Try
+            If esDA Then
+                grado = mat.ToUpper()
+                revisar.AppendLine("  " & System.IO.Path.GetFileName(p.FullFileName) & ": " & perfil & " (Design Accelerator) -> mq, GRADO tomado del material de Inventor: " & grado & " (corrigelo si es otro)")
+            Else
+                grado = GradoPorDefecto(codigo, mat)
+            End If
+        End If
+        Dim caras As Integer = 0
+        Try : caras = p.ComponentDefinition.SurfaceBodies.Item(1).Faces.Count : Catch : End Try
+        Dim sLargo As String = Math.Round(largo).ToString(INV)
+        Dim sPeso As String = peso.ToString("0.00", INV)
+        ' la huella compara en mm enteros (como siempre); lo que se escribe lleva los decimales
+        Dim claveV As String = codigo & "|" & PerfilClave(perfil) & "|" & sLargo & "|" & grado.ToUpper() & "|" & sPeso & "|" & caras.ToString()
+        Dim acP As String = LeerProp(p, "ACABADO").Trim().ToUpper()
+        Dim clave As String = claveV & "|I:" & FirmaInercia(p.ComponentDefinition) & If(acP <> "", "|AC:" & acP, "")
+        res = New String() {codigo, perfil, Dec(largo), grado, sPeso, clave, claveV}
+    Catch exc As Exception
+        revisar.AppendLine("  " & System.IO.Path.GetFileName(p.FullFileName) & ": error " & exc.Message)
+        res = Nothing
+    End Try
+    infoCache(p.FullFileName) = res
+    Return res
+End Function
+
+' Devuelve el codigo base y llena perfil / largo (mm)
+Function Clasificar(p As PartDocument, gl As Double, ByRef perfil As String, ByRef largo As Double, _
+                    ByRef esPerfil As Boolean, ByRef esPlancha As Boolean, ByRef plegado As Boolean) As String
+    Dim dt As PropertySet = p.PropertySets.Item("Design Tracking Properties")
+    Dim perfilUsr As String = LeerProp(p, "PERFIL")
+
+    ' 1) Perfil de Frame Generator / Content Center
+    If gl > 0 Then
+        largo = gl
+        esPerfil = True
+        Dim fam As String = Familia(p)
+        Dim tam As String = PropDT(p, "Size Designation")
+        If tam = "" Then tam = CStr(dt.Item("Stock Number").Value)
+        tam = Regex.Replace(tam, "\s+-\s*[\d.,]+\s*$", "")
+        tam = Normalizar(tam)
+        Dim base As String = ""
+        Dim letras As String = ""
+        If fam.Contains("tee") Or fam.Contains("en t") Then
+            base = "wt" : letras = "WT"
+        ElseIf fam.Contains("i-beam") Or fam.Contains("en i") Or fam.Contains("viga") Or fam.Contains("w-shape") Or fam.Contains("wide flange") Then
+            base = "w" : letras = "W"
+        ElseIf (fam.Contains("channel") Or fam.Contains("canal") Or fam.Contains("en u") Or fam.Contains("en c") Or fam.Contains("c-section") Or fam.Contains("seccion c")) And (fam.Contains("cold") Or fam.Contains("formed") Or fam.Contains("plegad") Or fam.Contains("conformad") Or fam.Contains("lipped") Or fam.Contains("labio") Or fam.Contains("atiesad") Or fam.Contains("light gauge") Or fam.Contains("galvaniz")) Then
+            ' canal plegado en frio: C con ala atiesada (labio) o U simple
+            If fam.Contains("lip") Or fam.Contains("labio") Or fam.Contains("atiesad") Then
+                base = "ca" : letras = "C"
+            Else
+                base = "cu" : letras = "U"
+            End If
+        ElseIf fam.Contains("channel") Or fam.Contains("canal") Or fam.Contains("en u") Then
+            base = "c" : letras = "C"
+        ElseIf fam.Contains("angle") Or fam.Contains("ngulo") Then
+            base = "a" : letras = "L"
+        ElseIf fam.Contains("zee") Or fam.Contains("en z") Then
+            base = "z" : letras = "Z"
+        ElseIf fam.Contains("round tube") Or fam.Contains("pipe") Or (fam.Contains("redond") And fam.Contains("tub")) Then
+            base = "xc" : letras = "PIPE"
+        ElseIf fam.Contains("tube") Or fam.Contains("tubo") Then
+            base = "xs" : letras = "HSS"
+        ElseIf fam.Contains("round bar") Or fam.Contains("barra redonda") Then
+            base = "x" : letras = "RD"
+        ElseIf fam.Contains("flat") Or fam.Contains("pletina") Or fam.Contains("plana") Then
+            base = "pl" : letras = "FL"
+        ElseIf fam.Contains("bar") Or fam.Contains("barra") Then
+            base = "s" : letras = "SQ"
+        End If
+        If perfilUsr <> "" Then
+            perfil = Normalizar(perfilUsr)
+        ElseIf Regex.IsMatch(tam, "^[A-Za-z]") Then
+            perfil = tam
+        Else
+            perfil = letras & tam
+        End If
+        Return base
+    End If
+
+    ' 2) Chapa
+    Dim t As Double = 0, a As Double = 0, l As Double = 0
+    If p.SubType = "{9C464203-9BAE-11D3-8BAD-0060B0CE6BB4}" Then
+        Dim sm As SheetMetalComponentDefinition = CType(p.ComponentDefinition, SheetMetalComponentDefinition)
+        t = sm.Thickness.Value * 10
+        Try : plegado = (sm.Bends.Count > 0) : Catch : End Try
+        Try
+            If sm.HasFlatPattern Then
+                Dim w As Double = sm.FlatPattern.Width * 10, h As Double = sm.FlatPattern.Length * 10
+                a = Math.Min(w, h) : l = Math.Max(w, h)
+            End If
+        Catch
+        End Try
+    End If
+
+    ' 3) Pieza normal: caja envolvente
+    If a = 0 Then
+        Dim rb As Box = p.ComponentDefinition.RangeBox
+        Dim dims() As Double = {(rb.MaxPoint.X - rb.MinPoint.X) * 10, (rb.MaxPoint.Y - rb.MinPoint.Y) * 10, (rb.MaxPoint.Z - rb.MinPoint.Z) * 10}
+        Array.Sort(dims)
+        If t = 0 Then t = dims(0)
+        a = dims(1) : l = dims(2)
+    End If
+    largo = l
+    If t <= 0.25 * a Or plegado Then
+        esPlancha = True
+        If perfilUsr <> "" Then perfil = Normalizar(perfilUsr) Else perfil = "PL" & Dec(t) & "x" & Dec(a)
+        Return "n"
+    End If
+    If perfilUsr <> "" Then perfil = Normalizar(perfilUsr) Else perfil = Normalizar(CStr(dt.Item("Description").Value))
+    If perfil = "" Then perfil = "SOLIDO"
+    Return ""
+End Function
+
+' Agujeros: caras cilindricas con un borde circular completo.
+' En perfiles se ignoran los cilindros paralelos al eje de la pieza (radios de raiz, tubos).
+Function TieneAgujeros(p As PartDocument, ejeLargo As Integer) As Boolean
+    Try
+        For Each f As Face In p.ComponentDefinition.SurfaceBodies.Item(1).Faces
+            If f.SurfaceType <> SurfaceTypeEnum.kCylinderSurface Then Continue For
+            Dim cil As Cylinder = CType(f.Geometry, Cylinder)
+            If ejeLargo >= 0 Then
+                Dim comp() As Double = {Math.Abs(cil.AxisVector.X), Math.Abs(cil.AxisVector.Y), Math.Abs(cil.AxisVector.Z)}
+                If comp(ejeLargo) > 0.95 Then Continue For
+            End If
+            For Each e As Edge In f.Edges
+                If e.GeometryType = CurveTypeEnum.kCircleCurve Then Return True
+            Next
+        Next
+    Catch
+    End Try
+    Return False
+End Function
+
+' Bisel: cara plana inclinada respecto al espesor de la plancha
+Function TieneBisel(p As PartDocument, ejeEspesor As Integer) As Boolean
+    Try
+        For Each f As Face In p.ComponentDefinition.SurfaceBodies.Item(1).Faces
+            If f.SurfaceType <> SurfaceTypeEnum.kPlaneSurface Then Continue For
+            Dim pl As Plane = CType(f.Geometry, Plane)
+            Dim comp() As Double = {Math.Abs(pl.Normal.X), Math.Abs(pl.Normal.Y), Math.Abs(pl.Normal.Z)}
+            If comp(ejeEspesor) > 0.05 And comp(ejeEspesor) < 0.95 Then Return True
+        Next
+    Catch
+    End Try
+    Return False
+End Function
+
+Function EsComprado(d As Document, bs As BOMStructureEnum) As Boolean
+    If bs = BOMStructureEnum.kPurchasedBOMStructure Then Return True
+    Try
+        If CType(d, PartDocument).ComponentDefinition.IsContentMember Then
+            Dim fam As String = Familia(CType(d, PartDocument))
+            If Not (fam.Contains("structural") Or fam.Contains("perfil")) Then Return True
+        End If
+    Catch
+    End Try
+    Try
+        If (System.IO.File.GetAttributes(d.FullFileName) And System.IO.FileAttributes.ReadOnly) = System.IO.FileAttributes.ReadOnly Then
+            If EsDeVault(d.FullFileName) Then
+                Dim nom As String = System.IO.Path.GetFileName(d.FullFileName)
+                If Not protegidas.Contains(nom) Then protegidas.Add(nom)
+            End If
+            Return True
+        End If
+    Catch
+    End Try
+    Dim cod As String = LeerProp(d, "CODIGO").ToLower()
+    If cod = "hn" Or cod = "wl" Or cod = "e" Or cod = "st" Then Return True
+    Return False
+End Function
+
+Function DescCompra(d As Document) As String
+    Dim pn As String = PropDT(d, "Part Number")
+    Dim de As String = PropDT(d, "Description")
+    If de <> "" And Not pn.ToUpper().Contains(de.ToUpper()) Then Return (de & "  " & pn).Trim()
+    Return pn
+End Function
+
+Sub Sumar(dic As Dictionary(Of String, Integer), k As String)
+    If dic.ContainsKey(k) Then dic(k) += 1 Else dic(k) = 1
+End Sub
+
+Function Familia(p As PartDocument) As String
+    Dim fam As String = ""
+    For Each m As Match In Regex.Matches(PropDT(p, "Categories"), "<Category DisplayName=""([^""]+)""")
+        fam &= " " & m.Groups(1).Value
+    Next
+    Return (fam & " " & PropDT(p, "Description")).ToLower()
+End Function
+
+' ===================== DESIGN ACCELERATOR =====================
+' Pieza generada por el Design Accelerator (ejes, poleas, engranajes, correas, cadenas...).
+' Se reconoce por el set de propiedades FDesign (lo crea el DA en ejes, poleas, engranajes,
+' correas...), parametros da_* o la carpeta \Design Accelerator\. OJO: Categories NO sirve
+' para reconocerlas (tambien la tienen los perfiles de Frame Generator / Content Center).
+' Devuelve "" si no es DA; POLEA, ENGRANAJE, EJE, LEVA, MECANIZADO (se fabrican -> mq)
+' o COMERCIAL-CORREA, COMERCIAL-RODAMIENTO... (se compran -> lista de compras, sin marca).
+' La propiedad DA_TIPO se puede corregir a mano (ej. COMERCIAL-POLEA si la polea se compra).
+Function DaTipo(d As Document) As String
+    If daCache.ContainsKey(d.FullFileName) Then Return daCache(d.FullFileName)
+    Dim t As String = ""
+    Try
+        Dim esCC As Boolean = False
+        Try : esCC = CType(d, PartDocument).ComponentDefinition.IsContentMember : Catch : End Try
+        If d.DocumentType = DocumentTypeEnum.kPartDocumentObject AndAlso Not esCC AndAlso LeerParam(CType(d, PartDocument), "G_L") <= 0 Then
+            Dim guardado As String = LeerProp(d, "DA_TIPO").Trim().ToUpper()
+            Dim esDA As Boolean = False
+            If d.FullFileName.ToLower().Contains("\design accelerator\") Then esDA = True
+            Dim cat As String = PropDT(d, "Categories")
+            Dim txtCat As String = ""
+            For Each mm As Match In Regex.Matches(cat, "<Category DisplayName=""([^""]+)""")
+                txtCat &= " " & mm.Groups(1).Value.ToLower()
+            Next
+            For Each ps As PropertySet In d.PropertySets
+                If ps.Name = "FDesign" Then esDA = True
+            Next
+            Dim pd As PartComponentDefinition = CType(d, PartDocument).ComponentDefinition
+            For Each up As UserParameter In pd.Parameters.UserParameters
+                If up.Name.StartsWith("da_") Then
+                    esDA = True
+                    Exit For
+                End If
+            Next
+            If esDA Then
+                If guardado <> "" Then
+                    t = guardado
+                Else
+                    Dim txtNom As String = (System.IO.Path.GetFileNameWithoutExtension(d.FullFileName) & " " & PropDT(d, "Part Number")).ToLower()
+                    t = TipoPorTexto(txtNom)
+                    If t = "" Then t = TipoPorTexto(txtCat)
+                    If t = "" Then
+                        Dim txtF As String = ""
+                        For Each f As PartFeature In pd.Features
+                            txtF &= " " & f.Name.ToLower()
+                        Next
+                        t = TipoPorTexto(txtF)
+                    End If
+                    If t = "" Then t = "MECANIZADO"
+                    daNuevo.Add(d.FullFileName)
+                    EscribirProp(d, "DA_TIPO", t)
+                End If
+            End If
+        End If
+    Catch
+    End Try
+    daCache(d.FullFileName) = t
+    Return t
+End Function
+
+Function TipoPorTexto(s0 As String) As String
+    If s0.Trim() = "" Then Return ""
+    ' sin tildes ni enie (pinon, arbol, lengueta)
+    Dim sb As New StringBuilder()
+    For Each ch As Char In s0.Normalize(NormalizationForm.FormD)
+        If CharUnicodeInfo.GetUnicodeCategory(ch) <> UnicodeCategory.NonSpacingMark Then sb.Append(ch)
+    Next
+    Dim s As String = sb.ToString()
+    ' se fabrican (mecanizado)
+    If Contiene(s, "polea", "pulley", "sheave") Then Return "POLEA"
+    If Contiene(s, "engranaje", "gear", "pinon", "pinion", "catalina", "sprocket", "rueda dentada", "corona", "sin fin", "worm") Then Return "ENGRANAJE"
+    If Contiene(s, "eje", "shaft", "arbol") Then Return "EJE"
+    If Contiene(s, "leva", "cam ") Then Return "LEVA"
+    If Contiene(s, "acoplamiento", "coupling", "buje", "bocina", "brida", "flange") Then Return "MECANIZADO"
+    ' se compran
+    If Contiene(s, "correa", "belt", "faja") Then Return "COMERCIAL-CORREA"
+    If Contiene(s, "cadena", "chain") Then Return "COMERCIAL-CADENA"
+    If Contiene(s, "rodamiento", "bearing", "chumacera") Then Return "COMERCIAL-RODAMIENTO"
+    If Contiene(s, "chaveta", "lengueta", "key", "cuna") Then Return "COMERCIAL-CHAVETA"
+    If Contiene(s, "resorte", "muelle", "spring") Then Return "COMERCIAL-RESORTE"
+    If Contiene(s, "anillo", "seeger", "circlip", "retaining") Then Return "COMERCIAL-ANILLO"
+    If Contiene(s, "pasador", " pin") Then Return "COMERCIAL-PASADOR"
+    If Contiene(s, "perno", "tornillo", "bolt", "screw", "tuerca", "arandela") Then Return "COMERCIAL-PERNERIA"
+    Return ""
+End Function
+
+Function Contiene(s As String, ParamArray k() As String) As Boolean
+    For Each x As String In k
+        If s.Contains(x) Then Return True
+    Next
+    Return False
+End Function
+
+' "POLEA D424x95", "EJE D80x850" (D = diametro) (medidas de la caja envolvente, mm)
+Function DescDA(p As PartDocument, tipo As String) As String
+    Dim rb As Box = p.ComponentDefinition.RangeBox
+    Dim e() As Double = {(rb.MaxPoint.X - rb.MinPoint.X) * 10, (rb.MaxPoint.Y - rb.MinPoint.Y) * 10, (rb.MaxPoint.Z - rb.MinPoint.Z) * 10}
+    Array.Sort(e)
+    Dim r As String
+    If Math.Abs(e(2) - e(1)) <= 0.02 * e(2) Then
+        r = ChrW(216) & Math.Round(e(2)).ToString(INV) & "x" & Math.Round(e(0)).ToString(INV)      ' disco: polea, engranaje
+    ElseIf Math.Abs(e(1) - e(0)) <= 0.02 * e(1) Then
+        r = ChrW(216) & Math.Round(e(1)).ToString(INV) & "x" & Math.Round(e(2)).ToString(INV)      ' eje
+    Else
+        r = Math.Round(e(2)).ToString(INV) & "x" & Math.Round(e(1)).ToString(INV) & "x" & Math.Round(e(0)).ToString(INV)
+    End If
+    Return tipo & " " & r
+End Function
+
+' Pieza comercial del DA (correa, cadena, rodamiento...): sin marca y a la lista de compras
+Sub DaComercial(d As Document, tipo As String)
+    Try
+        CType(d, PartDocument).ComponentDefinition.BOMStructure = BOMStructureEnum.kPurchasedBOMStructure
+    Catch
+    End Try
+    If LeerProp(d, "MARCA") <> "" Then
+        ' tenia una marca de plancha por error (version anterior): se le quita
+        Dim dt As PropertySet = d.PropertySets.Item("Design Tracking Properties")
+        Dim desc As String = tipo.Replace("COMERCIAL-", "")
+        Dim nom As String = Regex.Replace(System.IO.Path.GetFileNameWithoutExtension(d.FullFileName), "\d+$", "").Trim().ToUpper()
+        If nom <> "" Then desc = nom
+        dt.Item("Part Number").Value = System.IO.Path.GetFileNameWithoutExtension(d.FullFileName)
+        dt.Item("Description").Value = desc
+        dt.Item("Stock Number").Value = ""
+        EscribirProp(d, "MARCA", "")
+        EscribirProp(d, "CODIGO_PIEZA", "")
+        revisar.AppendLine("  " & System.IO.Path.GetFileName(d.FullFileName) & ": pieza comercial del Design Accelerator (" & desc & "), se le quito la marca; pon su designacion comercial en Description")
+    End If
+End Sub
+
+' Partes DISTINTAS con el mismo Part Number: el BOM (fusion por numero de pieza) las junta en una fila
+Sub RevisarPartNumber(asm As AssemblyDocument)
+    Dim pn As New Dictionary(Of String, List(Of Document))
+    For Each d As Document In asm.AllReferencedDocuments
+        If d.DocumentType <> DocumentTypeEnum.kPartDocumentObject Then Continue For
+        Dim bs As BOMStructureEnum = BOMStructureEnum.kDefaultBOMStructure
+        Try : bs = CType(d, PartDocument).ComponentDefinition.BOMStructure : Catch : End Try
+        If bs = BOMStructureEnum.kReferenceBOMStructure OrElse bs = BOMStructureEnum.kPhantomBOMStructure Then Continue For
+        If EsComprado(d, bs) Then Continue For
+        Dim k As String = PropDT(d, "Part Number").Trim().ToUpper()
+        If k = "" Then Continue For
+        If Not pn.ContainsKey(k) Then pn(k) = New List(Of Document)
+        pn(k).Add(d)
+    Next
+    For Each kv As KeyValuePair(Of String, List(Of Document)) In pn
+        If kv.Value.Count < 2 Then Continue For
+        ' misma marca = piezas identicas: juntarlas es correcto
+        Dim mk As String = LeerProp(kv.Value(0), "MARCA")
+        Dim distintas As Boolean = (mk = "")
+        For Each d As Document In kv.Value
+            If LeerProp(d, "MARCA") <> mk Then distintas = True
+        Next
+        If Not distintas Then Continue For
+        Dim nombres As New List(Of String)
+        For Each d As Document In kv.Value
+            nombres.Add(System.IO.Path.GetFileName(d.FullFileName))
+        Next
+        revisar.AppendLine("  Part Number '" & kv.Key & "' repetido en " & String.Join(", ", nombres) & ": el BOM las junta en UNA fila")
+    Next
+End Sub
+
+Function GradoPorDefecto(codigo As String, mat As String) As String
+    Dim m As String = mat.ToLower()
+    If Not (m.StartsWith("acero") Or m.StartsWith("steel") Or m.StartsWith("gen")) Then Return mat
+    Select Case codigo
+        Case "xs", "ti", "tb" : Return "ASTM A500 GR.B"
+        Case "xc", "xd" : Return "ASTM A53 GR.B"
+        Case "w", "wp", "wr", "wt", "wtp", "wtr" : Return "ASTM A992"
+        Case Else : Return "ASTM A36"
+    End Select
+End Function
+
+Sub CargarTabla(asm As AssemblyDocument, carpeta As String)
+    Dim cands As New List(Of String)
+    Dim dir As String = System.IO.Path.GetDirectoryName(asm.FullFileName)
+    For i As Integer = 0 To 5
+        If dir Is Nothing OrElse dir = "" Then Exit For
+        cands.Add(System.IO.Path.Combine(dir, "TABLA_MARCAS.csv"))
+        cands.Add(System.IO.Path.Combine(dir, "iLogic", "TABLA_MARCAS.csv"))
+        Dim padre As System.IO.DirectoryInfo = System.IO.Directory.GetParent(dir)
+        If padre Is Nothing Then Exit For
+        dir = padre.FullName
+    Next
+    cands.Add(System.IO.Path.Combine(carpeta, "TABLA_MARCAS.csv"))
+    For Each c As String In cands
+        If Not System.IO.File.Exists(c) Then Continue For
+        For Each ln As String In System.IO.File.ReadAllLines(c, Encoding.UTF8)
+            Dim f() As String = ln.Split(";"c)
+            If f.Length < 3 Then Continue For
+            If f(0) = "CONJUNTO" And Not tablaConj.ContainsKey(f(1)) Then tablaConj(f(1)) = f(2)
+            If f(0) = "PARTE" And Not tablaPart.ContainsKey(f(1)) Then tablaPart(f(1)) = f(2)
+        Next
+        Exit Sub
+    Next
+    revisar.AppendLine("  No se encontro TABLA_MARCAS.csv: no se validan los codigos")
+End Sub
+
+Function Normalizar(s As String) As String
+    s = s.Trim().Replace(" ", "")
+    s = Regex.Replace(s, "(?<=\d)[X\*]", "x")
+    Return s
+End Function
+
+Function Fmt(v As Double) As String
+    Return Math.Round(v).ToString(INV)
+End Function
+
+' Valor del modelo sin redondear a entero: hasta 2 decimales, sin ceros de sobra (4.5, 232.4, 10)
+Function Dec(v As Double) As String
+    Return Math.Round(v, 2).ToString("0.##", INV)
+End Function
+
+' "PL4.5x232.4" -> "PL4x232" (la huella usa mm enteros, igual que antes de v3.5)
+Function PerfilClave(perfil As String) As String
+    Dim m As Match = Regex.Match(perfil, "^PL(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)$")
+    If Not m.Success Then Return perfil
+    Return "PL" & Fmt(Double.Parse(m.Groups(1).Value, INV)) & "x" & Fmt(Double.Parse(m.Groups(2).Value, INV))
+End Function
+
+Function LeerParam(p As PartDocument, nombre As String) As Double
+    Try
+        Return p.ComponentDefinition.Parameters.Item(nombre).Value * 10
+    Catch
+        Return 0
+    End Try
+End Function
+
+Function PropDT(d As Document, nombre As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Design Tracking Properties").Item(nombre).Value).Trim()
+    Catch
+        Return ""
+    End Try
+End Function
+
+Function LeerProp(d As Document, nombre As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Inventor User Defined Properties").Item(nombre).Value).Trim()
+    Catch
+        Return ""
+    End Try
+End Function
+
+Sub EscribirProp(d As Document, nombre As String, valor As String)
+    Try
+        Dim cu As PropertySet = d.PropertySets.Item("Inventor User Defined Properties")
+        Try
+            cu.Item(nombre).Value = valor
+        Catch
+            cu.Add(valor, nombre)
+        End Try
+    Catch
+    End Try
+End Sub
+
+' =====================================================================
+'  v3.6 - funciones para trabajar con Vault
+' =====================================================================
+' Archivo de la obra (dentro del espacio de trabajo del proyecto .ipj) y no de Content Center
+Function EsDeVault(ruta As String) As Boolean
+    Try
+        Dim prj As DesignProject = ThisApplication.DesignProjectManager.ActiveDesignProject
+        Dim ws As String = prj.WorkspacePath.TrimEnd("\"c) & "\"
+        Dim cc As String = ""
+        Try : cc = prj.ContentCenterPath.TrimEnd("\"c) & "\" : Catch : End Try
+        If cc <> "\" AndAlso cc <> "" AndAlso ruta.StartsWith(cc, StringComparison.OrdinalIgnoreCase) Then Return False
+        If ruta.IndexOf("\OldVersions\", StringComparison.OrdinalIgnoreCase) >= 0 Then Return False
+        Return ruta.StartsWith(ws, StringComparison.OrdinalIgnoreCase)
+    Catch
+        Return False
+    End Try
+End Function
+
+Function SoloLectura(ruta As String) As Boolean
+    Try
+        Return System.IO.File.Exists(ruta) AndAlso (System.IO.File.GetAttributes(ruta) And System.IO.FileAttributes.ReadOnly) = System.IO.FileAttributes.ReadOnly
+    Catch
+        Return False
+    End Try
+End Function
+
+' Revisa ANTES de tocar nada. Devuelve False si hay que detenerse.
+Function RevisarVault(asm As AssemblyDocument) As Boolean
+    Dim sil As Boolean = RuleArguments.Exists("silencioso")
+    Dim regP As String = System.IO.Path.Combine(CarpetaObra(asm), "_MARCAS_" & proy & ".csv")
+    If SoloLectura(regP) Then
+        MessageBox.Show("El registro de marcas esta PROTEGIDO en Vault (solo lectura):" & vbCrLf & regP & vbCrLf & vbCrLf & _
+            "Haz Check Out del registro desde Vault Explorer y vuelve a correr la regla." & vbCrLf & _
+            "No se cambio nada.", "TEKLA_NUMERACION", MessageBoxButtons.OK, MessageBoxIcon.Warning)
+        Return False
+    End If
+    If SoloLectura(asm.FullFileName) Then
+        MessageBox.Show("El ensamble " & System.IO.Path.GetFileName(asm.FullFileName) & " esta PROTEGIDO en Vault." & vbCrLf & _
+            "Haz Check Out (pestana Vault > Check Out, con sus dependencias) y vuelve a correr la regla." & vbCrLf & "No se cambio nada.", _
+            "TEKLA_NUMERACION", MessageBoxButtons.OK, MessageBoxIcon.Warning)
+        Return False
+    End If
+    Dim bloq As New List(Of String)
+    For Each d As Document In asm.AllReferencedDocuments
+        If EsDeVault(d.FullFileName) AndAlso SoloLectura(d.FullFileName) Then bloq.Add(System.IO.Path.GetFileName(d.FullFileName))
+    Next
+    If bloq.Count = 0 Then Return True
+    If sil Then Return True
+    Dim t As String = String.Join(vbCrLf & "  ", bloq.GetRange(0, Math.Min(15, bloq.Count)))
+    If bloq.Count > 15 Then t &= vbCrLf & "  ... y " & (bloq.Count - 15) & " mas"
+    Return MessageBox.Show(bloq.Count & " archivo(s) de la obra estan PROTEGIDOS en Vault (sin Check Out):" & vbCrLf & "  " & t & vbCrLf & vbCrLf & _
+        "Las piezas protegidas NO se numeran y los conjuntos protegidos no se podran guardar." & vbCrLf & _
+        "Recomendado: Cancelar, hacer Check Out del ensamble con sus dependencias y volver a correr." & vbCrLf & vbCrLf & _
+        "Continuar de todos modos?", "TEKLA_NUMERACION", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) = DialogResult.Yes
+End Function
+
+' Guarda el ensamble y los archivos modificados ANTES de escribir el registro.
+Function GuardarModelos(asm As AssemblyDocument) As String
+    If RuleArguments.Exists("no_guardar") Then Return "NO SE GUARDO (argumento no_guardar): guarda el ensamble para conservar los cambios."
+    Dim fallos As New List(Of String)
+    Try
+        asm.Save2(True)
+    Catch ex As Exception
+        fallos.Add(System.IO.Path.GetFileName(asm.FullFileName) & ": " & ex.Message)
+    End Try
+    For Each d As Document In asm.AllReferencedDocuments
+        If d.Dirty AndAlso EsDeVault(d.FullFileName) Then fallos.Add(System.IO.Path.GetFileName(d.FullFileName))
+    Next
+    If fallos.Count = 0 Then Return "Modelos GUARDADOS. Listo para Check In en Vault."
+    Return "ATENCION - NO SE PUDIERON GUARDAR (probablemente protegidos en Vault):" & vbCrLf & "  " & String.Join(vbCrLf & "  ", fallos) & vbCrLf & "Haz Check Out y guarda, o el registro no coincidira con esos archivos."
+End Function
+
+Function CarpetaHistorial(regPath As String) As String
+    Dim h As String = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(regPath), "_HISTORIAL")
+    Try
+        If Not System.IO.Directory.Exists(h) Then System.IO.Directory.CreateDirectory(h)
+        Return h
+    Catch
+        Return System.IO.Path.GetDirectoryName(regPath)
+    End Try
+End Function

@@ -1,0 +1,1270 @@
+' =====================================================================
+'  GENERAR_PLANOS  v2.3  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Genera el juego de planos de FABRICACION y HABILITADO de un ensamble
+'  ya numerado con TEKLA_NUMERACION, en un solo .idw con una hoja por plano,
+'  siguiendo la jerarquia:
+'
+'     PM1 (disposicion general)
+'       EE-C1  conjunto      -> EE-C1-xs1, EE-C1-p1   (habilitados)
+'       EE-C2  conjunto      -> EE-C2-xs1, EE-C2-b1   (habilitados)
+'       EE-V1  conjunto      -> EE-V1-wp1
+'
+'  Una pieza identica en varios conjuntos se habilita UNA sola vez, detras
+'  del conjunto que le dio la marca (propiedad CONJUNTO).
+'  La perneria (compras / Content Center) no se dibuja como habilitado:
+'  sale en la nota PERNERIA de cada conjunto.
+'
+'  Plantilla: "PLANTILLA COIMSER A3 - TEKLA.idw" (se busca en la carpeta
+'  del ensamble y en las superiores, tambien en \plantillas).
+'  Salida:    <carpeta ensamble>\PLANOS\<PLANTA>-<ENSAMBLE>-FAB.idw  + .pdf
+'
+'  v2 - MODO ACTUALIZACION (no crea otro plano):
+'   - Si el .idw ya existe (o ejecutas la regla desde el propio .idw) lo ABRE y:
+'       * hojas que ya existen  -> actualiza nota (cant., peso, escala) y globos;
+'                                  NO toca vistas, cotas ni lo que agregaste a mano
+'       * marcas nuevas         -> crea su hoja
+'       * marcas que ya no estan-> renombra la hoja "OBSOLETO ..." y la manda al final
+'                                  (no se borra nada)
+'       * hojas tuyas (sin marca)-> se quedan detras de la hoja que seguian
+'       * reordena todo: GA - conjunto - sus habilitados - conjunto - ...
+'   - Cada hoja queda identificada con un atributo (COIMSER_PLANOS / CLAVE),
+'     asi la reconoce aunque le cambies el nombre.
+'
+'  v2.1 - Nota de ubicacion (PERTENECE A / RUTA, de TEKLA_NUMERACION v2.2) y bloque de
+'         NOTAS DE FABRICACION leido de NOTAS_FABRICACION.txt (secciones [GENERAL],
+'         [CONJUNTO], [HABILITADO]); se edita el .txt y se vuelve a ejecutar la regla.
+'
+'  v2.5 - REFERENCIAS (NUEVA_REFERENCIA: skeletons, equipos existentes, estructura existente)
+'         se OCULTAN en todas las vistas y no cuentan para la escala ni para los globos.
+'  v2.4 - Si el modelo crecio y las vistas de una hoja existente ya no entran a su escala,
+'         la hoja se rehace a la escala que corresponde (argumento no_reencuadrar para evitarlo).
+'  v2.3 - Columnas de la lista de materiales ajustadas al texto. Al final aplica la regla
+'         ESTILO_PLANO (letra, capas y colores COIMSER) a todo el plano, tambien a los antiguos.
+'         Argumento estilo=NO para no aplicarla.
+'  v2.2 - Siempre usa el ensamble PRINCIPAL abierto aunque estes editando un subensamble
+'         (antes creaba un plano aparte para el subensamble). Inventor en espanol: OK.
+'  Argumentos opcionales: silencioso, plantilla=<ruta>, pdf=NO, nuevo (regenera desde cero),
+'                         solo_este (plano solo del subensamble que estas editando)
+' =====================================================================
+
+Sub Main()
+    silencioso = RuleArguments.Exists("silencioso")
+    TG = ThisApplication.TransientGeometry
+    Dim dwg As DrawingDocument = Nothing
+    Dim existia As Boolean = False
+    Dim asm As AssemblyDocument = TryCast(ThisDoc.Document, AssemblyDocument)
+    ' Si estas editando un subensamble en el sitio, la regla igual trabaja con el ensamble
+    ' PRINCIPAL abierto (un solo plano por planta). Argumento solo_este = plano del subensamble.
+    If asm IsNot Nothing AndAlso Not RuleArguments.Exists("solo_este") Then
+        Dim act As AssemblyDocument = TryCast(ThisApplication.ActiveDocument, AssemblyDocument)
+        If act IsNot Nothing AndAlso Not (act Is asm) Then
+            If UProp(act, "TIPO_ENSAMBLE").ToUpper() = "GENERAL" Then
+                ' dentro del ensamble GENERAL de la obra: el plano es de la planta que se edita
+                Dim pl As AssemblyDocument = PlantaDe(act, asm)
+                If pl IsNot Nothing Then asm = pl
+            Else
+                resumen.AppendLine("Se estaba editando " & System.IO.Path.GetFileName(asm.FullFileName) & ": se usa el ensamble principal " & System.IO.Path.GetFileName(act.FullFileName))
+                asm = act
+            End If
+        End If
+    End If
+    If asm IsNot Nothing AndAlso UProp(asm, "TIPO_ENSAMBLE").ToUpper() = "GENERAL" Then
+        MessageBox.Show("Este es el ensamble GENERAL de la obra." & vbCrLf & "Abre el ensamble de la planta (ej. ANT-EE.iam) y ejecuta la regla ahi.", "GENERAR_PLANOS")
+        Exit Sub
+    End If
+    If asm Is Nothing Then
+        dwg = TryCast(ThisDoc.Document, DrawingDocument)
+        If dwg IsNot Nothing Then
+            asm = EnsambleDelPlano(dwg)
+            existia = True
+        End If
+    End If
+    If asm Is Nothing Then
+        MessageBox.Show("Ejecuta la regla desde el ensamble general (.iam) o desde un plano generado por esta regla.", "GENERAR_PLANOS")
+        Exit Sub
+    End If
+    Dim carpeta As String = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(asm.FullFileName), "PLANOS")
+    Dim nombre As String = System.IO.Path.GetFileNameWithoutExtension(asm.FullFileName)
+    Try
+        planta = UProp(asm, "PLANTA")
+        proy = UProp(asm, "PROYECTO")
+        If planta = "" Then planta = "XX"
+
+        ' ---------- 1. leer la jerarquia ----------
+        Recorrer(asm.ComponentDefinition.Occurrences)
+        If conjOrden.Count = 0 AndAlso partDoc.Count = 0 Then
+            Aviso("No hay marcas. Ejecuta primero TEKLA_NUMERACION.")
+            Exit Sub
+        End If
+
+        ' ---------- 2. plano existente o nuevo ----------
+        System.IO.Directory.CreateDirectory(carpeta)
+        Dim ruta As String = System.IO.Path.Combine(carpeta, NomBase(planta, nombre) & "-FAB.idw")
+        If dwg IsNot Nothing Then ruta = dwg.FullFileName
+        If dwg Is Nothing Then
+            For Each od As Document In ThisApplication.Documents
+                If String.Compare(od.FullFileName, ruta, True) = 0 Then
+                    dwg = od
+                    Exit For
+                End If
+            Next
+            If RuleArguments.Exists("nuevo") Then
+                If dwg IsNot Nothing Then dwg.Close(True)
+                dwg = Nothing
+                If System.IO.File.Exists(ruta) Then System.IO.File.Delete(ruta)
+            ElseIf dwg Is Nothing AndAlso System.IO.File.Exists(ruta) Then
+                dwg = ThisApplication.Documents.Open(ruta, Not silencioso)
+            End If
+            existia = dwg IsNot Nothing
+        End If
+        If Not existia Then
+            Dim tpl As String = BuscarPlantilla(asm)
+            If tpl = "" Then
+                Aviso("No encuentro la plantilla 'PLANTILLA COIMSER A3 - TEKLA.idw'.")
+                Exit Sub
+            End If
+            resumen.AppendLine("Plantilla: " & tpl)
+            dwg = ThisApplication.Documents.Add(DocumentTypeEnum.kDrawingDocumentObject, tpl, Not silencioso)
+        Else
+            resumen.AppendLine("Actualizando: " & ruta)
+        End If
+        SetTag(dwg, "ENSAMBLE", asm.FullFileName)
+
+        ' ---------- 3. sincronizar hojas ----------
+        Sincronizar(dwg, asm, existia)
+
+        ' ---------- 3b. estilo COIMSER (regla ESTILO_PLANO) ----------
+        If Arg("estilo").ToUpper() <> "NO" Then AplicarEstilo(dwg, asm)
+
+        ' ---------- 4. propiedades y guardado ----------
+        Dim pSum As PropertySet = dwg.PropertySets.Item("Inventor Summary Information")
+        If CStr(pSum.Item("Title").Value) = "" Then pSum.Item("Title").Value = "FABRICACION " & planta & " " & nombre
+        Dim pDT As PropertySet = dwg.PropertySets.Item("Design Tracking Properties")
+        If Not existia Then pDT.Item("Part Number").Value = NomBase(planta, nombre) & "-FAB"
+        If proy <> "" AndAlso CStr(pDT.Item("Project").Value) = "" Then pDT.Item("Project").Value = proy
+        If existia Then
+            dwg.Save()
+        Else
+            dwg.SaveAs(ruta, False)
+        End If
+        resumen.AppendLine("Guardado: " & ruta & "  (" & dwg.Sheets.Count & " hojas)")
+        Dim pdfOk As Boolean = True
+        If Arg("pdf").ToUpper() <> "NO" Then pdfOk = ExportarPdf(dwg, System.IO.Path.ChangeExtension(ruta, ".pdf"))
+        Dim nh As Integer = dwg.Sheets.Count
+        If silencioso AndAlso Not (dwg Is ThisDoc.Document) Then dwg.Close(True)
+        Dim m As String = If(existia, "Plano ACTUALIZADO: ", "Plano CREADO: ") & nh & " hojas" & vbCrLf & ruta & vbCrLf
+        If hNuevas.Count > 0 Then m = m & "Hojas nuevas: " & String.Join(", ", hNuevas) & vbCrLf
+        If hActual.Count > 0 Then m = m & "Hojas actualizadas: " & hActual.Count & vbCrLf
+        If hObsol.Count > 0 Then m = m & "OBSOLETAS (revisar / anular): " & String.Join(", ", hObsol) & vbCrLf
+        If Not pdfOk Then m = m & "(no se pudo exportar el PDF)"
+        Aviso(m)
+    Catch ex As Exception
+        resumen.AppendLine("ERROR: " & ex.Message & vbCrLf & ex.StackTrace)
+        Aviso("Error generando planos: " & ex.Message)
+    Finally
+        Try
+            System.IO.Directory.CreateDirectory(carpeta)
+            System.IO.File.WriteAllText(System.IO.Path.Combine(carpeta, "GENERAR_PLANOS.log"), resumen.ToString())
+        Catch
+        End Try
+    End Try
+End Sub
+
+Private planta As String = ""
+Private proy As String = ""
+Private silencioso As Boolean
+Private TG As TransientGeometry
+Private resumen As New System.Text.StringBuilder
+Private conjOrden As New List(Of String)
+Private conjDoc As New Dictionary(Of String, Document)
+Private cantConj As New Dictionary(Of String, Integer)
+Private partDoc As New Dictionary(Of String, Document)
+Private cantParte As New Dictionary(Of String, Integer)
+Private partesDe As New Dictionary(Of String, List(Of String))
+Private hNuevas As New List(Of String)
+Private hActual As New List(Of String)
+Private hObsol As New List(Of String)
+Private Const ATR As String = "COIMSER_PLANOS"
+Private notasFab As Dictionary(Of String, String) = Nothing
+Private modoGA As Boolean = False
+Private Const BORDE As String = "COIMSER-A3-ZONAS"
+Private Const ROTULO As String = "COIMSER-A3-ROTULO"
+Private Const XMAX As Double = 41.0
+Private Const YMAX As Double = 28.7
+
+' ===================== jerarquia =====================
+Sub Recorrer(occs As Object)
+    For Each occ As ComponentOccurrence In occs
+        If occ.Suppressed Then Continue For
+        Dim d As Document = Nothing
+        Dim bs As BOMStructureEnum = BOMStructureEnum.kDefaultBOMStructure
+        Try
+            d = occ.Definition.Document
+            bs = occ.BOMStructure
+        Catch
+            Continue For
+        End Try
+        If bs = BOMStructureEnum.kReferenceBOMStructure OrElse bs = BOMStructureEnum.kPurchasedBOMStructure Then Continue For
+        If UProp(d, "EQUIPO").ToUpper() = "SI" Then Continue For
+        If UProp(d, "REFERENCIA").ToUpper() = "SI" Then Continue For
+        Dim mk As String = UProp(d, "MARCA")
+        If d.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+            If mk <> "" AndAlso bs <> BOMStructureEnum.kPhantomBOMStructure Then
+                Sumar(cantConj, mk)
+                If Not conjDoc.ContainsKey(mk) Then
+                    conjDoc(mk) = d
+                    conjOrden.Add(mk)
+                End If
+            End If
+            Recorrer(occ.SubOccurrences)
+        Else
+            If mk = "" Then
+                resumen.AppendLine("Sin marca (no se habilita): " & occ.Name)
+                Continue For
+            End If
+            Sumar(cantParte, mk)
+            If Not partDoc.ContainsKey(mk) Then
+                partDoc(mk) = d
+                Dim own As String = UProp(d, "CONJUNTO")
+                If own = "" Then own = "SUELTAS"
+                If Not partesDe.ContainsKey(own) Then partesDe(own) = New List(Of String)
+                partesDe(own).Add(mk)
+            End If
+        End If
+    Next
+End Sub
+
+Sub Sumar(dic As Dictionary(Of String, Integer), k As String)
+    If dic.ContainsKey(k) Then dic(k) = dic(k) + 1 Else dic(k) = 1
+End Sub
+
+' ===================== hojas =====================
+Function NuevaHoja(dwg As DrawingDocument) As Sheet
+    Dim sh As Sheet = dwg.Sheets.Add(DrawingSheetSizeEnum.kA3DrawingSheetSize, PageOrientationTypeEnum.kLandscapePageOrientation)
+    sh.Activate()
+    Try
+        If sh.Border Is Nothing Then
+            sh.AddBorder(dwg.BorderDefinitions.Item(BORDE))
+        ElseIf sh.Border.Name <> BORDE Then
+            sh.Border.Delete()
+            sh.AddBorder(dwg.BorderDefinitions.Item(BORDE))
+        End If
+    Catch
+    End Try
+    Try
+        If sh.TitleBlock Is Nothing Then sh.AddTitleBlock(dwg.TitleBlockDefinitions.Item(ROTULO))
+    Catch
+    End Try
+    Return sh
+End Function
+
+' ===================== sincronizacion =====================
+Sub Sincronizar(dwg As DrawingDocument, asm As AssemblyDocument, existia As Boolean)
+    ' orden deseado (jerarquia)
+    Dim orden As New List(Of String)
+    orden.Add("GA")
+    For Each mk As String In conjOrden
+        orden.Add("C|" & mk)
+        For Each pm As String In ListaPartes(mk)
+            orden.Add("H|" & pm)
+        Next
+    Next
+    For Each own As String In New List(Of String)(partesDe.Keys)
+        If conjDoc.ContainsKey(own) Then Continue For
+        For Each pm As String In ListaPartes(own)
+            orden.Add("H|" & pm)
+        Next
+    Next
+
+    ' hojas existentes: generadas (con clave) y del usuario (ancladas a la anterior)
+    Dim hojaDe As New Dictionary(Of String, Sheet)
+    Dim usuario As New List(Of Sheet)
+    Dim ancla As New List(Of String)
+    If existia Then
+        Dim ultima As String = "INICIO"
+        For Each s As Sheet In dwg.Sheets
+            Dim k As String = ClaveHoja(s)
+            If k <> "" AndAlso k <> "REP" AndAlso Not hojaDe.ContainsKey(k) Then
+                hojaDe(k) = s
+                SetTag(s, "CLAVE", k)
+                ultima = k
+            Else
+                usuario.Add(s)
+                ancla.Add(ultima)
+            End If
+        Next
+    End If
+
+    ' crear o actualizar
+    For Each k As String In orden
+        If hojaDe.ContainsKey(k) Then
+            Try
+                Actualizar(hojaDe(k), k, asm)
+                hActual.Add(Marca(k))
+            Catch ex As Exception
+                resumen.AppendLine("  no se pudo actualizar " & k & ": " & ex.Message)
+            End Try
+        Else
+            Dim sh As Sheet
+            If Not existia AndAlso k = "GA" Then
+                sh = dwg.Sheets.Item(1)
+            Else
+                sh = NuevaHoja(dwg)
+            End If
+            Construir(sh, k, asm)
+            SetTag(sh, "CLAVE", k)
+            hojaDe(k) = sh
+            If existia Then hNuevas.Add(Marca(k))
+        End If
+    Next
+
+    ' obsoletas: se renombran, no se borran
+    Dim obsoletas As New List(Of String)
+    For Each k As String In hojaDe.Keys
+        If orden.Contains(k) Then Continue For
+        obsoletas.Add(k)
+        Dim s As Sheet = hojaDe(k)
+        Dim base As String = NombreBase(s)
+        If Not base.StartsWith("OBSOLETO") Then s.Name = "OBSOLETO " & base
+        SetTag(s, "ESTADO", "OBSOLETO " & DateTime.Now.ToString("dd/MM/yyyy"))
+        hObsol.Add(Marca(k))
+    Next
+
+    ' orden final
+    Dim final As New List(Of Sheet)
+    AgregarAnclados(final, usuario, ancla, "INICIO")
+    For Each k As String In orden
+        final.Add(hojaDe(k))
+        AgregarAnclados(final, usuario, ancla, k)
+    Next
+    For Each k As String In obsoletas
+        final.Add(hojaDe(k))
+        AgregarAnclados(final, usuario, ancla, k)
+    Next
+    For Each s As Sheet In usuario
+        If Not final.Contains(s) Then final.Add(s)
+    Next
+    Reordenar(dwg, final)
+    dwg.Sheets.Item(1).Activate()
+End Sub
+
+Sub AgregarAnclados(final As List(Of Sheet), usuario As List(Of Sheet), ancla As List(Of String), k As String)
+    For i As Integer = 0 To usuario.Count - 1
+        If ancla(i) = k AndAlso Not final.Contains(usuario(i)) Then final.Add(usuario(i))
+    Next
+End Sub
+
+Sub Reordenar(dwg As DrawingDocument, final As List(Of Sheet))
+    Try
+        Dim pane As BrowserPane = PanelModelo(dwg)
+        If Not (dwg.Sheets.Item(1) Is final(0)) Then
+            pane.Reorder(pane.GetBrowserNodeFromObject(dwg.Sheets.Item(1)), True, pane.GetBrowserNodeFromObject(final(0)))
+        End If
+        For i As Integer = 1 To final.Count - 1
+            pane.Reorder(pane.GetBrowserNodeFromObject(final(i - 1)), False, pane.GetBrowserNodeFromObject(final(i)))
+        Next
+    Catch ex As Exception
+        resumen.AppendLine("  reordenar: " & ex.Message)
+    End Try
+End Sub
+
+' Clave de una hoja: atributo, o se deduce del nombre (planos de la v1)
+Function ClaveHoja(s As Sheet) As String
+    Dim k As String = GetTag(s, "CLAVE")
+    If k <> "" Then Return k
+    Dim b As String = NombreBase(s)
+    If b.StartsWith("DISPOSICION GENERAL") Then Return "GA"
+    If b.StartsWith("CONJUNTO ") Then Return "C|" & b.Substring(9).Trim()
+    If b.StartsWith("HABILITADO ") Then Return "H|" & b.Substring(11).Trim()
+    Return ""
+End Function
+
+Function NombreBase(s As Sheet) As String
+    Return System.Text.RegularExpressions.Regex.Replace(s.Name, ":\d+$", "")
+End Function
+
+Function Marca(k As String) As String
+    If k = "GA" Then Return "GA"
+    Return k.Substring(2)
+End Function
+
+Function ListaPartes(own As String) As List(Of String)
+    Dim l As New List(Of String)
+    If partesDe.ContainsKey(own) Then l.AddRange(partesDe(own))
+    l.Sort(AddressOf CompararMarca)
+    Return l
+End Function
+
+Function DocDeClave(k As String, asm As AssemblyDocument) As Document
+    If k = "GA" Then Return asm
+    If k.StartsWith("C|") Then Return conjDoc(Marca(k))
+    Return partDoc(Marca(k))
+End Function
+
+' ===================== hojas nuevas =====================
+Sub Construir(sh As Sheet, k As String, asm As AssemblyDocument)
+    Dim d As Document = DocDeClave(k, asm)
+    Dim den As Double
+    Dim v() As DrawingView
+    If k = "GA" Then
+        sh.Name = "DISPOSICION GENERAL " & planta
+        v = Vistas(sh, d, 2, 8.5, 25, YMAX, den)
+        AcotarTotal(sh, v(0), True, True)
+        AcotarTotal(sh, v(1), False, True)
+        Dim pl As PartsList = ListaPiezas(sh, v(0), asm, PartsListLevelEnum.kStructured)
+        modoGA = True
+        Globos(sh, v(0), asm.ComponentDefinition.Occurrences, Nothing)
+        modoGA = False
+        Iso(sh, d, 26, 8.5, XMAX, LimiteInferior(pl))
+    ElseIf k.StartsWith("C|") Then
+        sh.Name = "CONJUNTO " & Marca(k)
+        v = Vistas(sh, d, 2, 8.5, 25, YMAX, den)
+        AcotarTotal(sh, v(0), True, True)
+        AcotarTotal(sh, v(1), False, True)
+        Dim pl As PartsList = ListaPiezas(sh, v(0), CType(d, AssemblyDocument), PartsListLevelEnum.kPartsOnly)
+        Globos(sh, v(0), CType(d, AssemblyDocument).ComponentDefinition.Occurrences.AllLeafOccurrences, Nothing)
+        Iso(sh, d, 26, 8.5, XMAX, LimiteInferior(pl))
+    Else
+        sh.Name = "HABILITADO " & Marca(k)
+        v = Vistas(sh, d, 2, 8.5, 40, YMAX, den)
+        AcotarTotal(sh, v(0), True, True)
+        AcotarTotal(sh, v(1), False, True)
+        AcotarTotal(sh, v(2), True, False)
+        Agujeros(sh, v(0))
+    End If
+    SetTag(v(0), "BASE", "SI")
+    Dim nt As GeneralNote = Nota(sh, TextoNota(k, asm, den))
+    NotaFabricacion(sh, k, asm)
+    resumen.AppendLine("  + " & k & "  escala 1:" & den)
+End Sub
+
+' ===================== hojas existentes =====================
+' Solo nota y globos. Vistas, cotas, lista y lo agregado a mano no se tocan.
+Sub Actualizar(sh As Sheet, k As String, asm As AssemblyDocument)
+    Dim d As Document = DocDeClave(k, asm)
+    Dim b As String = NombreBase(sh)
+    If b.StartsWith("OBSOLETO ") Then
+        sh.Name = b.Substring(9)
+        SetTag(sh, "ESTADO", "")
+    End If
+    Dim v As DrawingView = VistaBase(sh, d)
+    ' el modelo crecio: si las vistas ya no entran a su escala, se rehace la hoja
+    If v IsNot Nothing AndAlso Not RuleArguments.Exists("no_reencuadrar") Then
+        Dim nec As Double = DenNecesario(d, 2, 8.5, If(k.StartsWith("H|"), 40, 25), YMAX)
+        Dim act As Double = Math.Round(1 / v.Scale, 1)
+        If act < nec - 0.01 Then
+            LimpiarHoja(sh)
+            Construir(sh, k, asm)
+            resumen.AppendLine("  ~ " & k & ": el modelo crecio (a 1:" & act & " ya no entra), hoja rehecha")
+            Exit Sub
+        End If
+    End If
+    Dim den As Double = 1
+    If v IsNot Nothing Then den = Math.Round(1 / v.Scale, 1)
+    ' referencias agregadas despues (skeleton, equipo existente): ocultas en todas las vistas
+    For Each dv As DrawingView In sh.DrawingViews
+        Try
+            OcultarRef(dv, dv.ReferencedDocumentDescriptor.ReferencedDocument)
+        Catch
+        End Try
+    Next
+    ' nota
+    Dim txt As String = TextoNota(k, asm, den)
+    Dim vieja As GeneralNote = Nothing
+    For Each gn As GeneralNote In sh.DrawingNotes.GeneralNotes
+        If GetTag(gn, "NOTA") = "SI" OrElse gn.Text.StartsWith("PROYECTO:") OrElse gn.Text.StartsWith("CONJUNTO:") OrElse gn.Text.StartsWith("HABILITADO:") Then
+            vieja = gn
+            Exit For
+        End If
+    Next
+    If vieja Is Nothing Then
+        Nota(sh, txt)
+    ElseIf vieja.Text.Replace(vbCr, "").Replace(vbLf, "") <> txt.Replace(vbCr, "").Replace(vbLf, "") Then
+        Dim pos As Point2d = vieja.Position
+        vieja.Delete()
+        Dim nn As GeneralNote = sh.DrawingNotes.GeneralNotes.AddFitted(pos, txt)
+        SetTag(nn, "NOTA", "SI")
+    End If
+    NotaFabricacion(sh, k, asm)
+    ' globos: marca actual en los existentes + globos de marcas nuevas
+    Dim hechos As New List(Of String)
+    For Each bl As Balloon In sh.Balloons
+        For Each bvs As BalloonValueSet In bl.BalloonValueSets
+            Try
+                Dim bd As Document = bvs.ReferencedRow.BOMRow.ComponentDefinitions.Item(1).Document
+                Dim mk As String = UProp(bd, "MARCA")
+                If mk <> "" Then
+                    If bvs.OverrideValue <> mk Then bvs.OverrideValue = mk
+                    If Not hechos.Contains(mk) Then hechos.Add(mk)
+                End If
+            Catch
+            End Try
+        Next
+    Next
+    If v IsNot Nothing AndAlso Not k.StartsWith("H|") Then
+        If k = "GA" Then
+            modoGA = True
+            Globos(sh, v, asm.ComponentDefinition.Occurrences, hechos)
+            modoGA = False
+        Else
+            Globos(sh, v, CType(d, AssemblyDocument).ComponentDefinition.Occurrences.AllLeafOccurrences, hechos)
+        End If
+    End If
+End Sub
+
+' Ocurrencia de equipo (EQUIPO = SI) que contiene a occ, o Nothing
+Function EquipoDe(occ As ComponentOccurrence) As ComponentOccurrence
+    Dim o As ComponentOccurrence = occ
+    Dim n As Integer = 0
+    Do While o IsNot Nothing AndAlso n < 20
+        Try
+            If UProp(o.Definition.Document, "EQUIPO").ToUpper() = "SI" Then Return o
+        Catch
+        End Try
+        o = o.ParentOccurrence
+        n = n + 1
+    Loop
+    Return Nothing
+End Function
+
+Function PropInst(occ As ComponentOccurrence, n As String) As String
+    Try
+        Dim nat As ComponentOccurrence = occ
+        Try
+            If occ.ParentOccurrence IsNot Nothing Then nat = CType(occ, ComponentOccurrenceProxy).NativeObject
+        Catch
+        End Try
+        If Not nat.OccurrencePropertySetsEnabled Then Return ""
+        Return CStr(nat.OccurrencePropertySets.Item(1).Item(n).Value)
+    Catch
+        Return ""
+    End Try
+End Function
+
+Function VistaBase(sh As Sheet, d As Document) As DrawingView
+    Dim prim As DrawingView = Nothing
+    For Each v As DrawingView In sh.DrawingViews
+        If GetTag(v, "BASE") = "SI" Then Return v
+        Try
+            If prim Is Nothing AndAlso v.ReferencedDocumentDescriptor.ReferencedDocument Is d Then prim = v
+        Catch
+        End Try
+    Next
+    If prim Is Nothing AndAlso sh.DrawingViews.Count > 0 Then prim = sh.DrawingViews.Item(1)
+    Return prim
+End Function
+
+Function TextoNota(k As String, asm As AssemblyDocument, den As Double) As String
+    Dim t As String
+    If k = "GA" Then
+        Dim peso As Double = 0
+        For Each occ As ComponentOccurrence In asm.ComponentDefinition.Occurrences
+            Try
+                If Not occ.Suppressed AndAlso occ.BOMStructure <> BOMStructureEnum.kReferenceBOMStructure Then peso = peso + Num(UProp(occ.Definition.Document, "PESO"))
+            Catch
+            End Try
+        Next
+        t = "PROYECTO: " & proy & "     PLANTA: " & planta & "     ENSAMBLE: " & System.IO.Path.GetFileNameWithoutExtension(asm.FullFileName) & vbCrLf
+        t = t & "CONJUNTOS: " & conjOrden.Count & " tipos     PIEZAS DE HABILITADO: " & partDoc.Count & " marcas" & vbCrLf
+        t = t & "PESO TOTAL (sin perneria): " & peso.ToString("0.0") & " kg     ESCALA 1:" & den
+    ElseIf k.StartsWith("C|") Then
+        Dim mk As String = Marca(k)
+        Dim d As Document = conjDoc(mk)
+        Dim n As Integer = cantConj(mk)
+        Dim pu As Double = Num(UProp(d, "PESO"))
+        Dim per As String = UProp(d, "PERNERIA")
+        If per = "" Then per = "NO REQUIERE"
+        t = "CONJUNTO: " & mk & "     " & DProp(d, "Description") & "     CANT.: " & n & vbCrLf
+        t = t & "PESO UNIT.: " & pu.ToString("0.00") & " kg     PESO TOTAL: " & (pu * n).ToString("0.00") & " kg     ESCALA 1:" & den & vbCrLf
+        t = t & "PERNERIA (por conjunto): " & per & vbCrLf
+        Dim pa As String = UProp(d, "PERTENECE_A")
+        If pa <> "" Then t = t & "PERTENECE A: " & pa & "     RUTA: " & UProp(d, "RUTA") & vbCrLf
+        If UProp(d, "TAGS") <> "" Then t = t & "TAG: " & UProp(d, "TAGS") & "  (+ globo)" & vbCrLf
+        t = t & "MODELO: " & System.IO.Path.GetFileName(d.FullFileName)
+    Else
+        Dim mk As String = Marca(k)
+        Dim d As Document = partDoc(mk)
+        Dim n As Integer = cantParte(mk)
+        Dim own As String = UProp(d, "CONJUNTO")
+        Dim pu As Double = Num(UProp(d, "PESO"))
+        Dim pa As String = UProp(d, "PERTENECE_A")
+        If pa = "" Then pa = own
+        t = "HABILITADO: " & mk & "     CANT.: " & n & " (planta " & planta & ")     PERTENECE A: " & pa & vbCrLf
+        t = t & "PERFIL: " & DProp(d, "Description") & "     LONG.: " & UProp(d, "LONGITUD") & " mm     MATERIAL: " & UProp(d, "GRADO") & vbCrLf
+        t = t & "PESO UNIT.: " & pu.ToString("0.00") & " kg     PESO TOTAL: " & (pu * n).ToString("0.00") & " kg     ESCALA 1:" & den & vbCrLf
+        t = t & "MODELO: " & System.IO.Path.GetFileName(d.FullFileName)
+    End If
+    Return t
+End Function
+
+' ===================== notas de fabricacion =====================
+Sub NotaFabricacion(sh As Sheet, k As String, asm As AssemblyDocument)
+    Try
+        If notasFab Is Nothing Then CargarNotasFab(asm)
+        Dim sec As String = "GENERAL"
+        If k.StartsWith("C|") Then sec = "CONJUNTO"
+        If k.StartsWith("H|") Then sec = "HABILITADO"
+        Dim txt As String = ""
+        If notasFab.ContainsKey(sec) Then txt = notasFab(sec)
+        Dim vieja As GeneralNote = Nothing
+        For Each gn As GeneralNote In sh.DrawingNotes.GeneralNotes
+            If GetTag(gn, "NOTA") = "FAB" Then
+                vieja = gn
+                Exit For
+            End If
+        Next
+        If vieja IsNot Nothing Then
+            If vieja.Text.Replace(vbCr, "").Replace(vbLf, "") = txt.Replace(vbCr, "").Replace(vbLf, "") Then Exit Sub
+            vieja.Delete()
+        End If
+        If txt = "" Then Exit Sub
+        Dim nn As GeneralNote = sh.DrawingNotes.GeneralNotes.AddFitted(TG.CreatePoint2d(24.5, 7.4), txt)
+        SetTag(nn, "NOTA", "FAB")
+    Catch ex As Exception
+        resumen.AppendLine("  nota fabricacion: " & ex.Message)
+    End Try
+End Sub
+
+' Corre ESTILO_PLANO sobre el plano (sin guardar ni rehacer las listas: GENERAR guarda despues)
+Sub AplicarEstilo(dwg As DrawingDocument, asm As AssemblyDocument)
+    Dim regla As String = ""
+    Dim dir As String = System.IO.Path.GetDirectoryName(asm.FullFileName)
+    For lvl As Integer = 0 To 6
+        If dir Is Nothing Then Exit For
+        For Each sd As String In New String() {"", "iLogic", "plantillas"}
+            Dim p As String = System.IO.Path.Combine(System.IO.Path.Combine(dir, sd), "ESTILO_PLANO.iLogicVb")
+            If regla = "" AndAlso System.IO.File.Exists(p) Then regla = p
+        Next
+        dir = System.IO.Path.GetDirectoryName(dir)
+    Next
+    If regla = "" Then
+        resumen.AppendLine("  (sin ESTILO_PLANO.iLogicVb: el plano queda con los estilos de la plantilla)")
+        Exit Sub
+    End If
+    Try
+        Dim m As NameValueMap = ThisApplication.TransientObjects.CreateNameValueMap()
+        m.Add("silencioso", "1")
+        m.Add("no_guardar", "1")
+        m.Add("sin_listas", "1")
+        Dim r As Integer = iLogicVb.Automation.RunExternalRuleWithArguments(dwg, regla, m)
+        resumen.AppendLine("Estilo COIMSER aplicado (" & regla & ")" & If(r <> 0, "  codigo " & r, ""))
+    Catch ex As Exception
+        resumen.AppendLine("  no se pudo aplicar ESTILO_PLANO: " & ex.Message)
+    End Try
+End Sub
+
+Sub CargarNotasFab(asm As AssemblyDocument)
+    notasFab = New Dictionary(Of String, String)
+    Dim archivo As String = ""
+    Dim dir As String = System.IO.Path.GetDirectoryName(asm.FullFileName)
+    For lvl As Integer = 0 To 6
+        If dir Is Nothing Then Exit For
+        For Each sd As String In New String() {"", "iLogic", "plantillas"}
+            Dim p As String = System.IO.Path.Combine(System.IO.Path.Combine(dir, sd), "NOTAS_FABRICACION.txt")
+            If archivo = "" AndAlso System.IO.File.Exists(p) Then archivo = p
+        Next
+        dir = System.IO.Path.GetDirectoryName(dir)
+    Next
+    If archivo = "" Then
+        resumen.AppendLine("  (sin NOTAS_FABRICACION.txt: no se agregan notas de fabricacion)")
+        Exit Sub
+    End If
+    Dim sec As String = ""
+    Dim sb As New System.Text.StringBuilder
+    For Each ln As String In System.IO.File.ReadAllLines(archivo, System.Text.Encoding.UTF8)
+        Dim t As String = ln.TrimEnd()
+        If t.StartsWith("[") AndAlso t.EndsWith("]") Then
+            If sec <> "" Then notasFab(sec) = sb.ToString().Trim()
+            sec = t.Trim("["c, "]"c).ToUpper()
+            sb.Clear()
+        ElseIf sec <> "" AndAlso Not t.StartsWith("#") Then
+            sb.AppendLine(t)
+        End If
+    Next
+    If sec <> "" Then notasFab(sec) = sb.ToString().Trim()
+    resumen.AppendLine("Notas de fabricacion: " & archivo)
+End Sub
+
+' ===================== atributos (identifican hojas, vistas y notas) =====================
+Function GetTag(o As Object, n As String) As String
+    Try
+        Dim sets As AttributeSets = o.AttributeSets
+        If sets.NameIsUsed(ATR) Then
+            Dim a As AttributeSet = sets.Item(ATR)
+            If a.NameIsUsed(n) Then Return CStr(a.Item(n).Value)
+        End If
+    Catch
+    End Try
+    Return ""
+End Function
+
+Sub SetTag(o As Object, n As String, v As String)
+    Try
+        Dim sets As AttributeSets = o.AttributeSets
+        Dim a As AttributeSet
+        If sets.NameIsUsed(ATR) Then
+            a = sets.Item(ATR)
+        Else
+            a = sets.Add(ATR)
+        End If
+        If a.NameIsUsed(n) Then
+            a.Item(n).Value = v
+        Else
+            a.Add(n, ValueTypeEnum.kStringType, v)
+        End If
+    Catch ex As Exception
+        resumen.AppendLine("  atributo " & n & ": " & ex.Message)
+    End Try
+End Sub
+
+Function EnsambleDelPlano(dwg As DrawingDocument) As AssemblyDocument
+    Dim r As String = GetTag(dwg, "ENSAMBLE")
+    If r <> "" AndAlso System.IO.File.Exists(r) Then
+        For Each od As Document In ThisApplication.Documents
+            If String.Compare(od.FullFileName, r, True) = 0 Then Return TryCast(od, AssemblyDocument)
+        Next
+        Return TryCast(ThisApplication.Documents.Open(r, False), AssemblyDocument)
+    End If
+    Try
+        For Each s As Sheet In dwg.Sheets
+            If NombreBase(s).StartsWith("DISPOSICION GENERAL") Then
+                Return TryCast(s.DrawingViews.Item(1).ReferencedDocumentDescriptor.ReferencedDocument, AssemblyDocument)
+            End If
+        Next
+    Catch
+    End Try
+    Return Nothing
+End Function
+
+
+' ===================== vistas =====================
+' Base con la mayor dimension horizontal, proyectada debajo y a la derecha.
+Function Vistas(sh As Sheet, d As Document, x0 As Double, y0 As Double, x1 As Double, y1 As Double, ByRef den As Double) As DrawingView()
+    Dim rb As Box = Caja(d)
+    Dim mn As Point = rb.MinPoint
+    Dim mx As Point = rb.MaxPoint
+    Dim ext() As Double = {mx.X - mn.X, mx.Y - mn.Y, mx.Z - mn.Z}
+    Dim iLg As Integer = 0
+    For i As Integer = 1 To 2
+        If ext(i) > ext(iLg) Then iLg = i
+    Next
+    Dim iSm As Integer = If(iLg = 0, 1, 0)
+    For i As Integer = 0 To 2
+        If i <> iLg AndAlso ext(i) < ext(iSm) Then iSm = i
+    Next
+    Dim iMd As Integer = 3 - iLg - iSm
+    Dim Lg As Double = ext(iLg)
+    Dim Md As Double = ext(iMd)
+    Dim Sm As Double = ext(iSm)
+    Dim gap As Double = 2.2
+    den = DenNecesario(d, x0, y0, x1, y1)
+    Dim sc As Double = 1 / den
+    Dim c As Point = TG.CreatePoint((mn.X + mx.X) / 2, (mn.Y + mx.Y) / 2, (mn.Z + mx.Z) / 2)
+    Dim ejes() As UnitVector = {TG.CreateUnitVector(1, 0, 0), TG.CreateUnitVector(0, 1, 0), TG.CreateUnitVector(0, 0, 1)}
+    Dim vSm As UnitVector = ejes(iSm)
+    Dim cam As Camera = ThisApplication.TransientObjects.CreateCamera()
+    cam.Target = c
+    cam.Eye = TG.CreatePoint(c.X + vSm.X * 1000, c.Y + vSm.Y * 1000, c.Z + vSm.Z * 1000)
+    cam.UpVector = ejes(iMd)
+    Dim bx As Double = x0 + gap + Lg * sc / 2
+    Dim by As Double = y1 - gap - Md * sc / 2
+    Dim v As DrawingView = sh.DrawingViews.AddBaseView(d, TG.CreatePoint2d(bx, by), sc, ViewOrientationTypeEnum.kArbitraryViewOrientation, DrawingViewStyleEnum.kHiddenLineRemovedDrawingViewStyle, "", cam)
+    Dim vb As DrawingView = sh.DrawingViews.AddProjectedView(v, TG.CreatePoint2d(bx, by - Md * sc / 2 - gap - Sm * sc / 2), DrawingViewStyleEnum.kFromBaseDrawingViewStyle)
+    Dim vr As DrawingView = sh.DrawingViews.AddProjectedView(v, TG.CreatePoint2d(bx + Lg * sc / 2 + gap + Sm * sc / 2, by), DrawingViewStyleEnum.kFromBaseDrawingViewStyle)
+    OcultarRef(v, d) : OcultarRef(vb, d) : OcultarRef(vr, d)
+    Return New DrawingView() {v, vb, vr}
+End Function
+
+' Escala normalizada (1:den) con la que las 3 vistas del modelo entran en la zona dada
+Function DenNecesario(d As Document, x0 As Double, y0 As Double, x1 As Double, y1 As Double) As Double
+    Dim rb As Box = Caja(d)
+    Dim e() As Double = {rb.MaxPoint.X - rb.MinPoint.X, rb.MaxPoint.Y - rb.MinPoint.Y, rb.MaxPoint.Z - rb.MinPoint.Z}
+    Array.Sort(e)
+    Dim Sm As Double = e(0), Md As Double = e(1), Lg As Double = e(2)
+    Dim gap As Double = 2.2
+    Dim dens() As Double = {1, 2, 2.5, 5, 10, 15, 20, 25, 30, 40, 50, 75, 100, 150, 200, 250}
+    For Each dd As Double In dens
+        If (Lg + Sm) / dd + 3 * gap <= (x1 - x0) AndAlso (Md + Sm) / dd + 3 * gap <= (y1 - y0) Then Return dd
+    Next
+    Return 250
+End Function
+
+' Borra vistas, listas y notas de la regla de una hoja (para rehacerla)
+Sub LimpiarHoja(sh As Sheet)
+    ' todas las vistas, de la ultima a la primera (las proyectadas quedan sueltas si solo se borra la base)
+    For i As Integer = sh.DrawingViews.Count To 1 Step -1
+        Try
+            sh.DrawingViews.Item(i).Delete()
+        Catch
+        End Try
+    Next
+    Dim pls As New List(Of PartsList)
+    For Each pl As PartsList In sh.PartsLists
+        pls.Add(pl)
+    Next
+    For Each pl As PartsList In pls
+        Try : pl.Delete() : Catch : End Try
+    Next
+    Dim ns As New List(Of GeneralNote)
+    For Each gn As GeneralNote In sh.DrawingNotes.GeneralNotes
+        If GetTag(gn, "NOTA") <> "" OrElse gn.Text.StartsWith("PROYECTO:") OrElse gn.Text.StartsWith("CONJUNTO:") OrElse gn.Text.StartsWith("HABILITADO:") Then ns.Add(gn)
+    Next
+    For Each gn As GeneralNote In ns
+        Try : gn.Delete() : Catch : End Try
+    Next
+End Sub
+
+Sub Iso(sh As Sheet, d As Document, x0 As Double, y0 As Double, x1 As Double, y1 As Double)
+    Try
+        If y1 - y0 < 4 OrElse x1 - x0 < 4 Then Exit Sub
+        Dim rb As Box = Caja(d)
+        Dim diag As Double = rb.MinPoint.DistanceTo(rb.MaxPoint)
+        Dim lado As Double = Math.Min(x1 - x0, y1 - y0) - 1
+        Dim dens() As Double = {1, 2, 2.5, 5, 10, 15, 20, 25, 30, 40, 50, 75, 100, 150, 200, 250}
+        Dim den As Double = 250
+        For Each dd As Double In dens
+            If diag / dd <= lado Then
+                den = dd
+                Exit For
+            End If
+        Next
+        Dim vi As DrawingView = sh.DrawingViews.AddBaseView(d, TG.CreatePoint2d((x0 + x1) / 2, (y0 + y1) / 2), 1 / den, ViewOrientationTypeEnum.kIsoTopRightViewOrientation, DrawingViewStyleEnum.kHiddenLineRemovedDrawingViewStyle)
+        OcultarRef(vi, d)
+    Catch ex As Exception
+        resumen.AppendLine("  iso: " & ex.Message)
+    End Try
+End Sub
+
+' ===================== lista y globos =====================
+Function ListaPiezas(sh As Sheet, v As DrawingView, d As AssemblyDocument, nivel As PartsListLevelEnum) As PartsList
+    Try
+        Dim bom As BOM = d.ComponentDefinition.BOM
+        If nivel = PartsListLevelEnum.kPartsOnly Then
+            If Not bom.PartsOnlyViewEnabled Then bom.PartsOnlyViewEnabled = True
+        Else
+            If Not bom.StructuredViewEnabled Then bom.StructuredViewEnabled = True
+            If Not bom.StructuredViewFirstLevelOnly Then bom.StructuredViewFirstLevelOnly = True
+        End If
+    Catch
+    End Try
+    Dim pl As PartsList = sh.PartsLists.Add(v, TG.CreatePoint2d(26, YMAX), nivel)
+    AjustarColumnas(pl)
+    Dim r As Box2d = pl.RangeBox
+    pl.Position = TG.CreatePoint2d(pl.Position.X + (XMAX - r.MaxPoint.X), pl.Position.Y + (YMAX - r.MaxPoint.Y))
+    Try
+        pl.Sort("MARCA")
+        pl.Renumber()
+    Catch
+    End Try
+    Return pl
+End Function
+
+' Ancho de columna segun el texto mas largo (titulo repartido en 2 lineas)
+Sub AjustarColumnas(pl As PartsList)
+    Try
+        Dim h As Double = pl.DataTextStyle.FontSize * 10
+        For i As Integer = 1 To pl.PartsListColumns.Count
+            Dim c As PartsListColumn = pl.PartsListColumns.Item(i)
+            Dim t As String = c.Title.Replace(vbCrLf, " ").Replace(vbLf, " ").Trim()
+            Dim maxc As Integer = t.Length
+            For k As Integer = 1 To t.Length - 2
+                If t(k) = " "c Then maxc = Math.Min(maxc, Math.Max(k, t.Length - k - 1))
+            Next
+            For Each rw As PartsListRow In pl.PartsListRows
+                Try
+                    maxc = Math.Max(maxc, rw.Item(i).Value.Length)
+                Catch
+                End Try
+            Next
+            c.Width = Math.Max(1.0, (maxc * h * 0.8 + 3) / 10)
+        Next
+    Catch
+    End Try
+End Sub
+
+Function LimiteInferior(pl As PartsList) As Double
+    Try
+        Return pl.RangeBox.MinPoint.Y - 0.8
+    Catch
+        Return 18
+    End Try
+End Function
+
+Sub Globos(sh As Sheet, v As DrawingView, occs As Object, previos As List(Of String))
+    Dim hechos As New List(Of String)
+    If previos IsNot Nothing Then hechos.AddRange(previos)
+    For Each occ As ComponentOccurrence In occs
+        Try
+            If occ.Suppressed Then Continue For
+            If occ.BOMStructure = BOMStructureEnum.kReferenceBOMStructure Then Continue For
+            If DentroDeRef(occ) Then Continue For
+            Dim mk As String = UProp(occ.Definition.Document, "MARCA")
+            ' equipos: globo con su TAG (TAG_EQUIPOS); si la hoja es de un sistema, el TAG local (MOT-01)
+            Dim eq As ComponentOccurrence = EquipoDe(occ)
+            If eq IsNot Nothing Then
+                mk = PropInst(eq, If(modoGA, "TAG", "TAG_LOCAL"))
+                If mk = "" Then mk = UProp(eq.Definition.Document, "TIPO_EQUIPO")
+                If mk = "" Then mk = "EQUIPO"
+            End If
+            If mk = "" OrElse hechos.Contains(mk) Then Continue For
+            Dim curvas As DrawingCurvesEnumerator = v.DrawingCurves(occ)
+            If curvas Is Nothing OrElse curvas.Count = 0 Then Continue For
+            Dim cv As DrawingCurve = Nothing
+            For Each cc As DrawingCurve In curvas
+                If cc.CurveType = CurveTypeEnum.kLineSegmentCurve Then
+                    cv = cc
+                    Exit For
+                End If
+            Next
+            Dim circular As Boolean = False
+            If cv Is Nothing Then
+                ' piezas redondas (motores, ejes): usar un circulo o arco
+                For Each cc As DrawingCurve In curvas
+                    If cc.CurveType = CurveTypeEnum.kCircleCurve OrElse cc.CurveType = CurveTypeEnum.kCircularArcCurve Then
+                        cv = cc
+                        circular = True
+                        Exit For
+                    End If
+                Next
+            End If
+            If cv Is Nothing Then Continue For
+            Dim m As Point2d
+            If circular Then
+                Dim rb2 As Box2d = cv.Evaluator2D.RangeBox
+                m = TG.CreatePoint2d((rb2.MinPoint.X + rb2.MaxPoint.X) / 2, rb2.MaxPoint.Y)
+            Else
+                m = cv.MidPoint
+            End If
+            Dim dx As Double = m.X - v.Center.X
+            Dim dy As Double = m.Y - v.Center.Y
+            Dim ln As Double = Math.Sqrt(dx * dx + dy * dy)
+            If ln < 0.01 Then
+                dx = 1
+                dy = 1
+                ln = 1.414
+            End If
+            Dim pts As ObjectCollection = ThisApplication.TransientObjects.CreateObjectCollection()
+            Dim bxp As Double = Math.Max(3.0, Math.Min(XMAX - 2, m.X + dx / ln * 2.5 + 0.6 * hechos.Count))
+            Dim byp As Double = Math.Max(9.0, Math.Min(YMAX - 1, m.Y + dy / ln * 2.5 + 0.4))
+            pts.Add(TG.CreatePoint2d(bxp, byp))
+            pts.Add(sh.CreateGeometryIntent(cv, If(circular, PointIntentEnum.kCircularTopPointIntent, PointIntentEnum.kMidPointIntent)))
+            Dim b As Balloon = sh.Balloons.Add(pts)
+            For Each bvs As BalloonValueSet In b.BalloonValueSets
+                bvs.OverrideValue = mk
+            Next
+            hechos.Add(mk)
+        Catch ex As Exception
+            resumen.AppendLine("  globo " & occ.Name & ": " & ex.Message)
+        End Try
+    Next
+End Sub
+
+' ===================== cotas =====================
+Sub AcotarTotal(sh As Sheet, v As DrawingView, horiz As Boolean, vert As Boolean)
+    Try
+        Dim cMinX As DrawingCurve = Nothing, cMaxX As DrawingCurve = Nothing, cMinY As DrawingCurve = Nothing, cMaxY As DrawingCurve = Nothing
+        Dim iMinX, iMaxX, iMinY, iMaxY As PointIntentEnum
+        Dim minX As Double = 1.0E+30, maxX As Double = -1.0E+30, minY As Double = 1.0E+30, maxY As Double = -1.0E+30
+        For Each cv As DrawingCurve In v.DrawingCurves
+            If cv.CurveType <> CurveTypeEnum.kLineSegmentCurve Then Continue For
+            For k As Integer = 0 To 1
+                Dim p As Point2d = If(k = 0, cv.StartPoint, cv.EndPoint)
+                Dim it As PointIntentEnum = If(k = 0, PointIntentEnum.kStartPointIntent, PointIntentEnum.kEndPointIntent)
+                If p.X < minX - 0.0001 Then
+                    minX = p.X : cMinX = cv : iMinX = it
+                End If
+                If p.X > maxX + 0.0001 Then
+                    maxX = p.X : cMaxX = cv : iMaxX = it
+                End If
+                If p.Y < minY - 0.0001 Then
+                    minY = p.Y : cMinY = cv : iMinY = it
+                End If
+                If p.Y > maxY + 0.0001 Then
+                    maxY = p.Y : cMaxY = cv : iMaxY = it
+                End If
+            Next
+        Next
+        Dim gd As GeneralDimensions = sh.DrawingDimensions.GeneralDimensions
+        If horiz AndAlso cMinX IsNot Nothing AndAlso maxX - minX > 0.05 Then
+            gd.AddLinear(TG.CreatePoint2d((minX + maxX) / 2, maxY + 1.6), sh.CreateGeometryIntent(cMinX, iMinX), sh.CreateGeometryIntent(cMaxX, iMaxX), DimensionTypeEnum.kHorizontalDimensionType)
+        End If
+        If vert AndAlso cMinY IsNot Nothing AndAlso maxY - minY > 0.05 Then
+            gd.AddLinear(TG.CreatePoint2d(minX - 1.6, (minY + maxY) / 2), sh.CreateGeometryIntent(cMinY, iMinY), sh.CreateGeometryIntent(cMaxY, iMaxY), DimensionTypeEnum.kVerticalDimensionType)
+        End If
+    Catch ex As Exception
+        resumen.AppendLine("  cota total: " & ex.Message)
+    End Try
+End Sub
+
+' Agujeros: cotas ordinales desde el extremo izquierdo / inferior y un diametro por tamano.
+Sub Agujeros(sh As Sheet, v As DrawingView)
+    Try
+        Dim circs As New List(Of DrawingCurve)
+        Dim cIzq As DrawingCurve = Nothing, cAba As DrawingCurve = Nothing
+        Dim iIzq, iAba As PointIntentEnum
+        Dim minX As Double = 1.0E+30, minY As Double = 1.0E+30, maxY As Double = -1.0E+30
+        For Each cv As DrawingCurve In v.DrawingCurves
+            If cv.CurveType = CurveTypeEnum.kCircleCurve Then
+                circs.Add(cv)
+            ElseIf cv.CurveType = CurveTypeEnum.kLineSegmentCurve Then
+                For k As Integer = 0 To 1
+                    Dim p As Point2d = If(k = 0, cv.StartPoint, cv.EndPoint)
+                    Dim it As PointIntentEnum = If(k = 0, PointIntentEnum.kStartPointIntent, PointIntentEnum.kEndPointIntent)
+                    If p.X < minX - 0.0001 Then
+                        minX = p.X : cIzq = cv : iIzq = it
+                    End If
+                    If p.Y < minY - 0.0001 Then
+                        minY = p.Y : cAba = cv : iAba = it
+                    End If
+                    If p.Y > maxY Then maxY = p.Y
+                Next
+            End If
+        Next
+        If circs.Count = 0 OrElse cIzq Is Nothing Then Exit Sub
+        Dim xs As New List(Of Double), ys As New List(Of Double), rs As New List(Of Double)
+        Dim colX As ObjectCollection = ThisApplication.TransientObjects.CreateObjectCollection()
+        Dim colY As ObjectCollection = ThisApplication.TransientObjects.CreateObjectCollection()
+        colX.Add(sh.CreateGeometryIntent(cIzq, iIzq))
+        colY.Add(sh.CreateGeometryIntent(cAba, iAba))
+        Dim gd As GeneralDimensions = sh.DrawingDimensions.GeneralDimensions
+        For Each cv As DrawingCurve In circs
+            Dim cp As Point2d = cv.CenterPoint
+            If Not Contiene(xs, cp.X) Then
+                xs.Add(cp.X)
+                colX.Add(sh.CreateGeometryIntent(cv, PointIntentEnum.kCenterPointIntent))
+            End If
+            If Not Contiene(ys, cp.Y) Then
+                ys.Add(cp.Y)
+                colY.Add(sh.CreateGeometryIntent(cv, PointIntentEnum.kCenterPointIntent))
+            End If
+            Dim r As Double = cv.Evaluator2D.RangeBox.MaxPoint.X - cp.X
+            If Not Contiene(rs, r) Then
+                rs.Add(r)
+                Try
+                    gd.AddDiameter(TG.CreatePoint2d(cp.X + r + 1.2, cp.Y + r + 1.2), sh.CreateGeometryIntent(cv))
+                Catch ex As Exception
+                    resumen.AppendLine("  diametro: " & ex.Message)
+                End Try
+            End If
+        Next
+        Dim ods As OrdinateDimensionSets = sh.DrawingDimensions.OrdinateDimensionSets
+        ods.Add(colX, TG.CreatePoint2d(minX, maxY + 0.8), DimensionTypeEnum.kHorizontalDimensionType)
+        If ys.Count > 0 Then ods.Add(colY, TG.CreatePoint2d(minX - 0.8, minY), DimensionTypeEnum.kVerticalDimensionType)
+    Catch ex As Exception
+        resumen.AppendLine("  agujeros: " & ex.Message)
+    End Try
+End Sub
+
+Function Contiene(l As List(Of Double), x As Double) As Boolean
+    For Each y As Double In l
+        If Math.Abs(x - y) < 0.01 Then Return True
+    Next
+    Return False
+End Function
+
+' ===================== utilidades =====================
+Function Nota(sh As Sheet, t As String) As GeneralNote
+    Try
+        Dim gn As GeneralNote = sh.DrawingNotes.GeneralNotes.AddFitted(TG.CreatePoint2d(2.5, 7.4), t)
+        SetTag(gn, "NOTA", "SI")
+        Return gn
+    Catch ex As Exception
+        resumen.AppendLine("  nota: " & ex.Message)
+        Return Nothing
+    End Try
+End Function
+
+Function ExportarPdf(dwg As DrawingDocument, ruta As String) As Boolean
+    Try
+        Dim pdf As TranslatorAddIn = ThisApplication.ApplicationAddIns.ItemById("{0AC6FD96-2F4D-42CE-8BE0-8AEA580399E4}")
+        Dim ctx As TranslationContext = ThisApplication.TransientObjects.CreateTranslationContext()
+        ctx.Type = IOMechanismEnum.kFileBrowseIOMechanism
+        Dim op As NameValueMap = ThisApplication.TransientObjects.CreateNameValueMap()
+        If pdf.HasSaveCopyAsOptions(dwg, ctx, op) Then
+            op.Value("All_Color_AS_Black") = 1
+            op.Value("Sheet_Range") = PrintRangeEnum.kPrintAllSheets
+        End If
+        ' si el PDF anterior esta abierto en un visor, se guarda con otro nombre
+        Try
+            If System.IO.File.Exists(ruta) Then System.IO.File.Delete(ruta)
+        Catch
+            ruta = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(ruta), System.IO.Path.GetFileNameWithoutExtension(ruta) & "_" & DateTime.Now.ToString("HHmmss") & ".pdf")
+            resumen.AppendLine("El PDF anterior esta abierto en otro programa: se guarda como " & System.IO.Path.GetFileName(ruta))
+        End Try
+        Dim dm As DataMedium = ThisApplication.TransientObjects.CreateDataMedium()
+        dm.FileName = ruta
+        pdf.SaveCopyAs(dwg, ctx, op, dm)
+        resumen.AppendLine("PDF: " & ruta)
+        Return True
+    Catch ex As Exception
+        resumen.AppendLine("PDF error: " & ex.Message)
+        Return False
+    End Try
+End Function
+
+' Planta (hijo directo del ensamble GENERAL) que es o contiene el documento editado
+Function PlantaDe(gen As AssemblyDocument, d As Document) As AssemblyDocument
+    For Each oc As ComponentOccurrence In gen.ComponentDefinition.Occurrences
+        Dim od As AssemblyDocument = TryCast(oc.Definition.Document, AssemblyDocument)
+        If od Is Nothing Then Continue For
+        If od Is d Then Return od
+        For Each rd As Document In od.AllReferencedDocuments
+            If rd Is d Then Return od
+        Next
+    Next
+    Return Nothing
+End Function
+
+Function BuscarPlantilla(asm As Document) As String
+    Dim a As String = Arg("plantilla")
+    If a <> "" AndAlso System.IO.File.Exists(a) Then Return a
+    Dim nombres() As String = {"PLANTILLA COIMSER A3 - TEKLA.idw", "PLANTILLA COIMSER A3.idw"}
+    Dim subs() As String = {"", "plantillas", "Plantillas", "inventor drawings", "iLogic"}
+    For Each n As String In nombres
+        Dim dir As String = System.IO.Path.GetDirectoryName(asm.FullFileName)
+        For lvl As Integer = 0 To 6
+            If dir Is Nothing Then Exit For
+            For Each sd As String In subs
+                Dim p As String = System.IO.Path.Combine(System.IO.Path.Combine(dir, sd), n)
+                If System.IO.File.Exists(p) Then Return p
+            Next
+            dir = System.IO.Path.GetDirectoryName(dir)
+        Next
+    Next
+    Return ""
+End Function
+
+Function CompararMarca(a As String, b As String) As Integer
+    Return String.Compare(a, b, True)
+End Function
+
+' "EE" + "ANTAPACAY" -> "EE-ANTAPACAY"; "EE" + "ANT-EE" -> "ANT-EE" (no repite la planta)
+Function NomBase(planta As String, nombre As String) As String
+    If nombre.ToUpper() = planta.ToUpper() OrElse nombre.ToUpper().EndsWith("-" & planta.ToUpper()) Then Return nombre
+    Return planta & "-" & nombre
+End Function
+
+Function Arg(n As String) As String
+    Try
+        If RuleArguments.Exists(n) Then Return CStr(RuleArguments.Value(n))
+    Catch
+    End Try
+    Return ""
+End Function
+
+Function UProp(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Inventor User Defined Properties").Item(n).Value)
+    Catch
+        Return ""
+    End Try
+End Function
+
+Function DProp(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Design Tracking Properties").Item(n).Value)
+    Catch
+        Return ""
+    End Try
+End Function
+
+Function Num(s As String) As Double
+    Dim r As Double
+    If Double.TryParse(s.Replace(",", "."), Globalization.NumberStyles.Any, Globalization.CultureInfo.InvariantCulture, r) Then Return r
+    Return 0
+End Function
+
+Sub Aviso(t As String)
+    resumen.AppendLine(t)
+    If Not silencioso Then MessageBox.Show(t, "GENERAR_PLANOS")
+End Sub
+
+
+' Panel "Modelo" del navegador (el nombre visible cambia con el idioma de Inventor)
+Function PanelModelo(dwg As DrawingDocument) As BrowserPane
+    For Each bp As BrowserPane In dwg.BrowserPanes
+        If bp.InternalName = "DlHierarchy" Then Return bp
+    Next
+    Return dwg.BrowserPanes.ActivePane
+End Function
+
+' ===================== referencias (NUEVA_REFERENCIA) =====================
+Function EsRef(o As ComponentOccurrence) As Boolean
+    Try
+        If o.BOMStructure = BOMStructureEnum.kReferenceBOMStructure Then Return True
+    Catch
+    End Try
+    Try
+        If UProp(o.Definition.Document, "REFERENCIA").ToUpper() = "SI" Then Return True
+    Catch
+    End Try
+    Return False
+End Function
+
+Function DentroDeRef(o As ComponentOccurrence) As Boolean
+    Dim x As ComponentOccurrence = o
+    Dim n As Integer = 0
+    Do While x IsNot Nothing AndAlso n < 20
+        If EsRef(x) Then Return True
+        Try
+            x = x.ParentOccurrence
+        Catch
+            x = Nothing
+        End Try
+        n += 1
+    Loop
+    Return False
+End Function
+
+' Oculta en la vista las referencias del ensamble d (cualquier nivel)
+Sub OcultarRef(v As DrawingView, d As Object)
+    Dim a As AssemblyDocument = TryCast(d, AssemblyDocument)
+    If v Is Nothing OrElse a Is Nothing Then Exit Sub
+    OcultarEn(v, a.ComponentDefinition.Occurrences)
+End Sub
+
+Sub OcultarEn(v As DrawingView, occs As Object)
+    For Each o As ComponentOccurrence In occs
+        Try
+            If o.Suppressed Then Continue For
+            If EsRef(o) Then
+                v.SetVisibility(o, False)
+            ElseIf o.DefinitionDocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+                OcultarEn(v, o.SubOccurrences)
+            End If
+        Catch
+        End Try
+    Next
+End Sub
+
+' Caja del modelo SIN referencias ni piezas sin solidos (skeletons): para la escala
+Function Caja(d As Document) As Box
+    Dim rb As Box = d.ComponentDefinition.RangeBox
+    If d.DocumentType <> DocumentTypeEnum.kAssemblyDocumentObject Then Return rb
+    Dim b As Box = Nothing
+    CajaEn(CType(d, AssemblyDocument).ComponentDefinition.Occurrences, b)
+    If b Is Nothing Then Return rb
+    Return b
+End Function
+
+Sub CajaEn(occs As Object, ByRef b As Box)
+    For Each o As ComponentOccurrence In occs
+        Try
+            If o.Suppressed OrElse EsRef(o) Then Continue For
+            If o.DefinitionDocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+                CajaEn(o.SubOccurrences, b)
+                Continue For
+            End If
+            Dim pd As PartDocument = TryCast(o.Definition.Document, PartDocument)
+            If pd IsNot Nothing AndAlso pd.ComponentDefinition.SurfaceBodies.Count = 0 Then Continue For
+            Dim r As Box = o.RangeBox
+            If b Is Nothing Then
+                b = r.Copy()
+            Else
+                b.Extend(r.MinPoint)
+                b.Extend(r.MaxPoint)
+            End If
+        Catch
+        End Try
+    Next
+End Sub

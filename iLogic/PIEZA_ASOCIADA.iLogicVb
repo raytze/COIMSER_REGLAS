@@ -1,0 +1,519 @@
+' =====================================================================
+'  PIEZA_ASOCIADA  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Crea una pieza que DEPENDE de otra geometria: si esa geometria cambia, la pieza cambia.
+'  El vinculo vive en la propia pieza (pieza derivada), no en el ensamble.
+'
+'   1) DESDE EL SKELETON (recomendado)
+'      La pieza deriva del skeleton del conjunto (NUEVA_REFERENCIA opcion 1) sus planos,
+'      bocetos y parametros (sin solidos). Eliges la base:
+'        - un BOCETO del skeleton -> se proyecta; si es plancha se extruye con ESPESOR (lista)
+'        - un PLANO del skeleton  -> boceto vacio sobre ese plano para dibujar
+'      Cambias el skeleton (cotas, parametros, planos) y la pieza se actualiza.
+'   2) DESDE OTRA PIEZA
+'      Deriva la forma de la pieza elegida como SUPERFICIE de referencia (no pesa, no se
+'      numera) y sus planos/bocetos. Dibujas sobre sus caras; si esa pieza cambia, esta tambien.
+'   3) CONGELAR / 4) DESCONGELAR
+'      Suspende (o reactiva) el vinculo: usalo al emitir o enviar a plasma, para que un cambio
+'      del skeleton no modifique piezas ya cortadas. Propiedad CONGELADA = SI / NO.
+'
+'  Nombre, carpeta y propiedades como NUEVA_PIEZA:  <ensamble>\Piezas\<ENSAMBLE>-PL-001.ipt
+'  Propiedades extra: ASOCIADA = SI, MODO_ASOCIACION (SKELETON / PIEZA), DEPENDE_DE, CONGELADA.
+'  Argumentos (pruebas): silencioso, modo=skeleton|pieza|congelar|descongelar, tipo=<naturaleza>,
+'     espesor=, grado=, base=<boceto o plano>, skeleton=<archivo>, origen=<componente>,
+'     objeto=<componente o TODAS>
+' =====================================================================
+Imports System.Collections.Generic
+
+Sub Main()
+    Dim top As AssemblyDocument = Nothing
+    Try
+        top = TryCast(ThisDoc.Document, AssemblyDocument)
+    Catch
+    End Try
+    If top Is Nothing Then top = TryCast(ThisApplication.ActiveDocument, AssemblyDocument)
+    If top Is Nothing Then
+        MessageBox.Show("Abre el ensamble del conjunto (o de la fase) y ejecuta la regla desde ahi.", "PIEZA_ASOCIADA")
+        Exit Sub
+    End If
+    Dim destino As AssemblyDocument = top
+    Try
+        If ThisApplication.ActiveDocument Is top AndAlso ThisApplication.ActiveEditDocument.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then destino = CType(ThisApplication.ActiveEditDocument, AssemblyDocument)
+    Catch
+    End Try
+    silencioso = RuleArguments.Exists("silencioso")
+    If destino.FullFileName = "" Then
+        MessageBox.Show("Guarda primero el ensamble.", "PIEZA_ASOCIADA")
+        Exit Sub
+    End If
+    If UProp(destino, "TIPO_ENSAMBLE").ToUpper() = "GENERAL" Then
+        MessageBox.Show("Este es el ensamble GENERAL de la obra: abre la fase o el conjunto.", "PIEZA_ASOCIADA")
+        Exit Sub
+    End If
+    obra = CarpetaObra(destino)
+
+    Dim modo As String = Arg("modo").ToLower()
+    If modo = "" Then
+        Dim ops As New List(Of String)
+        ops.Add("1 - Pieza desde el SKELETON (recomendado)")
+        ops.Add("2 - Pieza desde OTRA PIEZA")
+        ops.Add("3 - CONGELAR piezas asociadas (no cambian mas)")
+        ops.Add("4 - DESCONGELAR piezas asociadas")
+        Dim op As String = InputListBox("Pieza asociada en " & NomSin(destino), ops, ops(0), "PIEZA_ASOCIADA", "Que quieres hacer?")
+        If op Is Nothing OrElse op = "" Then Exit Sub
+        Dim modos() As String = {"skeleton", "pieza", "congelar", "descongelar"}
+        modo = modos(CInt(op.Substring(0, 1)) - 1)
+    End If
+    Select Case modo
+        Case "skeleton", "pieza"
+            Crear(top, destino, modo)
+        Case "congelar"
+            Congelar(top, destino, True)
+        Case "descongelar"
+            Congelar(top, destino, False)
+    End Select
+    If bitacora.Length > 0 Then Aviso(bitacora.ToString())
+End Sub
+
+Private silencioso As Boolean
+Private obra As String = ""
+Private bitacora As New System.Text.StringBuilder
+
+' ===================== crear =====================
+Sub Crear(top As AssemblyDocument, destino As AssemblyDocument, modo As String)
+    ' ---------- de donde sale la geometria ----------
+    Dim fuente As String = ""
+    Dim mFuente As Matrix = Nothing
+    If modo = "skeleton" Then
+        Dim sks As New List(Of ComponentOccurrence)
+        BuscarSkeletons(destino.ComponentDefinition.Occurrences, sks)
+        If sks.Count = 0 AndAlso destino IsNot top Then BuscarSkeletons(top.ComponentDefinition.Occurrences, sks)
+        If sks.Count = 0 Then
+            MessageBox.Show("No encuentro un skeleton en " & NomSin(destino) & "." & vbCrLf & "Crealo primero con NUEVA_REFERENCIA (opcion 1), dibuja en el sus planos / bocetos y vuelve a correr esta regla.", "PIEZA_ASOCIADA")
+            Exit Sub
+        End If
+        Dim sk As ComponentOccurrence = sks(0)
+        If sks.Count > 1 Then
+            Dim nombres As New List(Of String)
+            For Each o As ComponentOccurrence In sks
+                nombres.Add(System.IO.Path.GetFileName(o.Definition.Document.FullFileName))
+            Next
+            Dim r As String = Arg("skeleton")
+            If r = "" AndAlso Not silencioso Then r = InputListBox("Skeleton a usar:", nombres, nombres(0), "PIEZA_ASOCIADA", "Skeleton")
+            If r Is Nothing OrElse r = "" Then r = nombres(0)
+            sk = sks(Math.Max(0, nombres.IndexOf(r)))
+        End If
+        fuente = sk.Definition.Document.FullFileName
+        mFuente = MatrizEn(sk, top, destino)
+    Else
+        Dim o As ComponentOccurrence = Nothing
+        Dim nomO As String = Arg("origen")
+        If nomO <> "" Then
+            o = BuscarOcc(top.ComponentDefinition.Occurrences, nomO.ToLower())
+        ElseIf Not silencioso Then
+            Try
+                o = CType(ThisApplication.CommandManager.Pick(SelectionFilterEnum.kAssemblyLeafOccurrenceFilter, "Selecciona la pieza de la que dependera la nueva (Esc = cancelar)"), ComponentOccurrence)
+            Catch
+            End Try
+        End If
+        If o Is Nothing Then Exit Sub
+        If o.DefinitionDocumentType <> DocumentTypeEnum.kPartDocumentObject Then
+            MessageBox.Show("Elige una PIEZA (.ipt).", "PIEZA_ASOCIADA")
+            Exit Sub
+        End If
+        fuente = o.Definition.Document.FullFileName
+        mFuente = MatrizEn(o, top, destino)
+    End If
+
+    ' ---------- naturaleza, espesor, material (como NUEVA_PIEZA) ----------
+    Dim defs()() As String = {
+        New String() {"ESTRUCTURAL - Plancha / cartela", "plancha", "", "PL"},
+        New String() {"ESTRUCTURAL - Plancha estriada", "plancha", "pp", "PL"},
+        New String() {"ESTRUCTURAL - Chapa plegada", "chapa", "", "CH"},
+        New String() {"ESTRUCTURAL - Platina plegada", "chapa", "plf", "CH"},
+        New String() {"MECANICA - Pieza mecanizada", "vacia", "mq", "MQ"},
+        New String() {"OTRO - Pieza vacia (dibujas tu la forma)", "vacia", "", "OT"}}
+    Dim tipos As New List(Of String)
+    For Each d0() As String In defs
+        tipos.Add(d0(0))
+    Next
+    Dim tipo As String = Arg("tipo")
+    If tipo = "" Then tipo = If(silencioso, tipos(0), InputListBox("Naturaleza de la pieza nueva:", tipos, tipos(0), "PIEZA_ASOCIADA", "Tipo"))
+    If tipo Is Nothing OrElse tipo = "" Then Exit Sub
+    Dim def() As String = defs(0)
+    For Each d0() As String In defs
+        If d0(0) = tipo Then def = d0
+    Next
+    Dim forma As String = def(1)
+    Dim codigoFijo As String = def(2)
+    Dim pref As String = def(3)
+    Dim esMec As Boolean = (codigoFijo = "mq")
+    Dim espesor As String = ""
+    If forma <> "vacia" Then
+        Dim esp As New List(Of String)
+        For Each e As String In New String() {"3", "4.5", "6", "8", "9.5", "10", "12", "12.7", "16", "19", "20", "25", "32", "38", "50"}
+            esp.Add(e)
+        Next
+        espesor = Arg("espesor")
+        If espesor = "" Then espesor = If(silencioso, "10", InputListBox("Espesor (mm):", esp, "10", "PIEZA_ASOCIADA", "Espesor"))
+        If espesor Is Nothing OrElse espesor = "" Then Exit Sub
+    End If
+    Dim grados As New List(Of String)
+    For Each g As String In If(esMec, New String() {"SAE 1045", "AISI 4140", "AISI 304", "SAE 1020"}, New String() {"ASTM A36", "ASTM A572 GR.50", "ASTM A588", "ASTM A240 304"})
+        grados.Add(g)
+    Next
+    Dim grado As String = Arg("grado")
+    If grado = "" Then grado = If(silencioso, grados(0), InputListBox("Material / grado:", grados, grados(0), "PIEZA_ASOCIADA", "Material"))
+    If grado Is Nothing OrElse grado = "" Then Exit Sub
+
+    ' ---------- archivo ----------
+    Dim nomEns As String = NomSin(destino)
+    Dim carpeta As String = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(destino.FullFileName), nomEns, "Piezas")
+    System.IO.Directory.CreateDirectory(carpeta)
+    Dim n As Integer = 1
+    Dim ruta As String
+    Do
+        ruta = System.IO.Path.Combine(carpeta, nomEns & "-" & pref & "-" & n.ToString("000") & ".ipt")
+        If Not System.IO.File.Exists(ruta) Then Exit Do
+        n += 1
+    Loop
+
+    ' ---------- pieza con la geometria derivada ----------
+    Dim p As PartDocument = CType(ThisApplication.Documents.Add(DocumentTypeEnum.kPartDocumentObject, BuscarPlantilla(If(forma = "chapa", "Sheet Metal (mm).ipt", "Standard (mm).ipt")), False), PartDocument)
+    Dim cd As PartComponentDefinition = p.ComponentDefinition
+    Dim dps As DerivedPartComponents = cd.ReferenceComponents.DerivedPartComponents
+    Dim df As DerivedPartUniformScaleDef = dps.CreateDefinition(fuente)
+    If modo = "skeleton" Then
+        Try : df.IncludeAllSolids = DerivedComponentOptionEnum.kDerivedExcludeAll : Catch : End Try
+        Try : df.IncludeAllSurfaces = DerivedComponentOptionEnum.kDerivedExcludeAll : Catch : End Try
+    Else
+        ' la otra pieza entra como superficie de referencia (no pesa)
+        Try : df.DeriveStyle = DerivedComponentStyleEnum.kDeriveAsWorkSurface : Catch : End Try
+        Try : df.IncludeAllSolids = DerivedComponentOptionEnum.kDerivedIncludeAll : Catch : End Try
+    End If
+    Try : df.IncludeAllSketches = DerivedComponentOptionEnum.kDerivedIncludeAll : Catch : End Try
+    Try : df.IncludeAllWorkFeatures = DerivedComponentOptionEnum.kDerivedIncludeAll : Catch : End Try
+    ' solo los parametros con nombre (no d0, d1...)
+    Try
+        For Each pe As DerivedPartEntity In df.Parameters
+            Dim nm As String = ""
+            Try
+                nm = CStr(pe.ReferencedEntity.Name)
+            Catch
+            End Try
+            pe.IncludeEntity = Not System.Text.RegularExpressions.Regex.IsMatch(nm, "^d\d+$")
+        Next
+    Catch
+    End Try
+    Dim dc As DerivedPartComponent = dps.Add(df)
+
+    If forma = "chapa" Then
+        Dim sm As SheetMetalComponentDefinition = CType(p.ComponentDefinition, SheetMetalComponentDefinition)
+        Try : sm.UseSheetMetalStyleThickness = False : Catch : End Try
+        sm.Thickness.Expression = espesor & " mm"
+    ElseIf forma = "plancha" Then
+        Dim up As UserParameter = cd.Parameters.UserParameters.AddByExpression("ESPESOR", espesor & " mm", "mm")
+        up.ExposedAsProperty = False
+    End If
+
+    ' ---------- base del boceto ----------
+    Dim bases As New List(Of String)
+    For Each s As PlanarSketch In cd.Sketches
+        bases.Add("BOCETO: " & s.Name)
+    Next
+    For Each w As WorkPlane In cd.WorkPlanes
+        bases.Add("PLANO: " & w.Name)
+    Next
+    Dim base As String = Arg("base")
+    If base <> "" Then
+        Dim hallada As String = ""
+        For Each b As String In bases
+            If b.EndsWith(": " & base) AndAlso hallada = "" Then hallada = b
+        Next
+        If hallada = "" Then
+            bitacora.AppendLine("Aviso: no hay boceto ni plano '" & base & "'; se usa " & bases(0))
+            hallada = bases(0)
+        End If
+        base = hallada
+    ElseIf silencioso Then
+        base = bases(0)
+    Else
+        base = InputListBox("Sobre que dibujas la pieza?" & vbCrLf & "BOCETO = se copia su contorno (plancha: sale extruida)" & vbCrLf & "PLANO = boceto vacio para dibujar", bases, bases(0), "PIEZA_ASOCIADA", "Base")
+    End If
+    If base Is Nothing OrElse base = "" Then
+        p.Close(True)
+        Exit Sub
+    End If
+    Dim perfil As PlanarSketch = Nothing
+    Dim extruida As Boolean = False
+    If base.StartsWith("BOCETO: ") Then
+        Dim src As PlanarSketch = Nothing
+        For Each s As PlanarSketch In cd.Sketches
+            If s.Name = base.Substring(8) Then src = s
+        Next
+        perfil = cd.Sketches.Add(PlanoDe(cd, src))
+        For Each e As SketchEntity In src.SketchEntities
+            Try
+                perfil.AddByProjectingEntity(e)
+            Catch
+            End Try
+        Next
+        If forma = "plancha" Then
+            Try
+                Dim ed As ExtrudeDefinition = cd.Features.ExtrudeFeatures.CreateExtrudeDefinition(perfil.Profiles.AddForSolid(), PartFeatureOperationEnum.kJoinOperation)
+                ed.SetDistanceExtent("ESPESOR", PartFeatureExtentDirectionEnum.kPositiveExtentDirection)
+                cd.Features.ExtrudeFeatures.Add(ed)
+                extruida = True
+            Catch ex As Exception
+                bitacora.AppendLine("El boceto " & src.Name & " no forma un contorno cerrado: termina la forma tu (" & ex.Message & ").")
+            End Try
+        End If
+    Else
+        Dim wp As WorkPlane = cd.WorkPlanes.Item(3)
+        Dim nomP As String = If(base.StartsWith("PLANO: "), base.Substring(7), "")
+        For Each w As WorkPlane In cd.WorkPlanes
+            If w.Name = nomP Then wp = w
+        Next
+        perfil = cd.Sketches.Add(wp)
+    End If
+    perfil.Name = "PERFIL"
+
+    ' ---------- propiedades ----------
+    AsignarMaterial(p, If(esMec, "Steel", If(grado.Contains("304"), "Stainless Steel", "Steel")))
+    EscribirProp(p, "GRADO", grado)
+    EscribirProp(p, "TIPO_PIEZA", If(esMec, "MECANICA", "ESTRUCTURAL"))
+    EscribirProp(p, "NATURALEZA", tipo)
+    If codigoFijo <> "" Then EscribirProp(p, "CODIGO", codigoFijo)
+    If espesor <> "" Then EscribirProp(p, "ESPESOR", espesor)
+    EscribirProp(p, "ASOCIADA", "SI")
+    EscribirProp(p, "MODO_ASOCIACION", If(modo = "skeleton", "SKELETON", "PIEZA"))
+    EscribirProp(p, "DEPENDE_DE", Relativa(fuente))
+    EscribirProp(p, "CONGELADA", "NO")
+    Dim descP As String = If(espesor <> "", "PL" & espesor, tipo.Substring(tipo.IndexOf(" - ") + 3).ToUpper())
+    If esMec Then descP = "PIEZA MECANIZADA"
+    p.PropertySets.Item("Design Tracking Properties").Item("Description").Value = descP
+    p.SaveAs(ruta, False)
+
+    ' ---------- insertar en el mismo sistema de coordenadas que su fuente ----------
+    Dim occ As ComponentOccurrence = destino.ComponentDefinition.Occurrences.Add(ruta, If(mFuente, ThisApplication.TransientGeometry.CreateMatrix()))
+    Try
+        occ.Grounded = True
+    Catch
+    End Try
+    p.Close(True)
+    System.IO.File.WriteAllText(System.IO.Path.Combine(carpeta, "_ultima_pieza.txt"), ruta)
+
+    bitacora.AppendLine("Pieza asociada creada: " & System.IO.Path.GetFileName(ruta))
+    bitacora.AppendLine("Depende de: " & Relativa(fuente) & If(modo = "skeleton", "  (skeleton)", "  (forma de la pieza, como superficie de referencia)"))
+    bitacora.AppendLine("Base: " & base & If(extruida, "  -> extruida con ESPESOR " & espesor & " mm", "  -> boceto PERFIL listo para dibujar"))
+    bitacora.AppendLine("Si cambia " & System.IO.Path.GetFileName(fuente) & ", esta pieza se actualiza. Al emitir / enviar a plasma: CONGELAR.")
+    bitacora.AppendLine("Guarda el ensamble.")
+    If Not silencioso Then
+        Try
+            occ.Edit()
+            If Not extruida Then
+                Dim pp As PartComponentDefinition = CType(occ.Definition, PartComponentDefinition)
+                For Each s As PlanarSketch In pp.Sketches
+                    If s.Name = "PERFIL" Then s.Edit()
+                Next
+            End If
+        Catch
+        End Try
+    End If
+End Sub
+
+' Plano (asociativo) donde esta el boceto derivado: el plano de trabajo derivado que coincide
+Function PlanoDe(cd As PartComponentDefinition, src As PlanarSketch) As Object
+    Try
+        Dim g As Plane = src.PlanarEntityGeometry
+        For Each w As WorkPlane In cd.WorkPlanes
+            Dim wg As Plane = w.Plane
+            If wg.Normal.IsParallelTo(g.Normal, 0.0001) AndAlso Math.Abs(wg.DistanceTo(g.RootPoint)) < 0.0001 Then Return w
+        Next
+    Catch
+    End Try
+    Try
+        Return src.PlanarEntity
+    Catch
+    End Try
+    bitacora.AppendLine("Aviso: no encontre el plano del boceto " & src.Name & "; el PERFIL quedo en el plano XY. Pon el boceto del skeleton sobre un plano de trabajo.")
+    Return cd.WorkPlanes.Item(3)
+End Function
+
+' Skeletons: piezas de referencia (TIPO_REFERENCIA = SKELETON) o piezas Referencia sin solidos
+Sub BuscarSkeletons(occs As Object, l As List(Of ComponentOccurrence))
+    For Each o As ComponentOccurrence In occs
+        Try
+            If o.Suppressed Then Continue For
+            Dim d As Document = o.Definition.Document
+            If o.DefinitionDocumentType = DocumentTypeEnum.kPartDocumentObject Then
+                Dim esSk As Boolean = (UProp(d, "TIPO_REFERENCIA").ToUpper() = "SKELETON")
+                If Not esSk AndAlso o.BOMStructure = BOMStructureEnum.kReferenceBOMStructure AndAlso CType(d, PartDocument).ComponentDefinition.SurfaceBodies.Count = 0 AndAlso UProp(d, "REFERENCIA") <> "" Then esSk = True
+                If esSk Then l.Add(o)
+            End If
+        Catch
+        End Try
+    Next
+End Sub
+
+' Matriz de la fuente expresada en el ensamble destino (puede estar en otro nivel)
+Function MatrizEn(o As ComponentOccurrence, top As AssemblyDocument, destino As AssemblyDocument) As Matrix
+    Dim m As Matrix = o.Transformation.Copy()
+    ' o puede ser de destino (relativa a destino) o venir de top (relativa a top)
+    Dim padre As Document = Nothing
+    Try
+        padre = o.Parent.Document
+    Catch
+    End Try
+    If padre Is destino Then Return m
+    If destino Is top Then Return m
+    ' destino es un subensamble que se edita en el sitio: m_destino = inv(T_destino) * m_top
+    Try
+        Dim od As ComponentOccurrence = top.ComponentDefinition.Occurrences.AllReferencedOccurrences(destino).Item(1)
+        Dim inv As Matrix = od.Transformation.Copy()
+        inv.Invert()
+        inv.PostMultiplyBy(m)
+        Return inv
+    Catch
+    End Try
+    Return m
+End Function
+
+' ===================== congelar / descongelar =====================
+Sub Congelar(top As AssemblyDocument, destino As AssemblyDocument, congelar As Boolean)
+    Dim piezas As New List(Of PartDocument)
+    For Each d As Document In destino.AllReferencedDocuments
+        If d.DocumentType = DocumentTypeEnum.kPartDocumentObject AndAlso UProp(d, "ASOCIADA").ToUpper() = "SI" Then piezas.Add(CType(d, PartDocument))
+    Next
+    If piezas.Count = 0 Then
+        MessageBox.Show("No hay piezas asociadas en " & NomSin(destino) & ".", "PIEZA_ASOCIADA")
+        Exit Sub
+    End If
+    Dim objeto As String = Arg("objeto")
+    If objeto = "" AndAlso Not silencioso Then
+        Dim l As New List(Of String)
+        l.Add("TODAS (" & piezas.Count & ")")
+        For Each p As PartDocument In piezas
+            l.Add(NomSin(p) & "   [" & If(UProp(p, "CONGELADA").ToUpper() = "SI", "CONGELADA", "VIVA") & "]  " & UProp(p, "MARCA"))
+        Next
+        Dim r As String = InputListBox(If(congelar, "Congelar", "Descongelar") & " que piezas?", l, l(0), "PIEZA_ASOCIADA", "Piezas")
+        If r Is Nothing OrElse r = "" Then Exit Sub
+        objeto = If(r.StartsWith("TODAS"), "TODAS", r.Split(" "c)(0))
+    End If
+    If objeto = "" Then objeto = "TODAS"
+    Dim nOk As Integer = 0
+    For Each p As PartDocument In piezas
+        If objeto.ToUpper() <> "TODAS" AndAlso NomSin(p).ToLower() <> objeto.ToLower() Then Continue For
+        Try
+            For Each dc As DerivedPartComponent In p.ComponentDefinition.ReferenceComponents.DerivedPartComponents
+                dc.SuppressLinkToFile = congelar
+            Next
+            EscribirProp(p, "CONGELADA", If(congelar, "SI", "NO"))
+            If Not congelar Then p.Update()
+            p.Save2(False)
+            nOk += 1
+            bitacora.AppendLine(If(congelar, "Congelada: ", "Descongelada: ") & NomSin(p) & "  " & UProp(p, "MARCA"))
+        Catch ex As Exception
+            bitacora.AppendLine("No se pudo con " & NomSin(p) & " (" & ex.Message & "). Si esta en Vault, desprotegela primero.")
+        End Try
+    Next
+    If Not congelar AndAlso nOk > 0 Then
+        bitacora.AppendLine("Las piezas descongeladas tomaron la geometria actual de su fuente: vuelve a correr TEKLA_NUMERACION.")
+    End If
+    Try
+        destino.Update()
+    Catch
+    End Try
+End Sub
+
+' ===================== comunes =====================
+Function BuscarOcc(occs As Object, nom As String) As ComponentOccurrence
+    For Each o As ComponentOccurrence In occs
+        Dim f As String = ""
+        Try
+            f = System.IO.Path.GetFileName(o.Definition.Document.FullFileName).ToLower()
+        Catch
+        End Try
+        If o.Name.ToLower() = nom OrElse f = nom OrElse System.IO.Path.GetFileNameWithoutExtension(f) = nom Then Return o
+        If o.DefinitionDocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+            Dim r As ComponentOccurrence = BuscarOcc(o.SubOccurrences, nom)
+            If r IsNot Nothing Then Return r
+        End If
+    Next
+    Return Nothing
+End Function
+
+Function Relativa(ruta As String) As String
+    If obra <> "" AndAlso ruta.ToLower().StartsWith(obra.ToLower() & "\") Then Return ruta.Substring(obra.Length + 1)
+    Return ruta
+End Function
+
+Function CarpetaObra(d As Document) As String
+    Dim x As String = System.IO.Path.GetDirectoryName(d.FullFileName)
+    For i As Integer = 0 To 8
+        If x Is Nothing OrElse x = "" Then Exit For
+        If System.IO.File.Exists(System.IO.Path.Combine(x, "_OBRA.txt")) Then Return x
+        x = System.IO.Path.GetDirectoryName(x)
+    Next
+    Return ""
+End Function
+
+Function NomSin(d As Document) As String
+    Return System.IO.Path.GetFileNameWithoutExtension(d.FullFileName)
+End Function
+
+Function BuscarPlantilla(nombre As String) As String
+    Dim raiz As String = ThisApplication.FileOptions.TemplatesPath
+    Try
+        For Each f As String In System.IO.Directory.GetFiles(raiz, nombre, System.IO.SearchOption.AllDirectories)
+            Return f
+        Next
+        For Each f As String In System.IO.Directory.GetFiles(raiz, If(nombre.StartsWith("Sheet"), "Sheet Metal*.ipt", "Standard*.ipt"), System.IO.SearchOption.AllDirectories)
+            Return f
+        Next
+    Catch
+    End Try
+    Return ThisApplication.FileManager.GetTemplateFile(DocumentTypeEnum.kPartDocumentObject)
+End Function
+
+Sub AsignarMaterial(p As PartDocument, nombre As String)
+    Dim espanol As New Dictionary(Of String, String)
+    espanol("Steel") = "Acero"
+    espanol("Stainless Steel") = "Acero inoxidable"
+    Dim biblio As AssetLibrary = ThisApplication.ActiveMaterialLibrary
+    For Each n As String In New String() {nombre, If(espanol.ContainsKey(nombre), espanol(nombre), nombre)}
+        Try
+            p.ActiveMaterial = biblio.MaterialAssets.Item(n)
+            Exit Sub
+        Catch
+        End Try
+    Next
+End Sub
+
+Function Arg(n As String) As String
+    Try
+        If RuleArguments.Exists(n) Then Return CStr(RuleArguments.Value(n))
+    Catch
+    End Try
+    Return ""
+End Function
+
+Function UProp(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Inventor User Defined Properties").Item(n).Value).Trim()
+    Catch
+        Return ""
+    End Try
+End Function
+
+Sub EscribirProp(d As Document, n As String, v As String)
+    Dim ps As PropertySet = d.PropertySets.Item("Inventor User Defined Properties")
+    Try
+        ps.Item(n).Value = v
+    Catch
+        ps.Add(v, n)
+    End Try
+End Sub
+
+Sub Aviso(t As String)
+    If Not silencioso Then MessageBox.Show(t, "PIEZA_ASOCIADA")
+End Sub

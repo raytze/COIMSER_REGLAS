@@ -1,0 +1,396 @@
+' =====================================================================
+'  TAG_EQUIPOS  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  TAG por INSTANCIA (ubicacion funcional), independiente de la marca de fabricacion:
+'
+'     SISTEMA  (conjunto con SISTEMA = SI: faja FAJ, equipo propio EQ)
+'              EE-FAJ-001, EE-FAJ-002            (3 digitos, correlativo por planta)
+'     EQUIPO   (EQUIPO = SI, declarado con INSERTAR_EQUIPO)
+'              EE-FAJ-001-MOT-01, EE-FAJ-001-RED-01   (2 digitos dentro de su sistema)
+'              EE-MOT-001                          (si no esta dentro de un sistema)
+'     Sistema dentro de sistema: EE-EST-001-FAJ-001-MOT-01
+'     Los subconjuntos estructurales (bastidor, soporte...) NO alargan el TAG.
+'
+'  - Ejecutar desde el ensamble general de la planta (ej. PM1.iam).
+'  - Registro  _TAGS_<PROYECTO>.csv (ruta de instancia -> TAG): el TAG no cambia al volver
+'    a ejecutar; lo nuevo toma el siguiente numero; lo eliminado queda "SIN USO" y su
+'    numero no se reutiliza. Columna TAG_CLIENTE: si la llenas, manda en planos y reportes.
+'  - Propiedades de instancia: TAG (componentes directos del ensamble general) y
+'    TAG_LOCAL (MOT-01, en el ensamble que lo contiene) -> globos de GENERAR_PLANOS.
+'  - Propiedad TAGS en cada sistema (lista de sus instancias) -> nota del plano.
+'  - Excel PLANOS\REPORTES\<PLANTA>-<ENSAMBLE>-LISTA_EQUIPOS.xlsx
+'  Argumentos opcionales: silencioso, excel=NO
+' =====================================================================
+
+Sub Main()
+    Dim asm As AssemblyDocument = TryCast(ThisDoc.Document, AssemblyDocument)
+    If asm Is Nothing Then
+        MessageBox.Show("Ejecuta la regla desde el ensamble general (.iam).", "TAG_EQUIPOS")
+        Exit Sub
+    End If
+    ' ensamble GENERAL de la obra (NUEVO_PROYECTO): las reglas se corren en cada planta
+    Try
+        If CStr(asm.PropertySets.Item("Inventor User Defined Properties").Item("TIPO_ENSAMBLE").Value).ToUpper() = "GENERAL" Then
+            MessageBox.Show("Este es el ensamble GENERAL de la obra." & vbCrLf & "Abre el ensamble de la planta (ej. ANT-EE.iam) y ejecuta la regla ahi.", "TAG_EQUIPOS")
+            Exit Sub
+        End If
+    Catch
+    End Try
+    silencioso = RuleArguments.Exists("silencioso")
+    nombre = System.IO.Path.GetFileNameWithoutExtension(asm.FullFileName)
+    planta = UProp(asm, "PLANTA")
+    proy = UProp(asm, "PROYECTO")
+    If planta = "" OrElse proy = "" Then
+        Aviso("El ensamble no tiene PROYECTO / PLANTA. Ejecuta INICIAR_CONJUNTO o TEKLA_NUMERACION primero.")
+        Exit Sub
+    End If
+    Dim carpeta As String = CarpetaObra(asm)
+    Dim regPath As String = System.IO.Path.Combine(carpeta, "_TAGS_" & proy & ".csv")
+    Try
+        CargarSistemas(asm)
+        LeerRegistro(regPath)
+        Recorrer(asm.ComponentDefinition.Occurrences, nombre, "")
+        ' propiedad TAGS en cada sistema (tipo) -> nota de su plano
+        For Each kv As KeyValuePair(Of String, List(Of String)) In tagsDeDoc
+            Try
+                EscribirProp(docDe(kv.Key), "TAGS", String.Join(", ", kv.Value))
+            Catch
+            End Try
+        Next
+        ' lo que no aparecio en esta corrida (de este ensamble) queda SIN USO
+        For Each kv As KeyValuePair(Of String, String()) In reg
+            If kv.Key.StartsWith(nombre & "/") AndAlso Not vistos.Contains(kv.Key) AndAlso Not kv.Value(C_EST).StartsWith("SIN USO") Then kv.Value(C_EST) = "SIN USO desde " & HOY
+        Next
+        GuardarRegistro(regPath)
+        Dim xls As String = ""
+        If Arg("excel").ToUpper() <> "NO" Then xls = Excel(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(asm.FullFileName), "PLANOS\REPORTES"))
+        Aviso("TAGs " & planta & " - " & nombre & vbCrLf & "Sistemas: " & nSis & "     Equipos: " & nEq & "     Nuevos: " & nNuevos & vbCrLf & resumen.ToString() & vbCrLf & "Registro: " & regPath & vbCrLf & xls & vbCrLf & "Guarda el ensamble (propiedades de instancia).")
+    Catch ex As Exception
+        Aviso("Error en TAG_EQUIPOS: " & ex.Message & vbCrLf & ex.StackTrace)
+    End Try
+End Sub
+
+Private silencioso As Boolean
+Private nombre As String = ""
+Private planta As String = ""
+Private proy As String = ""
+Private resumen As New System.Text.StringBuilder
+Private sistemas As New List(Of String)
+Private reg As New Dictionary(Of String, String())
+Private orden As New List(Of String)
+Private vistos As New List(Of String)
+Private cont As New Dictionary(Of String, Integer)
+Private tagsDeDoc As New Dictionary(Of String, List(Of String))
+Private docDe As New Dictionary(Of String, Document)
+Private nSis As Integer = 0, nEq As Integer = 0, nNuevos As Integer = 0
+Private HOY As String = DateTime.Now.ToString("yyyy-MM-dd HH:mm")
+Private Const NC As Integer = 15
+Private Const C_RUTA As Integer = 0, C_TAG As Integer = 1, C_CLI As Integer = 2, C_CLASE As Integer = 3, C_TIPO As Integer = 4
+Private Const C_DESC As Integer = 5, C_SIS As Integer = 6, C_FAB As Integer = 7, C_MOD As Integer = 8, C_KW As Integer = 9
+Private Const C_PESO As Integer = 10, C_SUM As Integer = 11, C_ARCH As Integer = 12, C_EST As Integer = 13, C_ALTA As Integer = 14
+
+' ===================== recorrido por instancia =====================
+Sub Recorrer(occs As Object, ruta As String, tagSis As String)
+    For Each occ As ComponentOccurrence In occs
+        If occ.Suppressed Then Continue For
+        Dim d As Document = Nothing
+        Try
+            d = occ.Definition.Document
+        Catch
+            Continue For
+        End Try
+        Dim r As String = ruta & "/" & occ.Name
+        Dim base As String = If(tagSis = "", planta, tagSis)
+        If UProp(d, "EQUIPO").ToUpper() = "SI" Then
+            Dim tp As String = UProp(d, "TIPO_EQUIPO").ToUpper()
+            If tp = "" Then tp = "EQ"
+            Dim tag As String = Asignar(r, base & "-" & tp & "-", If(tagSis = "", 3, 2))
+            Dim f() As String = Fila(r, tag, "EQUIPO", tp, d, tagSis)
+            f(C_DESC) = Primero(UProp(d, "EQUIPO_DESC"), DProp(d, "Description"))
+            f(C_FAB) = UProp(d, "FABRICANTE")
+            f(C_MOD) = UProp(d, "MODELO")
+            f(C_KW) = UProp(d, "POTENCIA_KW")
+            f(C_PESO) = UProp(d, "PESO_HT")
+            f(C_SUM) = UProp(d, "SUMINISTRO")
+            Etiquetar(occ, tag, tag.Substring(base.Length + 1))
+            nEq = nEq + 1
+            Continue For          ' no se entra al equipo
+        End If
+        If d.DocumentType <> DocumentTypeEnum.kAssemblyDocumentObject Then Continue For
+        If EsSistema(d) Then
+            Dim pref As String = UProp(d, "PREFIJO").ToUpper()
+            Dim tag As String = Asignar(r, base & "-" & pref & "-", 3)
+            Dim f() As String = Fila(r, tag, "SISTEMA", pref, d, tagSis)
+            f(C_DESC) = Primero(UProp(d, "TIPO_CONJUNTO"), DProp(d, "Description"))
+            f(C_DESC) = f(C_DESC) & "  (marca " & UProp(d, "MARCA") & ")"
+            Etiquetar(occ, tag, tag.Substring(base.Length + 1))
+            If Not tagsDeDoc.ContainsKey(d.FullFileName) Then tagsDeDoc(d.FullFileName) = New List(Of String)
+            tagsDeDoc(d.FullFileName).Add(Mostrar(r))
+            docDe(d.FullFileName) = d
+            nSis = nSis + 1
+            Recorrer(occ.SubOccurrences, r, tag)
+        Else
+            Recorrer(occ.SubOccurrences, r, tagSis)
+        End If
+    Next
+End Sub
+
+Function EsSistema(d As Document) As Boolean
+    If UProp(d, "SISTEMA").ToUpper() = "SI" Then Return True
+    Dim p As String = UProp(d, "PREFIJO").ToUpper()
+    Return p <> "" AndAlso sistemas.Contains(p)
+End Function
+
+' TAG existente (si sigue bajo el mismo padre) o el siguiente numero libre
+Function Asignar(ruta As String, prefijo As String, digitos As Integer) As String
+    vistos.Add(ruta)
+    If reg.ContainsKey(ruta) AndAlso reg(ruta)(C_TAG).StartsWith(prefijo) AndAlso Not reg(ruta)(C_EST).StartsWith("SIN USO") Then Return reg(ruta)(C_TAG)
+    Dim n As Integer = 1
+    If cont.ContainsKey(prefijo) Then n = cont(prefijo) + 1
+    cont(prefijo) = n
+    nNuevos = nNuevos + 1
+    Dim tag As String = prefijo & n.ToString(New String("0"c, digitos))
+    If reg.ContainsKey(ruta) Then resumen.AppendLine("  cambio de ubicacion: " & reg(ruta)(C_TAG) & " -> " & tag)
+    Return tag
+End Function
+
+Function Fila(ruta As String, tag As String, clase As String, tipo As String, d As Document, tagSis As String) As String()
+    Dim f() As String
+    If reg.ContainsKey(ruta) Then
+        f = reg(ruta)
+    Else
+        ReDim f(NC - 1)
+        For i As Integer = 0 To NC - 1
+            f(i) = ""
+        Next
+        f(C_RUTA) = ruta
+        f(C_ALTA) = HOY
+        reg(ruta) = f
+    End If
+    If Not orden.Contains(ruta) Then orden.Add(ruta)
+    f(C_TAG) = tag
+    f(C_CLASE) = clase
+    f(C_TIPO) = tipo
+    f(C_SIS) = tagSis
+    f(C_ARCH) = System.IO.Path.GetFileName(d.FullFileName)
+    f(C_EST) = "ACTIVO"
+    Return f
+End Function
+
+Function Mostrar(ruta As String) As String
+    Dim f() As String = reg(ruta)
+    If f(C_CLI) <> "" Then Return f(C_CLI)
+    Return f(C_TAG)
+End Function
+
+' Propiedades de instancia: TAG en el ensamble general, TAG_LOCAL en el que lo contiene
+Sub Etiquetar(occ As ComponentOccurrence, tag As String, local As String)
+    Try
+        Dim nat As ComponentOccurrence = occ
+        Try
+            If occ.ParentOccurrence IsNot Nothing Then nat = CType(occ, ComponentOccurrenceProxy).NativeObject
+        Catch
+        End Try
+        PropInst(nat, "TAG_LOCAL", local)
+        If occ.ParentOccurrence Is Nothing Then PropInst(occ, "TAG", tag)
+    Catch ex As Exception
+        resumen.AppendLine("  (no se pudo escribir la propiedad de instancia en " & occ.Name & ": " & ex.Message & ")")
+    End Try
+End Sub
+
+Sub PropInst(occ As ComponentOccurrence, n As String, v As String)
+    If Not occ.OccurrencePropertySetsEnabled Then occ.OccurrencePropertySetsEnabled = True
+    Dim ps As PropertySet = occ.OccurrencePropertySets.Item(1)
+    Try
+        If CStr(ps.Item(n).Value) <> v Then ps.Item(n).Value = v
+    Catch
+        ps.Add(v, n)
+    End Try
+End Sub
+
+' ===================== registro =====================
+Sub LeerRegistro(ruta As String)
+    If Not System.IO.File.Exists(ruta) Then Exit Sub
+    For Each ln As String In System.IO.File.ReadAllLines(ruta, System.Text.Encoding.UTF8)
+        Dim c() As String = ln.Split(";"c)
+        If c.Length < 2 OrElse c(0) = "RUTA_INSTANCIA" Then Continue For
+        Dim f(NC - 1) As String
+        For i As Integer = 0 To NC - 1
+            If i < c.Length Then f(i) = c(i) Else f(i) = ""
+        Next
+        reg(f(C_RUTA)) = f
+        ' contadores: el numero final del TAG, por prefijo (los SIN USO tambien cuentan)
+        Dim m As System.Text.RegularExpressions.Match = System.Text.RegularExpressions.Regex.Match(f(C_TAG), "^(.*-)(\d+)$")
+        If m.Success Then
+            Dim n As Integer = CInt(m.Groups(2).Value)
+            If Not cont.ContainsKey(m.Groups(1).Value) OrElse cont(m.Groups(1).Value) < n Then cont(m.Groups(1).Value) = n
+        End If
+    Next
+End Sub
+
+Sub GuardarRegistro(ruta As String)
+    Dim sb As New System.Text.StringBuilder
+    sb.AppendLine("RUTA_INSTANCIA;TAG;TAG_CLIENTE;CLASE;TIPO;DESCRIPCION;SISTEMA;FABRICANTE;MODELO;POTENCIA_KW;PESO_HT;SUMINISTRO;ARCHIVO;ESTADO;ALTA")
+    Dim claves As New List(Of String)(reg.Keys)
+    claves.Sort(AddressOf CompararTag)
+    For Each k As String In claves
+        Dim f() As String = reg(k)
+        For i As Integer = 0 To NC - 1
+            f(i) = If(f(i), "").Replace(";", ",")
+        Next
+        sb.AppendLine(String.Join(";", f))
+    Next
+    Dim tmp As String = ruta & ".tmp"
+    System.IO.File.WriteAllText(tmp, sb.ToString(), New System.Text.UTF8Encoding(True))
+    If System.IO.File.Exists(ruta) Then
+        System.IO.File.Copy(ruta, ruta & ".bak", True)
+        System.IO.File.Delete(ruta)
+    End If
+    System.IO.File.Move(tmp, ruta)
+End Sub
+
+Function CompararTag(a As String, b As String) As Integer
+    Return String.Compare(reg(a)(C_TAG), reg(b)(C_TAG), StringComparison.OrdinalIgnoreCase)
+End Function
+
+Sub CargarSistemas(asm As Document)
+    Dim dir As String = System.IO.Path.GetDirectoryName(asm.FullFileName)
+    For lvl As Integer = 0 To 6
+        If dir Is Nothing Then Exit For
+        For Each sd As String In New String() {"", "iLogic"}
+            Dim p As String = System.IO.Path.Combine(System.IO.Path.Combine(dir, sd), "TABLA_MARCAS.csv")
+            If System.IO.File.Exists(p) Then
+                For Each ln As String In System.IO.File.ReadAllLines(p, System.Text.Encoding.UTF8)
+                    Dim c() As String = ln.Split(";"c)
+                    If c.Length >= 5 AndAlso c(0).Trim().ToUpper().EndsWith("CONJUNTO") AndAlso c(4).Trim().ToUpper() = "SI" Then sistemas.Add(c(1).Trim().ToUpper())
+                Next
+                Exit Sub
+            End If
+        Next
+        dir = System.IO.Path.GetDirectoryName(dir)
+    Next
+End Sub
+
+' ===================== Excel: LISTA DE EQUIPOS =====================
+Function Excel(carpeta As String) As String
+    Dim xl As Object = Nothing
+    Try
+        System.IO.Directory.CreateDirectory(carpeta)
+        Dim ruta As String = System.IO.Path.Combine(carpeta, NomBase(planta, nombre) & "-LISTA_EQUIPOS.xlsx")
+        xl = CreateObject("Excel.Application")
+        xl.Visible = False
+        xl.DisplayAlerts = False
+        Dim wb As Object = xl.Workbooks.Add()
+        Dim ws As Object = wb.Worksheets(1)
+        ws.Name = "LISTA DE EQUIPOS"
+        ws.Cells(1, 1).Value = "LISTA DE EQUIPOS  -  PROYECTO " & proy & "  -  PLANTA " & planta & "  -  " & nombre
+        ws.Cells(1, 1).Font.Bold = True
+        ws.Cells(1, 1).Font.Size = 14
+        ws.Cells(2, 1).Value = "Fecha: " & DateTime.Now.ToString("dd/MM/yyyy HH:mm")
+        Dim cab() As String = {"TAG", "TAG CLIENTE", "CLASE", "TIPO", "DESCRIPCION", "SISTEMA", "FABRICANTE", "MODELO", "POTENCIA (kW)", "PESO H.T. (kg)", "SUMINISTRO", "UBICACION (instancia)", "ARCHIVO"}
+        For i As Integer = 0 To cab.Length - 1
+            ws.Cells(4, i + 1).Value = cab(i)
+        Next
+        ws.Range(ws.Cells(4, 1), ws.Cells(4, cab.Length)).Font.Bold = True
+        ws.Range(ws.Cells(4, 1), ws.Cells(4, cab.Length)).Interior.Color = RGB(221, 235, 247)
+        Dim r As Integer = 5
+        Dim lista As New List(Of String)(orden)
+        lista.Sort(AddressOf CompararTag)
+        For Each k As String In lista
+            Dim f() As String = reg(k)
+            Dim v() As Object = {f(C_TAG), f(C_CLI), f(C_CLASE), f(C_TIPO), f(C_DESC), f(C_SIS), f(C_FAB), f(C_MOD), Nothing, Nothing, f(C_SUM), k, f(C_ARCH)}
+            For i As Integer = 0 To v.Length - 1
+                If v(i) IsNot Nothing Then ws.Cells(r, i + 1).Value = v(i)
+            Next
+            If Num(f(C_KW)) > 0 Then ws.Cells(r, 9).Value = Num(f(C_KW))
+            If Num(f(C_PESO)) > 0 Then ws.Cells(r, 10).Value = Num(f(C_PESO))
+            If f(C_CLASE) = "SISTEMA" Then ws.Range(ws.Cells(r, 1), ws.Cells(r, cab.Length)).Font.Bold = True
+            r = r + 1
+        Next
+        ws.Cells(r + 1, 5).Value = "TOTAL EQUIPOS: " & nEq
+        ws.Cells(r + 1, 9).Formula = "=SUM(I5:I" & (r - 1) & ")"
+        ws.Cells(r + 1, 10).Formula = "=SUM(J5:J" & (r - 1) & ")"
+        ws.Range(ws.Cells(r + 1, 1), ws.Cells(r + 1, cab.Length)).Font.Bold = True
+        ws.Columns("A:M").AutoFit()
+        If System.IO.File.Exists(ruta) Then System.IO.File.Delete(ruta)
+        wb.SaveAs(ruta, 51)
+        wb.Close(False)
+        xl.Quit()
+        Return "Excel: " & ruta
+    Catch ex As Exception
+        Try
+            xl.Quit()
+        Catch
+        End Try
+        Return "(Excel no generado: " & ex.Message & ")"
+    End Try
+End Function
+
+' ===================== utilidades =====================
+Function Primero(ParamArray v() As String) As String
+    For Each s As String In v
+        If s IsNot Nothing AndAlso s.Trim() <> "" Then Return s.Trim()
+    Next
+    Return ""
+End Function
+
+Function Num(s As String) As Double
+    Dim r As Double
+    If s Is Nothing Then Return 0
+    If Double.TryParse(s.Replace(",", "."), Globalization.NumberStyles.Any, Globalization.CultureInfo.InvariantCulture, r) Then Return r
+    Return 0
+End Function
+
+' Carpeta de la obra: la que tiene _OBRA.txt (NUEVO_PROYECTO); si no hay, la del ensamble
+Function CarpetaObra(asm As Document) As String
+    Dim d As String = System.IO.Path.GetDirectoryName(asm.FullFileName)
+    Dim x As String = d
+    For i As Integer = 0 To 8
+        If x Is Nothing OrElse x = "" Then Exit For
+        If System.IO.File.Exists(System.IO.Path.Combine(x, "_OBRA.txt")) Then Return x
+        x = System.IO.Path.GetDirectoryName(x)
+    Next
+    Return d
+End Function
+
+' "EE" + "ANTAPACAY" -> "EE-ANTAPACAY"; "EE" + "ANT-EE" -> "ANT-EE" (no repite la planta)
+Function NomBase(planta As String, nombre As String) As String
+    If nombre.ToUpper() = planta.ToUpper() OrElse nombre.ToUpper().EndsWith("-" & planta.ToUpper()) Then Return nombre
+    Return planta & "-" & nombre
+End Function
+
+Function Arg(n As String) As String
+    Try
+        If RuleArguments.Exists(n) Then Return CStr(RuleArguments.Value(n))
+    Catch
+    End Try
+    Return ""
+End Function
+
+Function UProp(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Inventor User Defined Properties").Item(n).Value)
+    Catch
+        Return ""
+    End Try
+End Function
+
+Function DProp(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Design Tracking Properties").Item(n).Value)
+    Catch
+        Return ""
+    End Try
+End Function
+
+Sub EscribirProp(d As Document, n As String, v As String)
+    Dim ps As PropertySet = d.PropertySets.Item("Inventor User Defined Properties")
+    Try
+        ps.Item(n).Value = v
+    Catch
+        ps.Add(v, n)
+    End Try
+End Sub
+
+Sub Aviso(t As String)
+    If Not silencioso Then MessageBox.Show(t, "TAG_EQUIPOS")
+End Sub

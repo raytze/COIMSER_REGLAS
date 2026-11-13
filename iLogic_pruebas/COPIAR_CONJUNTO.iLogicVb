@@ -1,0 +1,404 @@
+' =====================================================================
+'  COPIAR_CONJUNTO  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Copia un conjunto (con TODOS sus archivos) a otra fase de la obra -o a la misma, como una
+'  variante- con nombres nuevos, para que cada fase tenga sus propios archivos y sus marcas:
+'
+'     MAJ-ALM\MAJ-ALM-BA-001.iam + MAJ-ALM-BA-001\Frame, Piezas, Referencias
+'        ->  MAJ-EE\MAJ-EE-BA-001.iam + MAJ-EE-BA-001\Frame, Piezas, Referencias
+'
+'  - Renombra: lo que lleva el nombre del conjunto se cambia (MAJ-ALM-BA-001-PL-001 ->
+'    MAJ-EE-BA-001-PL-001); lo de Frame Generator / Skeleton sin ese nombre recibe el
+'    prefijo nuevo (MAJ-EE-BA-001-AISC W 4x13 ...ipt) para que no se repitan nombres en Vault.
+'  - Re-enlaza las referencias de las copias a las copias (ensambles, derivadas, skeleton propio).
+'    Lo que esta FUERA del conjunto (Content Center, librerias, skeleton maestro de la obra en
+'    <obra>\REFERENCIAS) se sigue usando igual -> un cambio en el maestro llega a ambas fases.
+'  - En las copias borra MARCA y datos de numeracion, pone PLANTA de la fase destino y
+'    COPIA_DE = conjunto original. TEKLA_NUMERACION las numera de nuevo en la fase destino.
+'  - Inserta la copia en la fase destino (en el origen: muevela a su sitio) sin guardar la fase.
+'  Ejecutar desde la FASE que contiene el conjunto (seleccionalo antes o eligelo de la lista).
+'  PRUEBALO PRIMERO EN UNA OBRA DE PRUEBA.   Argumentos: silencioso, fase=<FASE destino>
+' =====================================================================
+
+Sub Main()
+    silencioso = RuleArguments.Exists("silencioso")
+    Dim faseAct As AssemblyDocument = TryCast(ThisApplication.ActiveDocument, AssemblyDocument)
+    If faseAct Is Nothing OrElse EsGeneral(faseAct) Then
+        MessageBox.Show("Abre la FASE que contiene el conjunto a copiar.", "COPIAR_CONJUNTO")
+        Exit Sub
+    End If
+
+    ' ---------- conjunto origen ----------
+    Dim src As AssemblyDocument = Nothing
+    Try
+        For Each o As Object In faseAct.SelectSet
+            Dim oc As ComponentOccurrence = TryCast(o, ComponentOccurrence)
+            If oc IsNot Nothing AndAlso oc.DefinitionDocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then src = CType(oc.Definition.Document, AssemblyDocument)
+        Next
+    Catch
+    End Try
+    If src Is Nothing Then
+        Dim conj As New Dictionary(Of String, AssemblyDocument)
+        For Each oc As ComponentOccurrence In faseAct.ComponentDefinition.Occurrences
+            Try
+                Dim d As Document = oc.Definition.Document
+                If d.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject AndAlso UProp(d, "PREFIJO") <> "" Then
+                    Dim nn As String = System.IO.Path.GetFileNameWithoutExtension(d.FullFileName)
+                    If Not conj.ContainsKey(nn) Then conj.Add(nn, CType(d, AssemblyDocument))
+                End If
+            Catch
+            End Try
+        Next
+        If conj.Count = 0 Then
+            MessageBox.Show("No hay conjuntos (con PREFIJO) en " & faseAct.DisplayName & ".", "COPIAR_CONJUNTO")
+            Exit Sub
+        End If
+        Dim l As New List(Of String)(conj.Keys)
+        l.Sort()
+        Dim r As String = InputListBox("Conjunto a copiar:", l, l(0), "COPIAR_CONJUNTO", "Conjunto")
+        If r Is Nothing OrElse r = "" Then Exit Sub
+        src = conj(r)
+    End If
+    If src.Dirty Then
+        MessageBox.Show("Guarda primero " & src.DisplayName & " (tiene cambios sin guardar).", "COPIAR_CONJUNTO")
+        Exit Sub
+    End If
+    Dim srcIam As String = src.FullFileName
+    Dim srcName As String = System.IO.Path.GetFileNameWithoutExtension(srcIam)
+    Dim srcFolder As String = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(srcIam), srcName)
+
+    ' ---------- fase destino ----------
+    Dim obra As String = CarpetaObra(faseAct.FullFileName)
+    If obra = "" Then
+        MessageBox.Show("No encuentro la obra (_OBRA.txt) encima de " & faseAct.FullFileName, "COPIAR_CONJUNTO")
+        Exit Sub
+    End If
+    Dim cod As String = ""
+    Dim plantas As New List(Of String)
+    For Each ln As String In System.IO.File.ReadAllLines(System.IO.Path.Combine(obra, "_OBRA.txt"))
+        If ln.StartsWith("CODIGO=") Then cod = ln.Substring(7).Trim().ToUpper()
+        If ln.StartsWith("PLANTAS=") Then
+            For Each p As String In ln.Substring(8).Split(","c)
+                If p.Trim() <> "" Then plantas.Add(p.Trim().ToUpper())
+            Next
+        End If
+    Next
+    If cod = "" Then cod = UProp(faseAct, "COD_PROYECTO")
+    Dim fasesRuta As New Dictionary(Of String, String)
+    For Each p As String In plantas
+        Dim r1 As String = System.IO.Path.Combine(obra, cod & "-" & p, cod & "-" & p & ".iam")
+        Dim r2 As String = System.IO.Path.Combine(obra, cod & "-" & p & ".iam")
+        If System.IO.File.Exists(r1) Then
+            fasesRuta(p) = r1
+        ElseIf System.IO.File.Exists(r2) Then
+            fasesRuta(p) = r2
+        End If
+    Next
+    If fasesRuta.Count = 0 Then
+        MessageBox.Show("No encuentro las fases de la obra (PLANTAS= en _OBRA.txt).", "COPIAR_CONJUNTO")
+        Exit Sub
+    End If
+    Dim faseDest As String = Arg("fase").ToUpper()
+    If faseDest = "" Then
+        Dim l As New List(Of String)(fasesRuta.Keys)
+        faseDest = InputListBox("Copiar " & srcName & " a la fase:", l, l(0), "COPIAR_CONJUNTO", "Fase destino")
+        If faseDest Is Nothing OrElse faseDest = "" Then Exit Sub
+    End If
+    If Not fasesRuta.ContainsKey(faseDest) Then
+        MessageBox.Show("No encuentro la fase " & faseDest, "COPIAR_CONJUNTO")
+        Exit Sub
+    End If
+    Dim destFaseIam As String = fasesRuta(faseDest)
+    Dim destFaseNom As String = System.IO.Path.GetFileNameWithoutExtension(destFaseIam)
+    Dim destDir As String = System.IO.Path.GetDirectoryName(destFaseIam)
+    If System.IO.Path.GetFileName(destDir).ToUpper() <> destFaseNom.ToUpper() Then destDir = System.IO.Path.Combine(destDir, destFaseNom)
+    System.IO.Directory.CreateDirectory(destDir)
+
+    ' ---------- nombre nuevo ----------
+    Dim pref As String = UProp(src, "PREFIJO")
+    Dim n As Integer = 1
+    Dim newName As String
+    Do
+        newName = destFaseNom & "-" & pref & "-" & n.ToString("000")
+        If Not System.IO.File.Exists(System.IO.Path.Combine(destDir, newName & ".iam")) AndAlso Not System.IO.Directory.Exists(System.IO.Path.Combine(destDir, newName)) Then Exit Do
+        n += 1
+    Loop
+    Dim newFolder As String = System.IO.Path.Combine(destDir, newName)
+
+    ' ---------- archivos a copiar ----------
+    Dim mapa As New Dictionary(Of String, String)(StringComparer.OrdinalIgnoreCase)
+    mapa.Add(srcIam, System.IO.Path.Combine(destDir, newName & ".iam"))
+    Dim fuera As Integer = 0
+    For Each d As Document In src.AllReferencedDocuments
+        Dim f As String = d.FullFileName
+        If f.ToLower().StartsWith(srcFolder.ToLower() & "\") Then
+            If Not mapa.ContainsKey(f) Then mapa.Add(f, NuevaRuta(f, srcFolder, srcName, newFolder, newName))
+        Else
+            fuera += 1
+        End If
+    Next
+    For Each v As String In mapa.Values
+        If System.IO.File.Exists(v) Then
+            MessageBox.Show("Ya existe " & v & ". No copio nada.", "COPIAR_CONJUNTO")
+            Exit Sub
+        End If
+    Next
+    If Not silencioso Then
+        If MessageBox.Show("Copiar " & srcName & " (" & mapa.Count & " archivos) como " & newName & " en la fase " & faseDest & "?" & vbCrLf & _
+            fuera & " archivos de fuera del conjunto (Content Center, librerias, skeleton maestro) se seguiran usando sin copiar." & vbCrLf & vbCrLf & _
+            "Las copias quedaran SIN MARCA: corre TEKLA_NUMERACION en " & destFaseNom & " despues.", "COPIAR_CONJUNTO", MessageBoxButtons.YesNo, MessageBoxIcon.Question) <> DialogResult.Yes Then Exit Sub
+    End If
+
+    ' ---------- 1) copiar ----------
+    For Each kv As KeyValuePair(Of String, String) In mapa
+        System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(kv.Value))
+        System.IO.File.Copy(kv.Key, kv.Value, False)
+        Try
+            System.IO.File.SetAttributes(kv.Value, System.IO.File.GetAttributes(kv.Value) And Not System.IO.FileAttributes.ReadOnly)
+        Catch
+        End Try
+    Next
+
+    ' ---------- 2) re-enlazar y limpiar propiedades (piezas primero, ensambles despues) ----------
+    Dim orden As New List(Of String)
+    For Each v As String In mapa.Values
+        If v.ToLower().EndsWith(".ipt") Then orden.Add(v)
+    Next
+    Dim ensambles As New List(Of String)
+    For Each v As String In mapa.Values
+        If v.ToLower().EndsWith(".iam") Then ensambles.Add(v)
+    Next
+    ' ensambles: los mas profundos primero, el conjunto principal al final
+    ensambles.Sort(Function(a, b) b.Split("\"c).Length.CompareTo(a.Split("\"c).Length))
+    orden.AddRange(ensambles)
+    Dim nRef As Integer = 0
+    Dim errores As New List(Of String)
+    For Each v As String In orden
+        Dim d As Document = Nothing
+        Try
+            d = ThisApplication.Documents.Open(v, False)
+            For Each fd As FileDescriptor In d.File.ReferencedFileDescriptors
+                If mapa.ContainsKey(fd.FullFileName) Then
+                    fd.ReplaceReference(mapa(fd.FullFileName))
+                    nRef += 1
+                End If
+            Next
+            Limpiar(d, srcName, newName, faseDest)
+            d.Save()
+        Catch ex As Exception
+            errores.Add(System.IO.Path.GetFileName(v) & ": " & ex.Message)
+        End Try
+        Try
+            If d IsNot Nothing AndAlso Not (d Is faseAct) Then d.Close(True)
+        Catch
+        End Try
+    Next
+
+    ' ---------- 3) insertar en la fase destino ----------
+    Dim nuevoIam As String = mapa(srcIam)
+    Dim fd2 As AssemblyDocument = Nothing
+    Try
+        fd2 = CType(ThisApplication.Documents.Open(destFaseIam, True), AssemblyDocument)
+        fd2.ComponentDefinition.Occurrences.Add(nuevoIam, ThisApplication.TransientGeometry.CreateMatrix())
+        fd2.Activate()
+    Catch ex As Exception
+        errores.Add("No pude insertar en " & destFaseNom & ": " & ex.Message)
+    End Try
+
+    Dim t As String = "Copiado " & srcName & " -> " & newName & " (" & mapa.Count & " archivos, " & nRef & " referencias re-enlazadas)" & vbCrLf & _
+        "Insertado en " & destFaseNom & " en el origen: muevelo a su sitio y GUARDA la fase." & vbCrLf & _
+        "Luego TEKLA_NUMERACION en " & destFaseNom & "."
+    If errores.Count > 0 Then t &= vbCrLf & vbCrLf & "REVISAR:" & vbCrLf & String.Join(vbCrLf, errores)
+    Aviso(t)
+End Sub
+
+Private silencioso As Boolean
+Private xl As Object
+Private rutaSalida As String = ""
+
+' Ruta nueva de un archivo del conjunto: cambia el nombre del conjunto por el nuevo;
+' si el archivo no lo lleva (Frame Generator, Skeleton), le antepone el nombre nuevo.
+Function NuevaRuta(f As String, srcFolder As String, srcName As String, newFolder As String, newName As String) As String
+    Dim rel As String = f.Substring(srcFolder.Length + 1)
+    Dim partes() As String = rel.Split("\"c)
+    For i As Integer = 0 To partes.Length - 1
+        Dim p As String = partes(i)
+        If p.ToUpper().Contains(srcName.ToUpper()) Then
+            partes(i) = System.Text.RegularExpressions.Regex.Replace(p, System.Text.RegularExpressions.Regex.Escape(srcName), newName, System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+        ElseIf i = partes.Length - 1 Then
+            partes(i) = newName & "-" & p
+        End If
+    Next
+    Return System.IO.Path.Combine(newFolder, String.Join("\", partes))
+End Function
+
+' Quita la numeracion de la copia y la deja lista para la fase destino
+Sub Limpiar(d As Document, srcName As String, newName As String, fase As String)
+    For Each pn As String In New String() {"MARCA", "CONJUNTO", "ENSAMBLE", "PADRE", "RUTA", "NIVEL", "PERTENECE_A", "BLOQUEADO", "PERNERIA", "TAG", "TAG_LOCAL", "TAGS"}
+        If UProp(d, pn) <> "" Then EscribirProp(d, pn, "")
+    Next
+    If UProp(d, "PLANTA") <> "" Then EscribirProp(d, "PLANTA", fase)
+    If d.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject AndAlso UProp(d, "PREFIJO") <> "" Then EscribirProp(d, "PLANTA", fase)
+    If System.IO.Path.GetFileNameWithoutExtension(d.FullFileName).ToUpper().StartsWith(newName.ToUpper()) AndAlso UProp(d, "COPIA_DE") = "" Then EscribirProp(d, "COPIA_DE", srcName)
+    Try
+        Dim dt As PropertySet = d.PropertySets.Item("Design Tracking Properties")
+        Dim pnum As String = CStr(dt.Item("Part Number").Value)
+        ' el Part Number lo pone TEKLA (= marca); si era el nombre del archivo, se actualiza
+        If pnum.ToUpper().Contains(srcName.ToUpper()) Then
+            dt.Item("Part Number").Value = System.Text.RegularExpressions.Regex.Replace(pnum, System.Text.RegularExpressions.Regex.Escape(srcName), newName, System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+        Else
+            dt.Item("Part Number").Value = System.IO.Path.GetFileNameWithoutExtension(d.FullFileName)
+        End If
+    Catch
+    End Try
+End Sub
+
+Sub Aviso(t As String)
+    If Not silencioso Then MessageBox.Show(t, "COPIAR_CONJUNTO")
+End Sub
+
+' ===================== comunes COIMSER =====================
+Function Arg(n As String) As String
+    Try
+        If RuleArguments.Exists(n) Then Return CStr(RuleArguments.Value(n))
+    Catch
+    End Try
+    Return ""
+End Function
+
+Function UProp(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Inventor User Defined Properties").Item(n).Value).Trim()
+    Catch
+        Return ""
+    End Try
+End Function
+
+Function PropDT(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Design Tracking Properties").Item(n).Value).Trim()
+    Catch
+        Return ""
+    End Try
+End Function
+
+Sub EscribirProp(d As Document, n As String, v As String)
+    Dim ps As PropertySet = d.PropertySets.Item("Inventor User Defined Properties")
+    Try
+        ps.Item(n).Value = v
+    Catch
+        ps.Add(v, n)
+    End Try
+End Sub
+
+' Carpeta de la obra: la primera hacia arriba que tiene _OBRA.txt
+Function CarpetaObra(ruta As String) As String
+    Dim x As String = System.IO.Path.GetDirectoryName(ruta)
+    For i As Integer = 0 To 8
+        If x Is Nothing OrElse x = "" Then Exit For
+        If System.IO.File.Exists(System.IO.Path.Combine(x, "_OBRA.txt")) Then Return x
+        x = System.IO.Path.GetDirectoryName(x)
+    Next
+    Return ""
+End Function
+
+Function EsGeneral(d As Document) As Boolean
+    If UProp(d, "TIPO_ENSAMBLE").ToUpper() = "GENERAL" Then Return True
+    Return System.IO.Path.GetFileNameWithoutExtension(d.FullFileName).ToUpper().EndsWith("-GENERAL")
+End Function
+
+' Fases del ensamble general: PLANTA -> ruta del .iam
+Function FasesDe(g As AssemblyDocument) As Dictionary(Of String, String)
+    Dim r As New Dictionary(Of String, String)
+    For Each oc As ComponentOccurrence In g.ComponentDefinition.Occurrences
+        Try
+            Dim d As Document = oc.Definition.Document
+            Dim pl As String = UProp(d, "PLANTA").ToUpper()
+            If UProp(d, "TIPO_ENSAMBLE").ToUpper() = "PLANTA" AndAlso pl <> "" AndAlso Not r.ContainsKey(pl) Then r.Add(pl, d.FullFileName)
+        Catch
+        End Try
+    Next
+    Return r
+End Function
+
+Function Limpia(s As String) As String
+    If s Is Nothing Then Return ""
+    Return s.Replace(";", ",").Replace(vbCr, " ").Replace(vbLf, " ").Trim()
+End Function
+
+' ===================== Excel (si no hay Excel se guarda CSV) =====================
+Function NuevoLibro() As Object
+    Try
+        xl = CreateObject("Excel.Application")
+        xl.Visible = False
+        xl.DisplayAlerts = False
+        Dim wb As Object = xl.Workbooks.Add()
+        Do While wb.Worksheets.Count > 1
+            wb.Worksheets(wb.Worksheets.Count).Delete()
+        Loop
+        Return wb
+    Catch
+        xl = Nothing
+        Return Nothing
+    End Try
+End Function
+
+Function Hoja(wb As Object, nombre As String, primera As Boolean) As Object
+    Dim ws As Object
+    If primera Then
+        ws = wb.Worksheets(1)
+    Else
+        ws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count))
+    End If
+    ws.Name = nombre
+    Return ws
+End Function
+
+' Escribe una tabla (fila 1 = titulos) en una hoja; devuelve la ultima fila
+Function Tabla(ws As Object, filaIni As Integer, filas As List(Of Object())) As Integer
+    Dim r As Integer = filaIni
+    For Each f() As Object In filas
+        For c As Integer = 0 To f.Length - 1
+            If f(c) Is Nothing Then Continue For
+            ws.Cells(r, c + 1).Value = f(c)
+        Next
+        r += 1
+    Next
+    Try
+        Dim nc As Integer = filas(0).Length
+        ws.Range(ws.Cells(filaIni, 1), ws.Cells(filaIni, nc)).Font.Bold = True
+        ws.Range(ws.Cells(filaIni, 1), ws.Cells(filaIni, nc)).Interior.Color = 14277081
+        ws.Columns.AutoFit()
+    Catch
+    End Try
+    Return r - 1
+End Function
+
+Sub GuardarLibro(wb As Object, ruta As String)
+    Try
+        If System.IO.File.Exists(ruta) Then System.IO.File.Delete(ruta)
+    Catch
+        ruta = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(ruta), System.IO.Path.GetFileNameWithoutExtension(ruta) & "_" & DateTime.Now.ToString("HHmmss") & ".xlsx")
+    End Try
+    wb.Worksheets(1).Activate()
+    wb.SaveAs(ruta, 51)
+    wb.Close(False)
+    xl.Quit()
+    System.Runtime.InteropServices.Marshal.ReleaseComObject(wb)
+    System.Runtime.InteropServices.Marshal.ReleaseComObject(xl)
+    xl = Nothing
+    rutaSalida = ruta
+End Sub
+
+' CSV de respaldo (;) cuando no hay Excel
+Sub GuardarCsv(ruta As String, filas As List(Of Object()))
+    Dim sb As New System.Text.StringBuilder()
+    For Each f() As Object In filas
+        Dim l As New List(Of String)
+        For Each v As Object In f
+            l.Add(If(v Is Nothing, "", Limpia(CStr(v))))
+        Next
+        sb.AppendLine(String.Join(";", l))
+    Next
+    System.IO.File.WriteAllText(ruta, sb.ToString(), System.Text.Encoding.UTF8)
+    rutaSalida = ruta
+End Sub

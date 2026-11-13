@@ -1,0 +1,127 @@
+' =====================================================================
+'  MENU_COIMSER  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Menu de inicio: mira DONDE estas (sin documento, GENERAL, FASE, CONJUNTO, PIEZA o PLANO),
+'  muestra el ESTADO (ultima numeracion, planos sin emitir...) y SOLO las reglas que tocan en
+'  ese nivel, en el orden del proceso. Eliges una, se ejecuta y el menu vuelve a aparecer
+'  (Cancelar para salir).
+' =====================================================================
+
+Sub Main()
+    Do
+        Dim d As Document = Nothing
+        Try
+            d = ThisApplication.ActiveDocument
+        Catch
+        End Try
+        Dim nivel As String = NivelDe(d)
+        Dim ops As List(Of String) = OpcionesDe(nivel)
+        Dim estado As String = EstadoDe(d, nivel)
+        Dim r As String = InputListBox("Estas en: " & nivel & If(d IsNot Nothing, "  (" & d.DisplayName & ")", "") & vbCrLf & estado & vbCrLf & "Elige el paso (Cancelar = salir):", ops, ops(0), "MENU COIMSER", "Reglas")
+        If r Is Nothing OrElse r = "" Then Exit Sub
+        Dim regla As String = r.Split(" "c)(1)
+        If regla = "SALIR" Then Exit Sub
+        Try
+            iLogicVb.RunExternalRule(regla)
+        Catch ex As Exception
+            MessageBox.Show("No pude ejecutar " & regla & ": " & ex.Message, "MENU COIMSER")
+        End Try
+    Loop
+End Sub
+
+Function NivelDe(d As Document) As String
+    If d Is Nothing Then Return "SIN DOCUMENTO"
+    If d.DocumentType = DocumentTypeEnum.kDrawingDocumentObject Then Return "PLANO"
+    If d.DocumentType = DocumentTypeEnum.kPartDocumentObject Then Return "PIEZA"
+    If d.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+        If UProp(d, "TIPO_ENSAMBLE").ToUpper() = "GENERAL" OrElse System.IO.Path.GetFileNameWithoutExtension(d.FullFileName).ToUpper().EndsWith("-GENERAL") Then Return "GENERAL"
+        If UProp(d, "TIPO_ENSAMBLE").ToUpper() = "PLANTA" Then Return "FASE"
+        Return "CONJUNTO"
+    End If
+    Return "OTRO"
+End Function
+
+Function OpcionesDe(nivel As String) As List(Of String)
+    Dim l As New List(Of String)
+    Select Case nivel
+        Case "SIN DOCUMENTO", "PIEZA", "OTRO"
+            l.Add("1. NUEVO_PROYECTO - crear obra nueva (GENERAL + fases en carpetas)")
+            If nivel = "PIEZA" Then l.Add("2. PIEZA_ASOCIADA - congelar / descongelar esta pieza")
+        Case "GENERAL"
+            l.Add("1. INICIAR_CONJUNTO - crear o abrir una FASE")
+            l.Add("2. NUEVA_REFERENCIA - referencia comun de la obra (equipo, existente, STEP)")
+            l.Add("3. EJECUTAR_FASES - numerar / reportes / planos / plasma en todas las fases o una")
+            l.Add("4. REORGANIZAR_OBRA - pasar obra antigua a carpeta por fase")
+        Case "FASE", "CONJUNTO"
+            l.Add("1. INICIAR_CONJUNTO - crear subconjunto (o definir este)")
+            l.Add("2. NUEVA_REFERENCIA - skeleton / traer STEP / convertir en referencia")
+            l.Add("3. NUEVA_PIEZA - plancha, chapa, mecanizada, soldado...")
+            l.Add("4. PIEZA_ASOCIADA - pieza que sigue al skeleton u otra pieza")
+            l.Add("5. INSERTAR_EQUIPO - motor, reductor, equipo comprado")
+            l.Add("6. COPIAR_CONJUNTO - copiar un conjunto a otra fase")
+            l.Add("7. REVISAR_JERARQUIA - revisar antes de numerar")
+            l.Add("8. TEKLA_NUMERACION - marcas")
+            l.Add("9. TAG_EQUIPOS - TAG de fajas y equipos")
+            l.Add("10. GENERAR_PLANOS - planos de conjuntos y piezas")
+            l.Add("11. CUT_LIST - lista de corte y requerimiento")
+            l.Add("12. CAMBIOS_MATERIAL - que cambio desde la ultima emision")
+            l.Add("13. REPORTE_PERNERIA - compra de perneria")
+            l.Add("14. REPORTE_ENSAMBLES - pesos y areas por conjunto")
+            l.Add("15. EXPORTAR_PLASMA - DXF de corte")
+            l.Add("16. EMITIR_PLANOS - revision, PDF, transmittal")
+        Case "PLANO"
+            l.Add("1. TITULO_PLANO - titulo y marcas en globos")
+            l.Add("2. ESTILO_PLANO - estilo COIMSER")
+            l.Add("3. EMITIR_PLANOS - emitir este plano (revision + PDF)")
+    End Select
+    l.Add("0. SALIR")
+    Return l
+End Function
+
+Function EstadoDe(d As Document, nivel As String) As String
+    If d Is Nothing OrElse d.FullFileName = "" Then Return ""
+    Dim s As New System.Text.StringBuilder()
+    Try
+        Dim dir As String = System.IO.Path.GetDirectoryName(d.FullFileName)
+        If nivel = "FASE" Or nivel = "CONJUNTO" Then
+            Dim res As String = System.IO.Path.Combine(dir, "_ultimo_resumen.txt")
+            If System.IO.File.Exists(res) Then
+                s.AppendLine("Ultima numeracion: " & System.IO.File.GetLastWriteTime(res).ToString("yyyy-MM-dd HH:mm"))
+            Else
+                s.AppendLine("Aun sin numerar (TEKLA_NUMERACION)")
+            End If
+            If d.Dirty Then s.AppendLine("Hay cambios sin guardar")
+            Dim pl As String = System.IO.Path.Combine(dir, "PLANOS")
+            If System.IO.Directory.Exists(pl) Then
+                Dim nP As Integer = System.IO.Directory.GetFiles(pl, "*.idw").Length
+                Dim emit As New List(Of String)
+                Dim reg As String = System.IO.Path.Combine(pl, "_REGISTRO_EMISIONES.csv")
+                If System.IO.File.Exists(reg) Then
+                    For Each ln As String In System.IO.File.ReadAllLines(reg)
+                        Dim c() As String = ln.Split(";"c)
+                        If c.Length > 1 AndAlso Not emit.Contains(c(1)) Then emit.Add(c(1))
+                    Next
+                End If
+                Dim sinE As Integer = 0
+                For Each f As String In System.IO.Directory.GetFiles(pl, "*.idw")
+                    If Not emit.Contains(System.IO.Path.GetFileNameWithoutExtension(f)) Then sinE += 1
+                Next
+                s.AppendLine("Planos: " & nP & "  (sin emitir: " & sinE & ")")
+                Dim h As String = System.IO.Path.Combine(pl, "PLASMA\_HISTORIAL_CORTE.csv")
+                If System.IO.File.Exists(h) Then s.AppendLine("Ultimo envio a plasma: " & System.IO.File.GetLastWriteTime(h).ToString("yyyy-MM-dd HH:mm"))
+            End If
+        ElseIf nivel = "PLANO" Then
+            Dim rv As String = UProp(d, "REVISION")
+            s.AppendLine("Revision: " & If(rv = "", "sin emitir", rv & "  (" & UProp(d, "FECHA_REV") & ")"))
+        End If
+    Catch
+    End Try
+    Return s.ToString().TrimEnd()
+End Function
+
+Function UProp(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Inventor User Defined Properties").Item(n).Value).Trim()
+    Catch
+        Return ""
+    End Try
+End Function

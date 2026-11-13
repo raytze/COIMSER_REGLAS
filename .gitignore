@@ -1,0 +1,13 @@
+# respaldos y temporales de pruebas
+*.bak
+*.bak_*
+_t_*
+_w_*
+_stage/
+_to_delete/
+OldVersions/
+*.lck
+# salidas que no son codigo
+*.xlsx
+*.pdf
+*.dxf

@@ -1,0 +1,190 @@
+' =====================================================================
+'  INSERTAR_EQUIPO  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Declara un EQUIPO comprado / suministrado (motor, reductor, bomba, tambor...):
+'   - Si hay un componente SELECCIONADO en el ensamble -> lo declara a el.
+'   - Si no, pide el archivo (.ipt / .iam) y lo inserta en el ensamble que estas
+'     editando (ej. dentro de la faja).  STEP del proveedor: abrelo en Inventor,
+'     guardalo como .ipt/.iam (mejor Simplificado) y luego usa esta regla.
+'  Escribe en el archivo del equipo:
+'     EQUIPO = SI, TIPO_EQUIPO (MOT, RED, MR, TAM... de TABLA_MARCAS), Descripcion,
+'     FABRICANTE, MODELO, POTENCIA_KW, PESO_HT (peso de hoja tecnica), SUMINISTRO
+'   y lo pone como COMPRADO en la lista de materiales (no se numera por dentro).
+'  El TAG (EE-FAJ-001-MOT-01) lo da despues la regla TAG_EQUIPOS.
+'  Argumentos opcionales: silencioso, archivo=, tipo=, descripcion=, fabricante=,
+'                         modelo=, potencia=, peso=, suministro=COIMSER|CLIENTE
+' =====================================================================
+
+Sub Main()
+    Dim top As AssemblyDocument = TryCast(ThisApplication.ActiveDocument, AssemblyDocument)
+    If top Is Nothing Then
+        MessageBox.Show("Abre un ensamble (.iam) y ejecuta la regla desde ahi.", "INSERTAR_EQUIPO")
+        Exit Sub
+    End If
+    Dim destino As AssemblyDocument = top
+    Try
+        If ThisApplication.ActiveEditDocument.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then destino = CType(ThisApplication.ActiveEditDocument, AssemblyDocument)
+    Catch
+    End Try
+    silencioso = RuleArguments.Exists("silencioso")
+
+    ' ---------- componente: seleccionado o archivo nuevo ----------
+    Dim occ As ComponentOccurrence = Nothing
+    Try
+        For Each o As Object In top.SelectSet
+            If TypeOf o Is ComponentOccurrence Then
+                occ = CType(o, ComponentOccurrence)
+                Exit For
+            End If
+        Next
+    Catch
+    End Try
+    If occ Is Nothing Then
+        Dim archivo As String = Arg("archivo")
+        If archivo = "" Then
+            Dim ofd As New System.Windows.Forms.OpenFileDialog()
+            ofd.Title = "Equipo a insertar (.ipt / .iam)"
+            ofd.Filter = "Inventor (*.ipt;*.iam)|*.ipt;*.iam"
+            ofd.InitialDirectory = System.IO.Path.GetDirectoryName(destino.FullFileName)
+            If ofd.ShowDialog() <> System.Windows.Forms.DialogResult.OK Then Exit Sub
+            archivo = ofd.FileName
+        End If
+        occ = destino.ComponentDefinition.Occurrences.Add(archivo, ThisApplication.TransientGeometry.CreateMatrix())
+    End If
+    Dim d As Document = occ.Definition.Document
+
+    ' ---------- tipo de equipo ----------
+    Dim tipos As List(Of String) = CargarTipos(top)
+    Dim tipo As String = Arg("tipo").ToUpper()
+    Dim tipoDesc As String = ""
+    For Each t As String In tipos
+        If tipo <> "" AndAlso t.StartsWith(tipo & " - ") Then tipoDesc = t.Substring(tipo.Length + 3)
+    Next
+    If tipoDesc = "" Then
+        Dim def As String = tipos(0)
+        Dim actual As String = UProp(d, "TIPO_EQUIPO")
+        For Each t As String In tipos
+            If actual <> "" AndAlso t.StartsWith(actual & " - ") Then def = t
+        Next
+        Dim r As String = InputListBox("Tipo de equipo para " & occ.Name & ":", tipos, def, "INSERTAR_EQUIPO", "Tipo")
+        If r Is Nothing OrElse r = "" Then Exit Sub
+        tipo = r.Substring(0, r.IndexOf(" - "))
+        tipoDesc = r.Substring(r.IndexOf(" - ") + 3)
+    End If
+
+    ' ---------- datos de placa ----------
+    Dim desc As String = Pedir("descripcion", "Descripcion del equipo:", Primero(UProp(d, "EQUIPO_DESC"), tipoDesc))
+    Dim fab As String = Pedir("fabricante", "Fabricante:", UProp(d, "FABRICANTE"))
+    Dim modelo As String = Pedir("modelo", "Modelo / codigo del fabricante:", UProp(d, "MODELO"))
+    Dim kw As String = Pedir("potencia", "Potencia (kW), vacio si no aplica:", UProp(d, "POTENCIA_KW"))
+    Dim peso As String = Pedir("peso", "Peso segun hoja tecnica (kg):", UProp(d, "PESO_HT"))
+    Dim sumi As String = Arg("suministro").ToUpper()
+    If sumi = "" Then
+        Dim ops As New List(Of String)
+        ops.Add("COIMSER")
+        ops.Add("CLIENTE")
+        sumi = InputListBox("Suministro:", ops, Primero(UProp(d, "SUMINISTRO"), "COIMSER"), "INSERTAR_EQUIPO", "Suministro")
+        If sumi Is Nothing Then sumi = "COIMSER"
+    End If
+
+    ' ---------- escribir ----------
+    EscribirProp(d, "EQUIPO", "SI")
+    EscribirProp(d, "TIPO_EQUIPO", tipo)
+    EscribirProp(d, "EQUIPO_DESC", desc)
+    EscribirProp(d, "FABRICANTE", fab)
+    EscribirProp(d, "MODELO", modelo)
+    EscribirProp(d, "POTENCIA_KW", kw)
+    EscribirProp(d, "PESO_HT", peso)
+    EscribirProp(d, "SUMINISTRO", sumi)
+    Dim dt As PropertySet = d.PropertySets.Item("Design Tracking Properties")
+    dt.Item("Description").Value = (desc & " " & fab & " " & modelo).Trim()
+    If modelo <> "" Then dt.Item("Stock Number").Value = modelo
+    Dim comprado As Boolean = False
+    Try
+        If d.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+            CType(d, AssemblyDocument).ComponentDefinition.BOMStructure = BOMStructureEnum.kPurchasedBOMStructure
+        Else
+            CType(d, PartDocument).ComponentDefinition.BOMStructure = BOMStructureEnum.kPurchasedBOMStructure
+        End If
+        comprado = True
+    Catch
+    End Try
+    If Not comprado Then
+        Try
+            occ.BOMStructure = BOMStructureEnum.kPurchasedBOMStructure
+        Catch
+        End Try
+    End If
+    Aviso("Equipo declarado: " & occ.Name & vbCrLf & tipo & " - " & desc & "   " & fab & " " & modelo & vbCrLf & "Suministro: " & sumi & vbCrLf & vbCrLf & "El TAG lo asigna TAG_EQUIPOS desde el ensamble general. Guarda el ensamble.")
+End Sub
+
+Private silencioso As Boolean
+
+Function Pedir(clave As String, texto As String, def As String) As String
+    Dim v As String = Arg(clave)
+    If v <> "" OrElse silencioso Then Return If(v = "", def, v)
+    v = InputBox(texto, "INSERTAR_EQUIPO", def)
+    If v Is Nothing Then Return def
+    Return v.Trim()
+End Function
+
+Function CargarTipos(asm As Document) As List(Of String)
+    Dim l As New List(Of String)
+    Dim dir As String = System.IO.Path.GetDirectoryName(asm.FullFileName)
+    Dim archivo As String = ""
+    For lvl As Integer = 0 To 6
+        If dir Is Nothing Then Exit For
+        For Each sd As String In New String() {"", "iLogic"}
+            Dim p As String = System.IO.Path.Combine(System.IO.Path.Combine(dir, sd), "TABLA_MARCAS.csv")
+            If archivo = "" AndAlso System.IO.File.Exists(p) Then archivo = p
+        Next
+        dir = System.IO.Path.GetDirectoryName(dir)
+    Next
+    If archivo <> "" Then
+        For Each ln As String In System.IO.File.ReadAllLines(archivo, System.Text.Encoding.UTF8)
+            Dim c() As String = ln.Split(";"c)
+            If c.Length >= 3 AndAlso c(0).Trim().ToUpper().EndsWith("EQUIPO") AndAlso c(1).Trim() <> "" Then l.Add(c(1).Trim().ToUpper() & " - " & c(2).Trim())
+        Next
+    End If
+    If l.Count = 0 Then
+        l.Add("MOT - MOTOR ELECTRICO")
+        l.Add("RED - REDUCTOR")
+        l.Add("EQ - OTRO EQUIPO")
+    End If
+    Return l
+End Function
+
+Function Primero(ParamArray v() As String) As String
+    For Each s As String In v
+        If s IsNot Nothing AndAlso s.Trim() <> "" Then Return s.Trim()
+    Next
+    Return ""
+End Function
+
+Function Arg(n As String) As String
+    Try
+        If RuleArguments.Exists(n) Then Return CStr(RuleArguments.Value(n))
+    Catch
+    End Try
+    Return ""
+End Function
+
+Function UProp(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Inventor User Defined Properties").Item(n).Value)
+    Catch
+        Return ""
+    End Try
+End Function
+
+Sub EscribirProp(d As Document, n As String, v As String)
+    Dim ps As PropertySet = d.PropertySets.Item("Inventor User Defined Properties")
+    Try
+        ps.Item(n).Value = v
+    Catch
+        ps.Add(v, n)
+    End Try
+End Sub
+
+Sub Aviso(t As String)
+    If Not silencioso Then MessageBox.Show(t, "INSERTAR_EQUIPO")
+End Sub
