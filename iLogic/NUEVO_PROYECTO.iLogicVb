@@ -1,13 +1,17 @@
 ' =====================================================================
-'  NUEVO_PROYECTO  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  NUEVO_PROYECTO  v1.1  -  Regla externa iLogic (Inventor 2026) - COIMSER
 '  Crea una obra nueva dentro del espacio de trabajo de Vault (VAULT\PROYECTOS):
 '
 '   VAULT\PROYECTOS\2026-001 ANTAPACCAY\
-'      ANT-GENERAL.iam        ensamble general: contiene las plantas (solo para ver el todo)
-'      ANT-EE.iam             una por planta: aqui se trabaja (INICIAR_CONJUNTO, NUEVA_PIEZA,
-'      ANT-AEE.iam            TEKLA_NUMERACION, GENERAR_PLANOS se corren en cada planta)
-'      REFERENCIAS\           esqueletos
-'      PLANOS\  PLASMA\  REPORTES\
+'      ANT-GENERAL.iam        ensamble general: contiene las fases (solo para ver el todo)
+'      _OBRA.txt  _MARCAS_ANTAPACCAY.csv   registros de la obra
+'      REFERENCIAS\           referencias comunes a toda la obra
+'      ANT-EE\                una carpeta por fase (v1.1):
+'         ANT-EE.iam          aqui se trabaja (INICIAR_CONJUNTO, NUEVA_PIEZA, TEKLA...)
+'         ANT-EE-BS-001.iam   sus conjuntos, al lado (+ carpeta ANT-EE-BS-001\Frame, Piezas...)
+'         REFERENCIAS\  PLANOS\PLASMA\  PLANOS\REPORTES\
+'      ANT-AEE\ ...
+'   Mas fases despues: abrir el GENERAL y INICIAR_CONJUNTO -> CREAR FASE NUEVA.
 '
 '  Los archivos llevan el CODIGO corto de la obra (ANT-...) para que sus nombres no se repitan
 '  con los de otras obras en Vault; INICIAR_CONJUNTO sigue la cadena (ANT-EE-SP-001...).
@@ -77,7 +81,7 @@ Sub Main()
     Next
     Dim nro As String = anio & "-" & (n + 1).ToString("000")
     Dim carpeta As String = System.IO.Path.Combine(raiz, nro & " " & nombre)
-    For Each sd As String In New String() {"", "REFERENCIAS", "PLANOS", "PLANOS\PLASMA", "PLANOS\REPORTES"}
+    For Each sd As String In New String() {"", "REFERENCIAS"}
         System.IO.Directory.CreateDirectory(System.IO.Path.Combine(carpeta, sd))
     Next
 
@@ -85,7 +89,11 @@ Sub Main()
     Dim plantilla As String = ThisApplication.FileManager.GetTemplateFile(DocumentTypeEnum.kAssemblyDocumentObject)
     Dim rutas As New List(Of String)
     For Each pl As String In plantas
-        Dim ruta As String = System.IO.Path.Combine(carpeta, codigo & "-" & pl & ".iam")
+        Dim faseDir As String = System.IO.Path.Combine(carpeta, codigo & "-" & pl)
+        For Each sd As String In New String() {"", "PLANOS", "PLANOS\PLASMA", "PLANOS\REPORTES", "REFERENCIAS"}
+            System.IO.Directory.CreateDirectory(System.IO.Path.Combine(faseDir, sd))
+        Next
+        Dim ruta As String = System.IO.Path.Combine(faseDir, codigo & "-" & pl & ".iam")
         Dim a As AssemblyDocument = CType(ThisApplication.Documents.Add(DocumentTypeEnum.kAssemblyDocumentObject, plantilla, False), AssemblyDocument)
         Datos(a, nombre, codigo, nro, cliente)
         EscribirProp(a, "PLANTA", pl)

@@ -1,5 +1,5 @@
 ' =====================================================================
-'  INICIAR_CONJUNTO  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  INICIAR_CONJUNTO  v1.2  -  Regla externa iLogic (Inventor 2026) - COIMSER
 '  Primer paso de cada ensamble: dice A QUE FASE / PLANTA pertenece y QUE TIPO
 '  de conjunto es (segun A0.61 MARCACION DE PIEZAS -> TABLA_MARCAS.csv):
 '     C COLUMNA, SP SOPORTE, BS BASTIDOR, V VIGA, DV DIAGONAL VERTICAL, ...
@@ -17,7 +17,15 @@
 '  Tipos marcados SISTEMA = SI en TABLA_MARCAS (FAJ faja, EQ equipo propio) quedan con la
 '  propiedad SISTEMA = SI: la regla TAG_EQUIPOS les da TAG por instancia (EE-FAJ-001) y
 '  sus equipos lo heredan (EE-FAJ-001-MOT-01).
-'  Argumentos opcionales: silencioso, modo=este|nuevo, tipo=<PREF>, planta=, proyecto=
+'  v1.1 - EN EL ENSAMBLE GENERAL (TIPO_ENSAMBLE = GENERAL o nombre <COD>-GENERAL) ya no se
+'         crean conjuntos: solo  CREAR FASE NUEVA  (crea <COD>-<FASE>.iam con los datos de la
+'         obra, lo inserta fijo en el general y lo abre)  o  ABRIR FASE existente.
+'         Se pueden agregar todas las fases que hagan falta (EE, AEE, ZAR, CHP...).
+'  v1.2 - CARPETA POR FASE: la fase nueva se crea en <obra>\<COD>-<FASE>\<COD>-<FASE>.iam
+'         (con PLANOS\PLASMA, PLANOS\REPORTES y REFERENCIAS propias). Sus conjuntos quedan en esa
+'         misma carpeta: <obra>\MAJ-ALM\MAJ-ALM-BA-001.iam + MAJ-ALM-BA-001\Frame, Piezas...
+'         Las obras antiguas (fase suelta en la raiz) siguen funcionando igual.
+'  Argumentos opcionales: silencioso, modo=este|nuevo, tipo=<PREF>, planta=, proyecto=, fase=
 ' =====================================================================
 
 Sub Main()
@@ -35,6 +43,12 @@ Sub Main()
     Dim nomEns As String = System.IO.Path.GetFileNameWithoutExtension(destino.FullFileName)
     If nomEns = "" Then
         MessageBox.Show("Guarda primero el ensamble.", "INICIAR_CONJUNTO")
+        Exit Sub
+    End If
+
+    ' ---------- ensamble GENERAL: aqui solo se crean / abren fases ----------
+    If EsGeneral(destino) Then
+        Fases(destino)
         Exit Sub
     End If
 
@@ -106,7 +120,7 @@ Sub Main()
     End If
 
     ' ---------- crear subconjunto ----------
-    Dim carpeta As String = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(destino.FullFileName), nomEns)
+    Dim carpeta As String = CarpetaHija(destino)
     System.IO.Directory.CreateDirectory(carpeta)
     Dim n As Integer = 1
     Dim ruta As String
@@ -153,6 +167,128 @@ Sub Configurar(d As Document, proy As String, planta As String, pref As String, 
         If ad IsNot Nothing AndAlso ad.ComponentDefinition.BOMStructure <> BOMStructureEnum.kNormalBOMStructure Then ad.ComponentDefinition.BOMStructure = BOMStructureEnum.kNormalBOMStructure
     Catch
     End Try
+End Sub
+
+Function EsGeneral(d As Document) As Boolean
+    If UProp(d, "TIPO_ENSAMBLE").Trim().ToUpper() = "GENERAL" Then Return True
+    Return System.IO.Path.GetFileNameWithoutExtension(d.FullFileName).ToUpper().EndsWith("-GENERAL")
+End Function
+
+' Crear o abrir una FASE / PLANTA dentro del ensamble general de la obra
+Sub Fases(g As AssemblyDocument)
+    Dim nomG As String = System.IO.Path.GetFileNameWithoutExtension(g.FullFileName)
+    Dim cod As String = UProp(g, "COD_PROYECTO").Trim().ToUpper()
+    If cod = "" Then
+        If nomG.ToUpper().EndsWith("-GENERAL") Then
+            cod = nomG.Substring(0, nomG.Length - 8).ToUpper()
+        Else
+            cod = nomG.ToUpper()
+        End If
+    End If
+    ' fases que ya estan en el general
+    Dim rutasF As New Dictionary(Of String, String)
+    For Each oc As ComponentOccurrence In g.ComponentDefinition.Occurrences
+        Try
+            Dim d As Document = oc.Definition.Document
+            Dim pl As String = UProp(d, "PLANTA").Trim().ToUpper()
+            If UProp(d, "TIPO_ENSAMBLE").Trim().ToUpper() = "PLANTA" AndAlso pl <> "" AndAlso Not rutasF.ContainsKey(pl) Then rutasF.Add(pl, d.FullFileName)
+        Catch
+        End Try
+    Next
+    Dim lista As String = If(rutasF.Count = 0, "ninguna", String.Join(", ", rutasF.Keys))
+
+    Dim fase As String = Arg("fase").Trim().ToUpper()
+    If fase = "" Then
+        If silencioso Then Exit Sub
+        Dim opCrear As String = "CREAR FASE NUEVA en " & nomG
+        Dim ops As New List(Of String)
+        ops.Add(opCrear)
+        For Each k As String In rutasF.Keys
+            ops.Add("ABRIR FASE " & k & "   (" & System.IO.Path.GetFileName(rutasF(k)) & ")")
+        Next
+        Dim r As String = InputListBox("Estas en el ensamble GENERAL: aqui solo se crean o abren fases." & vbCrLf & "Los conjuntos se crean DENTRO de cada fase." & vbCrLf & "Fases actuales: " & lista, ops, ops(0), "INICIAR_CONJUNTO", "Fase")
+        If r Is Nothing OrElse r = "" Then Exit Sub
+        If r.StartsWith("ABRIR FASE ") Then
+            Dim k As String = r.Substring(11).Trim().Split(" "c)(0)
+            ThisApplication.Documents.Open(rutasF(k), True)
+            Exit Sub
+        End If
+        fase = InputBox("Codigo de la fase nueva (ej. EE, AEE, ZAR, CHP)." & vbCrLf & "Fases actuales: " & lista, "INICIAR_CONJUNTO", "")
+        If fase Is Nothing Then Exit Sub
+    End If
+    fase = System.Text.RegularExpressions.Regex.Replace(fase.ToUpper(), "[^A-Z0-9]", "")
+    If fase = "" Then Exit Sub
+    If fase = "GENERAL" Then
+        Aviso("GENERAL no puede ser una fase.")
+        Exit Sub
+    End If
+    If rutasF.ContainsKey(fase) Then
+        Aviso("La fase " & fase & " ya existe en " & nomG & " (" & System.IO.Path.GetFileName(rutasF(fase)) & ").")
+        Exit Sub
+    End If
+
+    Dim obraDir As String = System.IO.Path.GetDirectoryName(g.FullFileName)
+    Dim faseDir As String = System.IO.Path.Combine(obraDir, cod & "-" & fase)
+    Dim ruta As String = System.IO.Path.Combine(faseDir, cod & "-" & fase & ".iam")
+    Dim rutaVieja As String = System.IO.Path.Combine(obraDir, cod & "-" & fase & ".iam")
+    If Not System.IO.File.Exists(ruta) AndAlso System.IO.File.Exists(rutaVieja) Then ruta = rutaVieja
+    For Each sd As String In New String() {"", "PLANOS", "PLANOS\PLASMA", "PLANOS\REPORTES", "REFERENCIAS"}
+        If ruta <> rutaVieja Then System.IO.Directory.CreateDirectory(System.IO.Path.Combine(faseDir, sd))
+    Next
+    If System.IO.File.Exists(ruta) Then
+        ' existe el archivo pero no esta en el general: solo se inserta
+        If Not silencioso Then
+            If MessageBox.Show("Ya existe " & System.IO.Path.GetFileName(ruta) & " pero no esta en " & nomG & "." & vbCrLf & "Insertarlo en el general?", "INICIAR_CONJUNTO", MessageBoxButtons.YesNo, MessageBoxIcon.Question) <> DialogResult.Yes Then Exit Sub
+        End If
+    Else
+        Dim a As AssemblyDocument = CType(ThisApplication.Documents.Add(DocumentTypeEnum.kAssemblyDocumentObject, ThisApplication.FileManager.GetTemplateFile(DocumentTypeEnum.kAssemblyDocumentObject), False), AssemblyDocument)
+        For Each pn As String In New String() {"PROYECTO", "COD_PROYECTO", "NRO_PROYECTO", "CLIENTE"}
+            Dim v As String = UProp(g, pn)
+            If v <> "" Then EscribirProp(a, pn, v)
+        Next
+        If UProp(a, "COD_PROYECTO") = "" Then EscribirProp(a, "COD_PROYECTO", cod)
+        EscribirProp(a, "PLANTA", fase)
+        EscribirProp(a, "TIPO_ENSAMBLE", "PLANTA")
+        EscribirProp(a, "FASE_NUMERACION", "1")
+        Dim dt As PropertySet = a.PropertySets.Item("Design Tracking Properties")
+        dt.Item("Part Number").Value = cod & "-" & fase
+        dt.Item("Description").Value = "PLANTA " & fase
+        If UProp(g, "PROYECTO") <> "" Then dt.Item("Project").Value = UProp(g, "PROYECTO")
+        a.SaveAs(ruta, False)
+        a.Close(True)
+    End If
+
+    Dim oc2 As ComponentOccurrence = g.ComponentDefinition.Occurrences.Add(ruta, ThisApplication.TransientGeometry.CreateMatrix())
+    Try
+        oc2.Grounded = True
+    Catch
+    End Try
+    ' el general no pertenece a ninguna fase
+    If UProp(g, "PLANTA") <> "" Then EscribirProp(g, "PLANTA", "")
+    If UProp(g, "TIPO_ENSAMBLE") = "" Then EscribirProp(g, "TIPO_ENSAMBLE", "GENERAL")
+    Try
+        g.Save()
+    Catch
+    End Try
+    ' anotar la fase en _OBRA.txt
+    Try
+        Dim ob As String = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(g.FullFileName), "_OBRA.txt")
+        If System.IO.File.Exists(ob) Then
+            Dim lns As New List(Of String)(System.IO.File.ReadAllLines(ob))
+            For i As Integer = 0 To lns.Count - 1
+                If lns(i).StartsWith("PLANTAS=") AndAlso Not ("," & lns(i).Substring(8) & ",").Contains("," & fase & ",") Then
+                    lns(i) = lns(i) & If(lns(i).Length > 8, ",", "") & fase
+                End If
+            Next
+            System.IO.File.WriteAllLines(ob, lns.ToArray())
+        End If
+    Catch
+    End Try
+    resumen.AppendLine(ruta)
+    If Not silencioso Then
+        ThisApplication.Documents.Open(ruta, True)
+        MessageBox.Show("Fase creada: " & System.IO.Path.GetFileName(ruta) & "  (PLANTA " & fase & ")" & vbCrLf & "Insertada en " & nomG & " y abierta." & vbCrLf & vbCrLf & "Ahora, en esta fase, usa INICIAR_CONJUNTO -> CREAR SUBCONJUNTO NUEVO" & vbCrLf & "(" & cod & "-" & fase & "-BS-001, " & cod & "-" & fase & "-V-001...).", "INICIAR_CONJUNTO")
+    End If
 End Sub
 
 Function CargarTipos(asm As Document) As List(Of String)
@@ -237,3 +373,17 @@ Sub Aviso(t As String)
     resumen.AppendLine(t)
     If Not silencioso Then MessageBox.Show(t, "INICIAR_CONJUNTO")
 End Sub
+
+' Carpeta para los hijos de un ensamble: <carpeta>\<NOMBRE>\  ;  una FASE que ya vive en su propia
+' carpeta (<obra>\<COD>-<FASE>\<COD>-<FASE>.iam) usa esa misma carpeta (no se duplica el nombre).
+Function CarpetaHija(d As Document) As String
+    Dim dir As String = System.IO.Path.GetDirectoryName(d.FullFileName)
+    Dim nom As String = System.IO.Path.GetFileNameWithoutExtension(d.FullFileName)
+    Dim tipoEns As String = ""
+    Try
+        tipoEns = CStr(d.PropertySets.Item("Inventor User Defined Properties").Item("TIPO_ENSAMBLE").Value).Trim().ToUpper()
+    Catch
+    End Try
+    If tipoEns = "PLANTA" AndAlso System.IO.Path.GetFileName(dir).ToUpper() = nom.ToUpper() Then Return dir
+    Return System.IO.Path.Combine(dir, nom)
+End Function

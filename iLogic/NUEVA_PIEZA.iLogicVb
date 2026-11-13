@@ -1,5 +1,5 @@
 ' =====================================================================
-'  NUEVA_PIEZA  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  NUEVA_PIEZA  v1.1  -  Regla externa iLogic (Inventor 2026) - COIMSER
 '  Crea una pieza nueva (.ipt) ordenada, como hace Frame Generator con sus perfiles:
 '
 '   <carpeta del ensamble>\<NOMBRE ENSAMBLE>\Piezas\<NOMBRE ENSAMBLE>-PL-001.ipt
@@ -112,7 +112,7 @@ Sub Main()
         MessageBox.Show("Guarda primero el ensamble para saber donde crear la pieza.", "NUEVA_PIEZA")
         Exit Sub
     End If
-    Dim carpeta As String = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(destino.FullFileName), nomEns, "Piezas")
+    Dim carpeta As String = System.IO.Path.Combine(CarpetaHija(destino), "Piezas")
     System.IO.Directory.CreateDirectory(carpeta)
     Dim n As Integer = 1
     Dim ruta As String
@@ -240,3 +240,17 @@ Sub EscribirProp(d As Document, nombre As String, valor As String)
         cu.Add(valor, nombre)
     End Try
 End Sub
+
+' Carpeta para los hijos de un ensamble: <carpeta>\<NOMBRE>\  ;  una FASE que ya vive en su propia
+' carpeta (<obra>\<COD>-<FASE>\<COD>-<FASE>.iam) usa esa misma carpeta (no se duplica el nombre).
+Function CarpetaHija(d As Document) As String
+    Dim dir As String = System.IO.Path.GetDirectoryName(d.FullFileName)
+    Dim nom As String = System.IO.Path.GetFileNameWithoutExtension(d.FullFileName)
+    Dim tipoEns As String = ""
+    Try
+        tipoEns = CStr(d.PropertySets.Item("Inventor User Defined Properties").Item("TIPO_ENSAMBLE").Value).Trim().ToUpper()
+    Catch
+    End Try
+    If tipoEns = "PLANTA" AndAlso System.IO.Path.GetFileName(dir).ToUpper() = nom.ToUpper() Then Return dir
+    Return System.IO.Path.Combine(dir, nom)
+End Function

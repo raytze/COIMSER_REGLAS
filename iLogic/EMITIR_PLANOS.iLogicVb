@@ -1,0 +1,492 @@
+' =====================================================================
+'  EMITIR_PLANOS  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  CONTROL DE REVISIONES de los planos de una fase (Vault Basic no maneja revisiones):
+'
+'   1) Eliges los planos: TODOS, PENDIENTES (nunca emitidos o cuyo modelo cambio despues de
+'      la ultima emision) o uno. Si el activo es un plano (.idw) se emite solo ese.
+'   2) Motivo: PARA APROBACION, PARA FABRICACION, PARA MONTAJE, COMO CONSTRUIDO.
+'      Revision: antes de aprobar letras (A, B, C...); desde PARA FABRICACION numeros (0, 1, 2...).
+'   3) En cada plano: iProperty "Revision Number" + REVISION, ESTADO = EMITIDO, FECHA_REV,
+'      DESCRIPCION_REV, DIBUJO, REVISO, APROBO, REV_HIST (historial) y HUELLA_EMISION (para
+'      saber despues si el modelo cambio). Si la hoja tiene TABLA DE REVISIONES se agrega la fila.
+'   4) PDF:  PLANOS\EMITIDOS\<fecha>_T<nnn>\<plano>_Rev<r>.pdf   (paquete de ese envio, no se toca)
+'            PLANOS\VIGENTES\<plano>_Rev<r>.pdf   (solo la ultima revision; la anterior pasa a
+'            PLANOS\VIGENTES\_SUPERADOS\). Lo que va al taller sale SIEMPRE de VIGENTES.
+'   5) TRANSMITTAL_T<nnn>.xlsx (hoja de envio con firmas) en la carpeta del envio,
+'      registro PLANOS\_REGISTRO_EMISIONES.csv y LISTA DE PLANOS <fase>-LISTA_PLANOS.xlsx.
+'  Ejecutar desde la FASE (o desde un plano).  Argumentos: silencioso, motivo=, para=, planos=TODOS|PENDIENTES
+' =====================================================================
+
+Sub Main()
+    silencioso = RuleArguments.Exists("silencioso")
+    Dim act As Document = ThisApplication.ActiveDocument
+    If act Is Nothing Then Exit Sub
+    Dim lista As New List(Of String)
+    Dim dirPlanos As String
+    Dim fase As String
+    If act.DocumentType = DocumentTypeEnum.kDrawingDocumentObject Then
+        If act.FullFileName = "" Then
+            MessageBox.Show("Guarda primero el plano.", "EMITIR_PLANOS")
+            Exit Sub
+        End If
+        lista.Add(act.FullFileName)
+        dirPlanos = System.IO.Path.GetDirectoryName(act.FullFileName)
+        fase = System.IO.Path.GetFileName(System.IO.Path.GetDirectoryName(dirPlanos))
+    ElseIf act.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+        If EsGeneral(act) Then
+            MessageBox.Show("Este es el GENERAL. Abre una fase o usa EJECUTAR_FASES -> EMITIR_PLANOS.", "EMITIR_PLANOS")
+            Exit Sub
+        End If
+        dirPlanos = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(act.FullFileName), "PLANOS")
+        fase = System.IO.Path.GetFileNameWithoutExtension(act.FullFileName)
+        If Not System.IO.Directory.Exists(dirPlanos) Then
+            MessageBox.Show("No hay carpeta PLANOS en la fase. Corre GENERAR_PLANOS primero.", "EMITIR_PLANOS")
+            Exit Sub
+        End If
+        Dim todos As New List(Of String)(System.IO.Directory.GetFiles(dirPlanos, "*.idw"))
+        todos.Sort()
+        If todos.Count = 0 Then
+            MessageBox.Show("No hay planos (.idw) en " & dirPlanos, "EMITIR_PLANOS")
+            Exit Sub
+        End If
+        Dim modo As String = Arg("planos").ToUpper()
+        If modo = "" Then
+            Dim ops As New List(Of String)
+            ops.Add("PENDIENTES (sin emitir o con cambios en el modelo)")
+            ops.Add("TODOS (" & todos.Count & " planos)")
+            For Each f As String In todos
+                ops.Add(System.IO.Path.GetFileName(f))
+            Next
+            Dim r As String = InputListBox("Que planos emitir?", ops, ops(0), "EMITIR_PLANOS", "Planos")
+            If r Is Nothing OrElse r = "" Then Exit Sub
+            If r.StartsWith("PENDIENTES") Then
+                modo = "PENDIENTES"
+            ElseIf r.StartsWith("TODOS") Then
+                modo = "TODOS"
+            Else
+                lista.Add(System.IO.Path.Combine(dirPlanos, r))
+            End If
+        End If
+        If modo = "TODOS" Then lista.AddRange(todos)
+        If modo = "PENDIENTES" Then pendientes = True : lista.AddRange(todos)
+    Else
+        MessageBox.Show("Abre la fase (.iam) o un plano (.idw).", "EMITIR_PLANOS")
+        Exit Sub
+    End If
+
+    ' ---------- motivo y datos del envio ----------
+    Dim motivos As New List(Of String)(New String() {"PARA APROBACION", "PARA FABRICACION", "PARA MONTAJE", "COMO CONSTRUIDO", "PARA INFORMACION"})
+    Dim motivo As String = Arg("motivo").ToUpper()
+    If motivo = "" Then motivo = InputListBox("Motivo de la emision:", motivos, motivos(0), "EMITIR_PLANOS", "Motivo")
+    If motivo Is Nothing OrElse motivo = "" Then Exit Sub
+    Dim para As String = Arg("para")
+    If para = "" AndAlso Not silencioso Then para = InputBox("Destinatario (cliente / taller / montaje):", "EMITIR_PLANOS", "")
+    If para Is Nothing Then para = ""
+    Dim reviso As String = ""
+    Dim aprobo As String = ""
+    If Not silencioso Then
+        reviso = InputBox("Reviso (iniciales, opcional):", "EMITIR_PLANOS", "")
+        aprobo = InputBox("Aprobo (iniciales, opcional):", "EMITIR_PLANOS", "")
+    End If
+    If reviso Is Nothing Then reviso = ""
+    If aprobo Is Nothing Then aprobo = ""
+
+    ' ---------- carpetas del envio ----------
+    Dim emitidos As String = System.IO.Path.Combine(dirPlanos, "EMITIDOS")
+    System.IO.Directory.CreateDirectory(emitidos)
+    Dim nT As Integer = System.IO.Directory.GetDirectories(emitidos).Length + 1
+    Dim codT As String = "T" & nT.ToString("000")
+    Dim dirEnvio As String = System.IO.Path.Combine(emitidos, DateTime.Now.ToString("yyyy-MM-dd") & "_" & codT)
+    Dim vigentes As String = System.IO.Path.Combine(dirPlanos, "VIGENTES")
+    Dim superados As String = System.IO.Path.Combine(vigentes, "_SUPERADOS")
+    Dim fecha As String = DateTime.Now.ToString("yyyy-MM-dd")
+    Dim usr As String = System.Environment.UserName
+
+    Dim emit As New List(Of Object())
+    emit.Add(New Object() {"N", "PLANO", "TITULO", "REV", "HOJAS", "MOTIVO"})
+    For Each f As String In lista
+        Dim dd As DrawingDocument = Nothing
+        Dim yaAbierto As Boolean = False
+        Try
+            For Each x As Document In ThisApplication.Documents
+                If x.FullFileName.ToLower() = f.ToLower() Then
+                    dd = CType(x, DrawingDocument)
+                    yaAbierto = True
+                End If
+            Next
+            If dd Is Nothing Then dd = CType(ThisApplication.Documents.Open(f, False), DrawingDocument)
+            Dim hu As String = Huella(dd)
+            Dim revAct As String = UProp(dd, "REVISION")
+            ' si el plano se regenero y perdio sus propiedades, la ultima revision sale del registro
+            If revAct = "" Then revAct = RevRegistro(dirPlanos, System.IO.Path.GetFileNameWithoutExtension(f))
+            If pendientes AndAlso UProp(dd, "REVISION") <> "" AndAlso UProp(dd, "HUELLA_EMISION") = hu Then
+                If Not yaAbierto Then dd.Close(True)
+                Continue For
+            End If
+            Dim rev As String = SiguienteRev(revAct, motivo)
+            Dim desc As String = motivo & If(para <> "", " - " & para, "")
+            EscribirProp(dd, "REVISION", rev)
+            EscribirProp(dd, "ESTADO", "EMITIDO")
+            EscribirProp(dd, "FECHA_REV", fecha)
+            EscribirProp(dd, "DESCRIPCION_REV", desc)
+            EscribirProp(dd, "DIBUJO", usr)
+            EscribirProp(dd, "REVISO", reviso)
+            EscribirProp(dd, "APROBO", aprobo)
+            EscribirProp(dd, "TRANSMITTAL", codT)
+            EscribirProp(dd, "HUELLA_EMISION", hu)
+            EscribirProp(dd, "REV_HIST", (UProp(dd, "REV_HIST") & " | " & rev & " " & fecha & " " & motivo & " " & codT).Trim(" "c, "|"c))
+            Try
+                dd.PropertySets.Item("Inventor Summary Information").Item("Revision Number").Value = rev
+            Catch
+            End Try
+            FilaTablaRev(dd, rev, desc, fecha, usr, aprobo)
+            dd.Update()
+            dd.Save()
+
+            Dim nomP As String = System.IO.Path.GetFileNameWithoutExtension(f)
+            Dim pdf As String = nomP & "_Rev" & rev & ".pdf"
+            System.IO.Directory.CreateDirectory(dirEnvio)
+            System.IO.Directory.CreateDirectory(superados)
+            ExportarPdf(dd, System.IO.Path.Combine(dirEnvio, pdf))
+            For Each viejo As String In System.IO.Directory.GetFiles(vigentes, nomP & "_Rev*.pdf")
+                Dim dst As String = System.IO.Path.Combine(superados, System.IO.Path.GetFileName(viejo))
+                If System.IO.File.Exists(dst) Then dst = System.IO.Path.Combine(superados, System.IO.Path.GetFileNameWithoutExtension(viejo) & "_" & DateTime.Now.ToString("HHmmss") & ".pdf")
+                System.IO.File.Move(viejo, dst)
+            Next
+            System.IO.File.Copy(System.IO.Path.Combine(dirEnvio, pdf), System.IO.Path.Combine(vigentes, pdf), True)
+
+            Dim titulo As String = ""
+            Try
+                titulo = CStr(dd.PropertySets.Item("Inventor Summary Information").Item("Title").Value)
+            Catch
+            End Try
+            emit.Add(New Object() {emit.Count, nomP, titulo, rev, dd.Sheets.Count, motivo})
+            Registrar(dirPlanos, fecha, nomP, titulo, rev, motivo, para, usr, codT)
+            If Not yaAbierto Then dd.Close(True)
+        Catch ex As Exception
+            resumen.AppendLine("ERROR " & System.IO.Path.GetFileName(f) & ": " & ex.Message)
+            Try
+                If dd IsNot Nothing AndAlso Not yaAbierto Then dd.Close(True)
+            Catch
+            End Try
+        End Try
+    Next
+    If emit.Count = 1 Then
+        Aviso("No se emitio ningun plano (no hay pendientes)." & vbCrLf & resumen.ToString())
+        Exit Sub
+    End If
+
+    Transmittal(dirEnvio, codT, fase, motivo, para, usr, emit, act)
+    ListaPlanos(dirPlanos, fase)
+    Aviso("Emision " & codT & ": " & (emit.Count - 1) & " planos " & motivo & vbCrLf & "PDF del envio: " & dirEnvio & vbCrLf & "Juego vigente: " & vigentes & vbCrLf & resumen.ToString())
+End Sub
+
+Private silencioso As Boolean
+Private pendientes As Boolean = False
+Private resumen As New System.Text.StringBuilder
+Private xl As Object
+Private rutaSalida As String = ""
+
+' A, B, C... antes de aprobar; 0, 1, 2... desde fabricacion
+Function SiguienteRev(cur As String, motivo As String) As String
+    Dim previa As Boolean = (motivo = "PARA APROBACION" Or motivo = "PARA INFORMACION")
+    cur = cur.Trim().ToUpper()
+    If cur = "" Then Return If(previa, "A", "0")
+    Dim n As Integer
+    If Integer.TryParse(cur, n) Then Return (n + 1).ToString()
+    If Not previa Then Return "0"
+    Dim c As Char = cur(cur.Length - 1)
+    If c >= "A"c AndAlso c < "Z"c Then Return cur.Substring(0, cur.Length - 1) & Chr(Asc(c) + 1)
+    Return cur & "A"
+End Function
+
+' Huella de los modelos del plano: si cambia, el plano queda PENDIENTE de revision
+Function Huella(dd As DrawingDocument) As String
+    Dim l As New List(Of String)
+    For Each m As Document In dd.ReferencedDocuments
+        Dim masa As Double = 0
+        Try
+            If m.DocumentType = DocumentTypeEnum.kPartDocumentObject Then masa = CType(m, PartDocument).ComponentDefinition.MassProperties.Mass
+            If m.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then masa = CType(m, AssemblyDocument).ComponentDefinition.MassProperties.Mass
+        Catch
+        End Try
+        l.Add(System.IO.Path.GetFileName(m.FullFileName) & ":" & Math.Round(masa, 2).ToString(System.Globalization.CultureInfo.InvariantCulture) & ":" & UProp(m, "MARCA"))
+    Next
+    l.Sort()
+    Return String.Join(",", l)
+End Function
+
+' Agrega una fila a la tabla de revisiones de la primera hoja (si existe)
+Sub FilaTablaRev(dd As DrawingDocument, rev As String, desc As String, fecha As String, usr As String, aprobo As String)
+    Try
+        Dim sh As Sheet = dd.Sheets.Item(1)
+        If sh.RevisionTables.Count = 0 Then Exit Sub
+        Dim rt As RevisionTable = sh.RevisionTables.Item(1)
+        Dim fila As RevisionTableRow = rt.RevisionTableRows.Add()
+        For i As Integer = 1 To rt.RevisionTableColumns.Count
+            Dim t As String = rt.RevisionTableColumns.Item(i).Title.ToUpper()
+            Dim v As String = Nothing
+            If t.StartsWith("REV") Then v = rev
+            If t.Contains("DESC") Then v = desc
+            If t.Contains("FECHA") Or t.Contains("DATE") Then v = fecha
+            If t.Contains("APROB") Or t.Contains("APPROV") Then v = If(aprobo <> "", aprobo, usr)
+            If t.Contains("DIBUJ") Or t.Contains("DRAWN") Or t.Contains("POR") Then v = usr
+            If v IsNot Nothing Then
+                Try
+                    fila.Item(i).Text = v
+                Catch
+                End Try
+            End If
+        Next
+    Catch ex As Exception
+        resumen.AppendLine("  " & System.IO.Path.GetFileName(dd.FullFileName) & ": no pude llenar la tabla de revisiones (" & ex.Message & ")")
+    End Try
+End Sub
+
+Sub ExportarPdf(dd As DrawingDocument, ruta As String)
+    Dim pdf As TranslatorAddIn = CType(ThisApplication.ApplicationAddIns.ItemById("{0AC6FD96-2F4D-42CE-8BE0-8AEA580399E4}"), TranslatorAddIn)
+    Dim ctx As TranslationContext = ThisApplication.TransientObjects.CreateTranslationContext()
+    ctx.Type = IOMechanismEnum.kFileBrowseIOMechanism
+    Dim op As NameValueMap = ThisApplication.TransientObjects.CreateNameValueMap()
+    Dim med As DataMedium = ThisApplication.TransientObjects.CreateDataMedium()
+    Dim tiene As Boolean = pdf.HasSaveCopyAsOptions(dd, ctx, op)
+    If tiene Then
+        op.Value("All_Color_AS_Black") = 1
+        op.Value("Remove_Line_Weights") = 0
+        op.Value("Vector_Resolution") = 400
+        op.Value("Sheet_Range") = PrintRangeEnum.kPrintAllSheets
+    End If
+    med.FileName = ruta
+    pdf.SaveCopyAs(dd, ctx, op, med)
+End Sub
+
+Function RevRegistro(dirPlanos As String, plano As String) As String
+    Dim r As String = ""
+    Dim reg As String = System.IO.Path.Combine(dirPlanos, "_REGISTRO_EMISIONES.csv")
+    If Not System.IO.File.Exists(reg) Then Return ""
+    For Each ln As String In System.IO.File.ReadAllLines(reg)
+        Dim c() As String = ln.Split(";"c)
+        If c.Length >= 4 AndAlso c(1) = plano Then r = c(3)
+    Next
+    Return r
+End Function
+
+Sub Registrar(dirPlanos As String, fecha As String, plano As String, titulo As String, rev As String, motivo As String, para As String, usr As String, codT As String)
+    Dim reg As String = System.IO.Path.Combine(dirPlanos, "_REGISTRO_EMISIONES.csv")
+    If Not System.IO.File.Exists(reg) Then System.IO.File.WriteAllText(reg, "FECHA;PLANO;TITULO;REV;MOTIVO;DESTINATARIO;USUARIO;TRANSMITTAL" & vbCrLf)
+    System.IO.File.AppendAllText(reg, fecha & ";" & Limpia(plano) & ";" & Limpia(titulo) & ";" & rev & ";" & motivo & ";" & Limpia(para) & ";" & usr & ";" & codT & vbCrLf)
+End Sub
+
+Sub Transmittal(dirEnvio As String, codT As String, fase As String, motivo As String, para As String, usr As String, emit As List(Of Object()), act As Document)
+    Dim proy As String = UProp(act, "PROYECTO")
+    Dim cli As String = UProp(act, "CLIENTE")
+    Dim wb As Object = NuevoLibro()
+    If wb Is Nothing Then
+        GuardarCsv(System.IO.Path.Combine(dirEnvio, "TRANSMITTAL_" & codT & ".csv"), emit)
+        Exit Sub
+    End If
+    Dim ws As Object = Hoja(wb, "TRANSMITTAL", True)
+    ws.Cells(1, 1).Value = "COIMSER - TRANSMITTAL " & codT
+    ws.Cells(1, 1).Font.Bold = True
+    ws.Cells(1, 1).Font.Size = 14
+    ws.Cells(3, 1).Value = "Obra:" : ws.Cells(3, 2).Value = proy
+    ws.Cells(4, 1).Value = "Cliente:" : ws.Cells(4, 2).Value = cli
+    ws.Cells(5, 1).Value = "Fase:" : ws.Cells(5, 2).Value = fase
+    ws.Cells(6, 1).Value = "Fecha:" : ws.Cells(6, 2).Value = DateTime.Now.ToString("yyyy-MM-dd")
+    ws.Cells(7, 1).Value = "Para:" : ws.Cells(7, 2).Value = para
+    ws.Cells(8, 1).Value = "Motivo:" : ws.Cells(8, 2).Value = motivo
+    Dim ult As Integer = Tabla(ws, 10, emit)
+    ws.Cells(ult + 3, 1).Value = "Emitido por: " & usr
+    ws.Cells(ult + 3, 4).Value = "Recibido por:"
+    ws.Cells(ult + 5, 1).Value = "Firma: ____________________"
+    ws.Cells(ult + 5, 4).Value = "Firma: ____________________   Fecha: __________"
+    GuardarLibro(wb, System.IO.Path.Combine(dirEnvio, "TRANSMITTAL_" & codT & ".xlsx"))
+End Sub
+
+' Lista de planos de la fase: ultima revision de cada plano (del registro) + los nunca emitidos
+Sub ListaPlanos(dirPlanos As String, fase As String)
+    Dim ult As New Dictionary(Of String, String())
+    Dim reg As String = System.IO.Path.Combine(dirPlanos, "_REGISTRO_EMISIONES.csv")
+    If System.IO.File.Exists(reg) Then
+        For Each ln As String In System.IO.File.ReadAllLines(reg)
+            Dim c() As String = ln.Split(";"c)
+            If c.Length < 8 OrElse c(0) = "FECHA" Then Continue For
+            ult(c(1)) = c
+        Next
+    End If
+    Dim filas As New List(Of Object())
+    filas.Add(New Object() {"PLANO", "TITULO", "REV VIGENTE", "FECHA", "MOTIVO", "DESTINATARIO", "TRANSMITTAL"})
+    Dim nombres As New List(Of String)
+    For Each f As String In System.IO.Directory.GetFiles(dirPlanos, "*.idw")
+        nombres.Add(System.IO.Path.GetFileNameWithoutExtension(f))
+    Next
+    nombres.Sort()
+    For Each n As String In nombres
+        If ult.ContainsKey(n) Then
+            Dim c() As String = ult(n)
+            filas.Add(New Object() {n, c(2), c(3), c(0), c(4), c(5), c(7)})
+        Else
+            filas.Add(New Object() {n, "", "SIN EMITIR", "", "", "", ""})
+        End If
+    Next
+    Dim wb As Object = NuevoLibro()
+    If wb Is Nothing Then
+        GuardarCsv(System.IO.Path.Combine(dirPlanos, fase & "-LISTA_PLANOS.csv"), filas)
+        Exit Sub
+    End If
+    Dim ws As Object = Hoja(wb, "LISTA DE PLANOS", True)
+    ws.Cells(1, 1).Value = "LISTA DE PLANOS - " & fase & " - " & DateTime.Now.ToString("yyyy-MM-dd HH:mm")
+    Tabla(ws, 3, filas)
+    GuardarLibro(wb, System.IO.Path.Combine(dirPlanos, fase & "-LISTA_PLANOS.xlsx"))
+End Sub
+
+Sub Aviso(t As String)
+    If Not silencioso Then MessageBox.Show(t, "EMITIR_PLANOS")
+End Sub
+
+' ===================== comunes COIMSER =====================
+Function Arg(n As String) As String
+    Try
+        If RuleArguments.Exists(n) Then Return CStr(RuleArguments.Value(n))
+    Catch
+    End Try
+    Return ""
+End Function
+
+Function UProp(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Inventor User Defined Properties").Item(n).Value).Trim()
+    Catch
+        Return ""
+    End Try
+End Function
+
+Function PropDT(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Design Tracking Properties").Item(n).Value).Trim()
+    Catch
+        Return ""
+    End Try
+End Function
+
+Sub EscribirProp(d As Document, n As String, v As String)
+    Dim ps As PropertySet = d.PropertySets.Item("Inventor User Defined Properties")
+    Try
+        ps.Item(n).Value = v
+    Catch
+        ps.Add(v, n)
+    End Try
+End Sub
+
+' Carpeta de la obra: la primera hacia arriba que tiene _OBRA.txt
+Function CarpetaObra(ruta As String) As String
+    Dim x As String = System.IO.Path.GetDirectoryName(ruta)
+    For i As Integer = 0 To 8
+        If x Is Nothing OrElse x = "" Then Exit For
+        If System.IO.File.Exists(System.IO.Path.Combine(x, "_OBRA.txt")) Then Return x
+        x = System.IO.Path.GetDirectoryName(x)
+    Next
+    Return ""
+End Function
+
+Function EsGeneral(d As Document) As Boolean
+    If UProp(d, "TIPO_ENSAMBLE").ToUpper() = "GENERAL" Then Return True
+    Return System.IO.Path.GetFileNameWithoutExtension(d.FullFileName).ToUpper().EndsWith("-GENERAL")
+End Function
+
+' Fases del ensamble general: PLANTA -> ruta del .iam
+Function FasesDe(g As AssemblyDocument) As Dictionary(Of String, String)
+    Dim r As New Dictionary(Of String, String)
+    For Each oc As ComponentOccurrence In g.ComponentDefinition.Occurrences
+        Try
+            Dim d As Document = oc.Definition.Document
+            Dim pl As String = UProp(d, "PLANTA").ToUpper()
+            If UProp(d, "TIPO_ENSAMBLE").ToUpper() = "PLANTA" AndAlso pl <> "" AndAlso Not r.ContainsKey(pl) Then r.Add(pl, d.FullFileName)
+        Catch
+        End Try
+    Next
+    Return r
+End Function
+
+Function Limpia(s As String) As String
+    If s Is Nothing Then Return ""
+    Return s.Replace(";", ",").Replace(vbCr, " ").Replace(vbLf, " ").Trim()
+End Function
+
+' ===================== Excel (si no hay Excel se guarda CSV) =====================
+Function NuevoLibro() As Object
+    Try
+        xl = CreateObject("Excel.Application")
+        xl.Visible = False
+        xl.DisplayAlerts = False
+        Dim wb As Object = xl.Workbooks.Add()
+        Do While wb.Worksheets.Count > 1
+            wb.Worksheets(wb.Worksheets.Count).Delete()
+        Loop
+        Return wb
+    Catch
+        xl = Nothing
+        Return Nothing
+    End Try
+End Function
+
+Function Hoja(wb As Object, nombre As String, primera As Boolean) As Object
+    Dim ws As Object
+    If primera Then
+        ws = wb.Worksheets(1)
+    Else
+        ws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count))
+    End If
+    ws.Name = nombre
+    Return ws
+End Function
+
+' Escribe una tabla (fila 1 = titulos) en una hoja; devuelve la ultima fila
+Function Tabla(ws As Object, filaIni As Integer, filas As List(Of Object())) As Integer
+    Dim r As Integer = filaIni
+    For Each f() As Object In filas
+        For c As Integer = 0 To f.Length - 1
+            If f(c) Is Nothing Then Continue For
+            ws.Cells(r, c + 1).Value = f(c)
+        Next
+        r += 1
+    Next
+    Try
+        Dim nc As Integer = filas(0).Length
+        ws.Range(ws.Cells(filaIni, 1), ws.Cells(filaIni, nc)).Font.Bold = True
+        ws.Range(ws.Cells(filaIni, 1), ws.Cells(filaIni, nc)).Interior.Color = 14277081
+        ws.Columns.AutoFit()
+    Catch
+    End Try
+    Return r - 1
+End Function
+
+Sub GuardarLibro(wb As Object, ruta As String)
+    Try
+        If System.IO.File.Exists(ruta) Then System.IO.File.Delete(ruta)
+    Catch
+        ruta = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(ruta), System.IO.Path.GetFileNameWithoutExtension(ruta) & "_" & DateTime.Now.ToString("HHmmss") & ".xlsx")
+    End Try
+    wb.Worksheets(1).Activate()
+    wb.SaveAs(ruta, 51)
+    wb.Close(False)
+    xl.Quit()
+    System.Runtime.InteropServices.Marshal.ReleaseComObject(wb)
+    System.Runtime.InteropServices.Marshal.ReleaseComObject(xl)
+    xl = Nothing
+    rutaSalida = ruta
+End Sub
+
+' CSV de respaldo (;) cuando no hay Excel
+Sub GuardarCsv(ruta As String, filas As List(Of Object()))
+    Dim sb As New System.Text.StringBuilder()
+    For Each f() As Object In filas
+        Dim l As New List(Of String)
+        For Each v As Object In f
+            l.Add(If(v Is Nothing, "", Limpia(CStr(v))))
+        Next
+        sb.AppendLine(String.Join(";", l))
+    Next
+    System.IO.File.WriteAllText(ruta, sb.ToString(), System.Text.Encoding.UTF8)
+    rutaSalida = ruta
+End Sub

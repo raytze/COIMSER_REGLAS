@@ -1,0 +1,283 @@
+' =====================================================================
+'  EJECUTAR_FASES  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Desde el ensamble GENERAL de la obra ejecuta una regla en TODAS las fases o en UNA,
+'  sin tener que abrir cada fase a mano. Cada fase se abre, se activa y se corre la regla
+'  como si la hubieras lanzado tu ahi (cada una deja sus planos / reportes en su carpeta).
+'
+'   Reglas: TEKLA_NUMERACION, REVISAR_JERARQUIA, TAG_EQUIPOS, GENERAR_PLANOS, CUT_LIST,
+'           REPORTE_ENSAMBLES, REPORTE_PERNERIA, CAMBIOS_MATERIAL, EXPORTAR_PLASMA, EMITIR_PLANOS
+'   + RESUMEN DE OBRA: un Excel con peso, area y numero de conjuntos por fase y el total
+'     (<obra>\REPORTES_OBRA\<COD>-RESUMEN_OBRA.xlsx). Es INFORMATIVO: para comprar y cortar
+'     se usa siempre el reporte de cada fase.
+'  Si una regla pregunta algo (ej. configuracion de TEKLA), te lo preguntara en cada fase.
+'  Argumentos: regla=<NOMBRE>, fase=<FASE>|TODAS, silencioso
+' =====================================================================
+
+Sub Main()
+    silencioso = RuleArguments.Exists("silencioso")
+    Dim g As AssemblyDocument = TryCast(ThisApplication.ActiveDocument, AssemblyDocument)
+    If g Is Nothing OrElse Not EsGeneral(g) Then
+        MessageBox.Show("Abre el ensamble GENERAL de la obra y ejecuta la regla ahi.", "EJECUTAR_FASES")
+        Exit Sub
+    End If
+    Dim fases As Dictionary(Of String, String) = FasesDe(g)
+    If fases.Count = 0 Then
+        MessageBox.Show("El GENERAL no tiene fases (TIPO_ENSAMBLE = PLANTA). Crealas con INICIAR_CONJUNTO.", "EJECUTAR_FASES")
+        Exit Sub
+    End If
+    Dim reglas As New List(Of String)(New String() {"TEKLA_NUMERACION", "REVISAR_JERARQUIA", "TAG_EQUIPOS", "GENERAR_PLANOS", "CUT_LIST", "REPORTE_ENSAMBLES", "REPORTE_PERNERIA", "CAMBIOS_MATERIAL", "EXPORTAR_PLASMA", "EMITIR_PLANOS", "RESUMEN DE OBRA"})
+    Dim regla As String = Arg("regla").ToUpper()
+    If regla = "" Then
+        regla = InputListBox("Que quieres ejecutar en las fases de " & System.IO.Path.GetFileNameWithoutExtension(g.FullFileName) & "?", reglas, reglas(0), "EJECUTAR_FASES", "Regla")
+        If regla Is Nothing OrElse regla = "" Then Exit Sub
+    End If
+
+    Dim elegidas As New List(Of String)
+    Dim fa As String = Arg("fase").ToUpper()
+    If fa = "" Then
+        Dim ops As New List(Of String)
+        ops.Add("TODAS (" & String.Join(", ", fases.Keys) & ")")
+        For Each k As String In fases.Keys
+            ops.Add(k)
+        Next
+        Dim r As String = InputListBox("En que fases?", ops, ops(0), "EJECUTAR_FASES", "Fases")
+        If r Is Nothing OrElse r = "" Then Exit Sub
+        fa = If(r.StartsWith("TODAS"), "TODAS", r)
+    End If
+    For Each k As String In fases.Keys
+        If fa = "TODAS" OrElse k = fa Then elegidas.Add(k)
+    Next
+    If elegidas.Count = 0 Then
+        MessageBox.Show("No encuentro la fase " & fa & ".", "EJECUTAR_FASES")
+        Exit Sub
+    End If
+
+    If regla = "RESUMEN DE OBRA" Then
+        ResumenObra(g, fases, elegidas)
+        Exit Sub
+    End If
+
+    Dim auto As Object = iLogicVb.Automation
+    For Each k As String In elegidas
+        Dim ruta As String = fases(k)
+        Try
+            Dim d As Document = ThisApplication.Documents.Open(ruta, True)
+            d.Activate()
+            Dim t0 As DateTime = DateTime.Now
+            auto.RunExternalRule(d, regla)
+            resumen.AppendLine("OK    " & k & "  (" & CInt((DateTime.Now - t0).TotalSeconds) & " s)")
+        Catch ex As Exception
+            resumen.AppendLine("ERROR " & k & ": " & ex.Message)
+        End Try
+    Next
+    Try
+        g.Activate()
+    Catch
+    End Try
+    Aviso(regla & " en " & elegidas.Count & " fase(s):" & vbCrLf & resumen.ToString())
+End Sub
+
+Private silencioso As Boolean
+Private resumen As New System.Text.StringBuilder
+Private xl As Object
+Private rutaSalida As String = ""
+
+Sub ResumenObra(g As AssemblyDocument, fases As Dictionary(Of String, String), elegidas As List(Of String))
+    Dim filas As New List(Of Object())
+    filas.Add(New Object() {"FASE", "ARCHIVO", "CONJUNTOS", "PESO (kg)", "AREA (m2)", "PESO (t)"})
+    Dim tp As Double = 0
+    Dim ta As Double = 0
+    Dim tc As Integer = 0
+    For Each k As String In elegidas
+        Dim d As AssemblyDocument = Nothing
+        For Each x As Document In ThisApplication.Documents
+            If x.FullFileName.ToLower() = fases(k).ToLower() Then d = TryCast(x, AssemblyDocument)
+        Next
+        If d Is Nothing Then Continue For
+        Dim peso As Double = 0
+        Dim area As Double = 0
+        Try
+            peso = d.ComponentDefinition.MassProperties.Mass
+            area = d.ComponentDefinition.MassProperties.Area / 10000.0
+        Catch
+        End Try
+        Dim nc As Integer = 0
+        For Each oc As ComponentOccurrence In d.ComponentDefinition.Occurrences
+            Try
+                If Not oc.Suppressed AndAlso UProp(oc.Definition.Document, "PREFIJO") <> "" Then nc += 1
+            Catch
+            End Try
+        Next
+        filas.Add(New Object() {k, System.IO.Path.GetFileName(d.FullFileName), nc, Math.Round(peso, 1), Math.Round(area, 2), Math.Round(peso / 1000.0, 3)})
+        tp += peso
+        ta += area
+        tc += nc
+    Next
+    filas.Add(New Object() {"TOTAL OBRA", "", tc, Math.Round(tp, 1), Math.Round(ta, 2), Math.Round(tp / 1000.0, 3)})
+    Dim obra As String = System.IO.Path.GetDirectoryName(g.FullFileName)
+    Dim cod As String = UProp(g, "COD_PROYECTO")
+    If cod = "" Then cod = System.IO.Path.GetFileNameWithoutExtension(g.FullFileName).Replace("-GENERAL", "")
+    Dim dir As String = System.IO.Path.Combine(obra, "REPORTES_OBRA")
+    System.IO.Directory.CreateDirectory(dir)
+    Dim wb As Object = NuevoLibro()
+    If wb Is Nothing Then
+        GuardarCsv(System.IO.Path.Combine(dir, cod & "-RESUMEN_OBRA.csv"), filas)
+    Else
+        Dim ws As Object = Hoja(wb, "RESUMEN OBRA", True)
+        ws.Cells(1, 1).Value = "RESUMEN DE OBRA " & UProp(g, "PROYECTO") & "  -  " & DateTime.Now.ToString("yyyy-MM-dd HH:mm") & "  (informativo: comprar con el reporte de cada fase)"
+        Tabla(ws, 3, filas)
+        GuardarLibro(wb, System.IO.Path.Combine(dir, cod & "-RESUMEN_OBRA.xlsx"))
+    End If
+    Aviso("Resumen de obra: " & rutaSalida & vbCrLf & "Total: " & Math.Round(tp / 1000.0, 2) & " t, " & Math.Round(ta, 1) & " m2, " & tc & " conjuntos")
+End Sub
+
+Sub Aviso(t As String)
+    If Not silencioso Then MessageBox.Show(t, "EJECUTAR_FASES")
+End Sub
+
+' ===================== comunes COIMSER =====================
+Function Arg(n As String) As String
+    Try
+        If RuleArguments.Exists(n) Then Return CStr(RuleArguments.Value(n))
+    Catch
+    End Try
+    Return ""
+End Function
+
+Function UProp(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Inventor User Defined Properties").Item(n).Value).Trim()
+    Catch
+        Return ""
+    End Try
+End Function
+
+Function PropDT(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Design Tracking Properties").Item(n).Value).Trim()
+    Catch
+        Return ""
+    End Try
+End Function
+
+Sub EscribirProp(d As Document, n As String, v As String)
+    Dim ps As PropertySet = d.PropertySets.Item("Inventor User Defined Properties")
+    Try
+        ps.Item(n).Value = v
+    Catch
+        ps.Add(v, n)
+    End Try
+End Sub
+
+' Carpeta de la obra: la primera hacia arriba que tiene _OBRA.txt
+Function CarpetaObra(ruta As String) As String
+    Dim x As String = System.IO.Path.GetDirectoryName(ruta)
+    For i As Integer = 0 To 8
+        If x Is Nothing OrElse x = "" Then Exit For
+        If System.IO.File.Exists(System.IO.Path.Combine(x, "_OBRA.txt")) Then Return x
+        x = System.IO.Path.GetDirectoryName(x)
+    Next
+    Return ""
+End Function
+
+Function EsGeneral(d As Document) As Boolean
+    If UProp(d, "TIPO_ENSAMBLE").ToUpper() = "GENERAL" Then Return True
+    Return System.IO.Path.GetFileNameWithoutExtension(d.FullFileName).ToUpper().EndsWith("-GENERAL")
+End Function
+
+' Fases del ensamble general: PLANTA -> ruta del .iam
+Function FasesDe(g As AssemblyDocument) As Dictionary(Of String, String)
+    Dim r As New Dictionary(Of String, String)
+    For Each oc As ComponentOccurrence In g.ComponentDefinition.Occurrences
+        Try
+            Dim d As Document = oc.Definition.Document
+            Dim pl As String = UProp(d, "PLANTA").ToUpper()
+            If UProp(d, "TIPO_ENSAMBLE").ToUpper() = "PLANTA" AndAlso pl <> "" AndAlso Not r.ContainsKey(pl) Then r.Add(pl, d.FullFileName)
+        Catch
+        End Try
+    Next
+    Return r
+End Function
+
+Function Limpia(s As String) As String
+    If s Is Nothing Then Return ""
+    Return s.Replace(";", ",").Replace(vbCr, " ").Replace(vbLf, " ").Trim()
+End Function
+
+' ===================== Excel (si no hay Excel se guarda CSV) =====================
+Function NuevoLibro() As Object
+    Try
+        xl = CreateObject("Excel.Application")
+        xl.Visible = False
+        xl.DisplayAlerts = False
+        Dim wb As Object = xl.Workbooks.Add()
+        Do While wb.Worksheets.Count > 1
+            wb.Worksheets(wb.Worksheets.Count).Delete()
+        Loop
+        Return wb
+    Catch
+        xl = Nothing
+        Return Nothing
+    End Try
+End Function
+
+Function Hoja(wb As Object, nombre As String, primera As Boolean) As Object
+    Dim ws As Object
+    If primera Then
+        ws = wb.Worksheets(1)
+    Else
+        ws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count))
+    End If
+    ws.Name = nombre
+    Return ws
+End Function
+
+' Escribe una tabla (fila 1 = titulos) en una hoja; devuelve la ultima fila
+Function Tabla(ws As Object, filaIni As Integer, filas As List(Of Object())) As Integer
+    Dim r As Integer = filaIni
+    For Each f() As Object In filas
+        For c As Integer = 0 To f.Length - 1
+            If f(c) Is Nothing Then Continue For
+            ws.Cells(r, c + 1).Value = f(c)
+        Next
+        r += 1
+    Next
+    Try
+        Dim nc As Integer = filas(0).Length
+        ws.Range(ws.Cells(filaIni, 1), ws.Cells(filaIni, nc)).Font.Bold = True
+        ws.Range(ws.Cells(filaIni, 1), ws.Cells(filaIni, nc)).Interior.Color = 14277081
+        ws.Columns.AutoFit()
+    Catch
+    End Try
+    Return r - 1
+End Function
+
+Sub GuardarLibro(wb As Object, ruta As String)
+    Try
+        If System.IO.File.Exists(ruta) Then System.IO.File.Delete(ruta)
+    Catch
+        ruta = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(ruta), System.IO.Path.GetFileNameWithoutExtension(ruta) & "_" & DateTime.Now.ToString("HHmmss") & ".xlsx")
+    End Try
+    wb.Worksheets(1).Activate()
+    wb.SaveAs(ruta, 51)
+    wb.Close(False)
+    xl.Quit()
+    System.Runtime.InteropServices.Marshal.ReleaseComObject(wb)
+    System.Runtime.InteropServices.Marshal.ReleaseComObject(xl)
+    xl = Nothing
+    rutaSalida = ruta
+End Sub
+
+' CSV de respaldo (;) cuando no hay Excel
+Sub GuardarCsv(ruta As String, filas As List(Of Object()))
+    Dim sb As New System.Text.StringBuilder()
+    For Each f() As Object In filas
+        Dim l As New List(Of String)
+        For Each v As Object In f
+            l.Add(If(v Is Nothing, "", Limpia(CStr(v))))
+        Next
+        sb.AppendLine(String.Join(";", l))
+    Next
+    System.IO.File.WriteAllText(ruta, sb.ToString(), System.Text.Encoding.UTF8)
+    rutaSalida = ruta
+End Sub

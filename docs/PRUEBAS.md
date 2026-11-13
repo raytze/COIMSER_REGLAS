@@ -78,3 +78,23 @@ Argumentos utiles (`silencioso` evita las ventanas):
 Claude compila cada regla con `vbc` simulando los tipos de Inventor: detecta errores de sintaxis,
 variables no declaradas y choques de nombres (VB no distingue mayusculas). No detecta errores de la
 API de Inventor: por eso siempre se prueba en la obra de prueba.
+
+
+## Estado al 2026-11-13 (PC coimser, obra de prueba _PRUEBAS_CHUTE\2026-001 PRUEBA CHUTE)
+
+Todas las reglas de iLogic_pruebas estan publicadas en CLAUDE\iLogic (respaldos *.bak_1113).
+
+PROBADAS en Inventor (con argumentos, modo silencioso):
+- NUEVO_PROYECTO v1.1: obra TST con fase ALM en su carpeta (PLANOS\PLASMA, REPORTES, REFERENCIAS).
+- INICIAR_CONJUNTO v1.2 modo nuevo: TST-ALM-CH-001/002.iam dentro de la carpeta de la fase.
+  (OJO: usa el documento ACTIVO; CREAR FASE aun sin probar)
+- NUEVA_REFERENCIA v1.2 accion=forma: <CONJ>\Referencias\<CONJ>-FRM-01.ipt, BOM Referencia.
+- PIEZA_ASOCIADA v1.2 modo=caras (AFUERA y ADENTRO), congelar, descongelar:
+  tolva 4 caras, PL9.5: 1 cuerpo por chapa, desarrollo OK, forma con masa 0 en el conjunto,
+  ADENTRO recorta esquinas (caras 4 y 6 contra 3 y 5), cambio de ALTO 700->900 actualiza todo,
+  congeladas no cambian.
+- TEKLA_NUMERACION v3.7: chapas AFUERA -> n, ADENTRO -> b (cantos inclinados), forma sin marca ni peso.
+
+Falta probar: seleccion de caras con el mouse (Pick), cuadros de dialogo, caras curvas con la regla
+(probado a mano: media cana y medio cono desarrollan; cono completo NO -> partirlo), JUNTAR,
+y el resto de reglas nuevas (MENU, EJECUTAR_FASES, REORGANIZAR_OBRA, PERNERIA, CAMBIOS, EMITIR, COPIAR).

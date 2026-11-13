@@ -1,5 +1,5 @@
 ' =====================================================================
-'  REVISAR_JERARQUIA  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  REVISAR_JERARQUIA  v1.1  -  Regla externa iLogic (Inventor 2026) - COIMSER
 '  Se corre en el ensamble de PLANTA antes de TEKLA_NUMERACION.
 '
 '  1) REVISA todo el arbol y escribe _REVISION_JERARQUIA.txt en la carpeta de la obra:
@@ -12,6 +12,8 @@
 '            - pieza sin marca (sin numerar o sin clasificar)
 '            - pieza comercial / Content Center con marca de fabricacion
 '            - archivo fuera de la carpeta de la obra, o de \Librerias sin EQUIPO = SI
+'            - v1.1: REFERENCIA fuera de la obra, y pieza sin solidos (skeleton) sin marcar
+'              como referencia -> NUEVA_REFERENCIA opcion 3
 '  2) CORRIGE desde un menu (solo propiedades; mover piezas: Reestructurar de Inventor):
 '     cambiar tipo de conjunto, volver transparente (Fantasma), igualar PLANTA/PROYECTO,
 '     forzar CODIGO de pieza, bloquear / desbloquear marcas.
@@ -138,6 +140,7 @@ Private docs As New Dictionary(Of String, Document)
 Private nombresConj As New List(Of String)
 Private nombresPieza As New List(Of String)
 Private padreDe As New Dictionary(Of String, String)
+Private refVistas As New List(Of String)
 Private errores As New List(Of String)
 Private avisos As New List(Of String)
 Private cambios As New List(Of String)
@@ -147,7 +150,7 @@ Private informeTxt As String = ""
 
 ' ===================== revision =====================
 Sub Revisar()
-    docs.Clear() : nombresConj.Clear() : nombresPieza.Clear() : padreDe.Clear()
+    docs.Clear() : nombresConj.Clear() : nombresPieza.Clear() : padreDe.Clear() : refVistas.Clear()
     errores.Clear() : avisos.Clear()
     If planta = "" Then errores.Add("El ensamble de planta no tiene PLANTA (ej. EE): ponla en iProperties > Personalizada.")
     If proy = "" Then errores.Add("El ensamble de planta no tiene PROYECTO.")
@@ -185,7 +188,15 @@ Sub Recorrer(occs As Object, conjPadre As String, prefPadre As String)
         Catch
             Continue For
         End Try
-        If bs = BOMStructureEnum.kReferenceBOMStructure Then Continue For
+        If bs = BOMStructureEnum.kReferenceBOMStructure OrElse UProp(d, "REFERENCIA").ToUpper() = "SI" Then
+            ' referencias: no se numeran, pero deben estar dentro de la obra
+            Dim nr As String = System.IO.Path.GetFileName(d.FullFileName)
+            If Not refVistas.Contains(nr) Then
+                refVistas.Add(nr)
+                If Not d.FullFileName.ToLower().StartsWith(obra.ToLower()) Then avisos.Add(nr & ": es REFERENCIA y esta fuera de la carpeta de la obra (" & System.IO.Path.GetDirectoryName(d.FullFileName) & "). Traela con NUEVA_REFERENCIA opcion 3.")
+            End If
+            Continue For
+        End If
         Dim nom As String = System.IO.Path.GetFileName(d.FullFileName)
         Dim ruta As String = d.FullFileName.ToLower()
         Dim esEquipo As Boolean = (UProp(d, "EQUIPO").ToUpper() = "SI")
@@ -203,10 +214,22 @@ Sub Recorrer(occs As Object, conjPadre As String, prefPadre As String)
             If ruta.Contains("\librerias\") Then
                 If Not esEquipo AndAlso Not comprado Then avisos.Add(nom & ": viene de \Librerias y no tiene EQUIPO = SI ni estructura Comprado.")
             Else
-                avisos.Add(nom & ": esta fuera de la carpeta de la obra (" & System.IO.Path.GetDirectoryName(d.FullFileName) & ").")
+                avisos.Add(nom & ": esta fuera de la carpeta de la obra (" & System.IO.Path.GetDirectoryName(d.FullFileName) & "). Si es skeleton o equipo de referencia: NUEVA_REFERENCIA opcion 3.")
             End If
         End If
         If esEquipo Then Continue For
+        ' pieza sin solidos (boceto / skeleton) sin marcar como referencia
+        If nuevo AndAlso d.DocumentType = DocumentTypeEnum.kPartDocumentObject Then
+            Dim sinSol As Boolean = False
+            Try
+                sinSol = (CType(d, PartDocument).ComponentDefinition.SurfaceBodies.Count = 0)
+            Catch
+            End Try
+            If sinSol Then
+                avisos.Add(nom & ": no tiene solidos (parece un skeleton). Conviertela en referencia con NUEVA_REFERENCIA opcion 3.")
+                Continue For
+            End If
+        End If
 
         If d.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
             Dim pref As String = UProp(d, "PREFIJO").ToUpper()

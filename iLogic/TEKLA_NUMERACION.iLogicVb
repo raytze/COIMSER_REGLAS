@@ -1,5 +1,5 @@
 ' =====================================================================
-'  TEKLA_NUMERACION  v3.6  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  TEKLA_NUMERACION  v3.7  -  Regla externa iLogic (Inventor 2026) - COIMSER
 '  Marcacion jerarquica segun A0.61 MARCACION DE PIEZAS (TABLA_MARCAS.csv)
 '
 '   PROYECTO   ANTAPACCAY          -> propiedad PROYECTO del ensamble principal (registro unico)
@@ -55,6 +55,9 @@
 '  v3.5 - SIN REDONDEOS: el perfil de plancha y la LONGITUD respetan los decimales del modelo
 '     (PL4.5x232.4, L=4076.5). La huella sigue comparando en mm enteros, asi las marcas ya
 '     asignadas no cambian por este ajuste.
+'  v3.7 - BISEL: se mide contra la cara principal de la plancha (no contra los ejes X/Y/Z), asi
+'         una plancha inclinada (tolva, chute, arriostre) con cantos rectos ya no sale como b.
+'         (El 'SI' con tilde se escribe con ChrW: el archivo queda solo ASCII.)
 '  v3.6 - TRABAJO CON VAULT:
 '     - Antes de numerar revisa el registro _MARCAS_ y los archivos de la obra: si estan
 '       protegidos en Vault (solo lectura, sin check-out) avisa ANTES de tocar nada.
@@ -1028,7 +1031,7 @@ End Function
 
 Function Existente(d As Document) As String
     Dim b As String = LeerProp(d, "BLOQUEADO").ToUpper()
-    If b = "SI" Or b = "SÍ" Or b = "YES" Then Return LeerProp(d, "MARCA")
+    If b = "SI" Or b = "S" & ChrW(205) Or b = "YES" Then Return LeerProp(d, "MARCA")
     Return ""
 End Function
 
@@ -1289,12 +1292,23 @@ End Function
 
 ' Bisel: cara plana inclinada respecto al espesor de la plancha
 Function TieneBisel(p As PartDocument, ejeEspesor As Integer) As Boolean
+    ' canto en bisel = cara plana que no es paralela ni perpendicular a la cara principal (la mayor)
     Try
-        For Each f As Face In p.ComponentDefinition.SurfaceBodies.Item(1).Faces
+        Dim cuerpo As SurfaceBody = p.ComponentDefinition.SurfaceBodies.Item(1)
+        Dim nPpal As UnitVector = Nothing
+        Dim aMax As Double = 0
+        For Each f As Face In cuerpo.Faces
             If f.SurfaceType <> SurfaceTypeEnum.kPlaneSurface Then Continue For
-            Dim pl As Plane = CType(f.Geometry, Plane)
-            Dim comp() As Double = {Math.Abs(pl.Normal.X), Math.Abs(pl.Normal.Y), Math.Abs(pl.Normal.Z)}
-            If comp(ejeEspesor) > 0.05 And comp(ejeEspesor) < 0.95 Then Return True
+            If f.Evaluator.Area > aMax Then
+                aMax = f.Evaluator.Area
+                nPpal = CType(f.Geometry, Plane).Normal
+            End If
+        Next
+        If nPpal Is Nothing Then Return False
+        For Each f As Face In cuerpo.Faces
+            If f.SurfaceType <> SurfaceTypeEnum.kPlaneSurface Then Continue For
+            Dim c As Double = Math.Abs(CType(f.Geometry, Plane).Normal.DotProduct(nPpal))
+            If c > 0.05 And c < 0.95 Then Return True
         Next
     Catch
     End Try

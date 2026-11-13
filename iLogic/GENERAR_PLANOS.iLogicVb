@@ -1,5 +1,5 @@
 ' =====================================================================
-'  GENERAR_PLANOS  v2.3  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  GENERAR_PLANOS  v2.5  -  Regla externa iLogic (Inventor 2026) - COIMSER
 '  Genera el juego de planos de FABRICACION y HABILITADO de un ensamble
 '  ya numerado con TEKLA_NUMERACION, en un solo .idw con una hoja por plano,
 '  siguiendo la jerarquia:
@@ -34,6 +34,8 @@
 '         NOTAS DE FABRICACION leido de NOTAS_FABRICACION.txt (secciones [GENERAL],
 '         [CONJUNTO], [HABILITADO]); se edita el .txt y se vuelve a ejecutar la regla.
 '
+'  v2.5 - REFERENCIAS (NUEVA_REFERENCIA: skeletons, equipos existentes, estructura existente)
+'         se OCULTAN en todas las vistas y no cuentan para la escala ni para los globos.
 '  v2.4 - Si el modelo crecio y las vistas de una hoja existente ya no entran a su escala,
 '         la hoja se rehace a la escala que corresponde (argumento no_reencuadrar para evitarlo).
 '  v2.3 - Columnas de la lista de materiales ajustadas al texto. Al final aplica la regla
@@ -204,6 +206,7 @@ Sub Recorrer(occs As Object)
         End Try
         If bs = BOMStructureEnum.kReferenceBOMStructure OrElse bs = BOMStructureEnum.kPurchasedBOMStructure Then Continue For
         If UProp(d, "EQUIPO").ToUpper() = "SI" Then Continue For
+        If UProp(d, "REFERENCIA").ToUpper() = "SI" Then Continue For
         Dim mk As String = UProp(d, "MARCA")
         If d.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
             If mk <> "" AndAlso bs <> BOMStructureEnum.kPhantomBOMStructure Then
@@ -458,6 +461,13 @@ Sub Actualizar(sh As Sheet, k As String, asm As AssemblyDocument)
     End If
     Dim den As Double = 1
     If v IsNot Nothing Then den = Math.Round(1 / v.Scale, 1)
+    ' referencias agregadas despues (skeleton, equipo existente): ocultas en todas las vistas
+    For Each dv As DrawingView In sh.DrawingViews
+        Try
+            OcultarRef(dv, dv.ReferencedDocumentDescriptor.ReferencedDocument)
+        Catch
+        End Try
+    Next
     ' nota
     Dim txt As String = TextoNota(k, asm, den)
     Dim vieja As GeneralNote = Nothing
@@ -730,7 +740,7 @@ End Function
 ' ===================== vistas =====================
 ' Base con la mayor dimension horizontal, proyectada debajo y a la derecha.
 Function Vistas(sh As Sheet, d As Document, x0 As Double, y0 As Double, x1 As Double, y1 As Double, ByRef den As Double) As DrawingView()
-    Dim rb As Box = d.ComponentDefinition.RangeBox
+    Dim rb As Box = Caja(d)
     Dim mn As Point = rb.MinPoint
     Dim mx As Point = rb.MaxPoint
     Dim ext() As Double = {mx.X - mn.X, mx.Y - mn.Y, mx.Z - mn.Z}
@@ -761,12 +771,13 @@ Function Vistas(sh As Sheet, d As Document, x0 As Double, y0 As Double, x1 As Do
     Dim v As DrawingView = sh.DrawingViews.AddBaseView(d, TG.CreatePoint2d(bx, by), sc, ViewOrientationTypeEnum.kArbitraryViewOrientation, DrawingViewStyleEnum.kHiddenLineRemovedDrawingViewStyle, "", cam)
     Dim vb As DrawingView = sh.DrawingViews.AddProjectedView(v, TG.CreatePoint2d(bx, by - Md * sc / 2 - gap - Sm * sc / 2), DrawingViewStyleEnum.kFromBaseDrawingViewStyle)
     Dim vr As DrawingView = sh.DrawingViews.AddProjectedView(v, TG.CreatePoint2d(bx + Lg * sc / 2 + gap + Sm * sc / 2, by), DrawingViewStyleEnum.kFromBaseDrawingViewStyle)
+    OcultarRef(v, d) : OcultarRef(vb, d) : OcultarRef(vr, d)
     Return New DrawingView() {v, vb, vr}
 End Function
 
 ' Escala normalizada (1:den) con la que las 3 vistas del modelo entran en la zona dada
 Function DenNecesario(d As Document, x0 As Double, y0 As Double, x1 As Double, y1 As Double) As Double
-    Dim rb As Box = d.ComponentDefinition.RangeBox
+    Dim rb As Box = Caja(d)
     Dim e() As Double = {rb.MaxPoint.X - rb.MinPoint.X, rb.MaxPoint.Y - rb.MinPoint.Y, rb.MaxPoint.Z - rb.MinPoint.Z}
     Array.Sort(e)
     Dim Sm As Double = e(0), Md As Double = e(1), Lg As Double = e(2)
@@ -806,7 +817,7 @@ End Sub
 Sub Iso(sh As Sheet, d As Document, x0 As Double, y0 As Double, x1 As Double, y1 As Double)
     Try
         If y1 - y0 < 4 OrElse x1 - x0 < 4 Then Exit Sub
-        Dim rb As Box = d.ComponentDefinition.RangeBox
+        Dim rb As Box = Caja(d)
         Dim diag As Double = rb.MinPoint.DistanceTo(rb.MaxPoint)
         Dim lado As Double = Math.Min(x1 - x0, y1 - y0) - 1
         Dim dens() As Double = {1, 2, 2.5, 5, 10, 15, 20, 25, 30, 40, 50, 75, 100, 150, 200, 250}
@@ -817,7 +828,8 @@ Sub Iso(sh As Sheet, d As Document, x0 As Double, y0 As Double, x1 As Double, y1
                 Exit For
             End If
         Next
-        sh.DrawingViews.AddBaseView(d, TG.CreatePoint2d((x0 + x1) / 2, (y0 + y1) / 2), 1 / den, ViewOrientationTypeEnum.kIsoTopRightViewOrientation, DrawingViewStyleEnum.kHiddenLineRemovedDrawingViewStyle)
+        Dim vi As DrawingView = sh.DrawingViews.AddBaseView(d, TG.CreatePoint2d((x0 + x1) / 2, (y0 + y1) / 2), 1 / den, ViewOrientationTypeEnum.kIsoTopRightViewOrientation, DrawingViewStyleEnum.kHiddenLineRemovedDrawingViewStyle)
+        OcultarRef(vi, d)
     Catch ex As Exception
         resumen.AppendLine("  iso: " & ex.Message)
     End Try
@@ -885,6 +897,7 @@ Sub Globos(sh As Sheet, v As DrawingView, occs As Object, previos As List(Of Str
         Try
             If occ.Suppressed Then Continue For
             If occ.BOMStructure = BOMStructureEnum.kReferenceBOMStructure Then Continue For
+            If DentroDeRef(occ) Then Continue For
             Dim mk As String = UProp(occ.Definition.Document, "MARCA")
             ' equipos: globo con su TAG (TAG_EQUIPOS); si la hoja es de un sistema, el TAG local (MOT-01)
             Dim eq As ComponentOccurrence = EquipoDe(occ)
@@ -1174,3 +1187,84 @@ Function PanelModelo(dwg As DrawingDocument) As BrowserPane
     Next
     Return dwg.BrowserPanes.ActivePane
 End Function
+
+' ===================== referencias (NUEVA_REFERENCIA) =====================
+Function EsRef(o As ComponentOccurrence) As Boolean
+    Try
+        If o.BOMStructure = BOMStructureEnum.kReferenceBOMStructure Then Return True
+    Catch
+    End Try
+    Try
+        If UProp(o.Definition.Document, "REFERENCIA").ToUpper() = "SI" Then Return True
+    Catch
+    End Try
+    Return False
+End Function
+
+Function DentroDeRef(o As ComponentOccurrence) As Boolean
+    Dim x As ComponentOccurrence = o
+    Dim n As Integer = 0
+    Do While x IsNot Nothing AndAlso n < 20
+        If EsRef(x) Then Return True
+        Try
+            x = x.ParentOccurrence
+        Catch
+            x = Nothing
+        End Try
+        n += 1
+    Loop
+    Return False
+End Function
+
+' Oculta en la vista las referencias del ensamble d (cualquier nivel)
+Sub OcultarRef(v As DrawingView, d As Object)
+    Dim a As AssemblyDocument = TryCast(d, AssemblyDocument)
+    If v Is Nothing OrElse a Is Nothing Then Exit Sub
+    OcultarEn(v, a.ComponentDefinition.Occurrences)
+End Sub
+
+Sub OcultarEn(v As DrawingView, occs As Object)
+    For Each o As ComponentOccurrence In occs
+        Try
+            If o.Suppressed Then Continue For
+            If EsRef(o) Then
+                v.SetVisibility(o, False)
+            ElseIf o.DefinitionDocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+                OcultarEn(v, o.SubOccurrences)
+            End If
+        Catch
+        End Try
+    Next
+End Sub
+
+' Caja del modelo SIN referencias ni piezas sin solidos (skeletons): para la escala
+Function Caja(d As Document) As Box
+    Dim rb As Box = d.ComponentDefinition.RangeBox
+    If d.DocumentType <> DocumentTypeEnum.kAssemblyDocumentObject Then Return rb
+    Dim b As Box = Nothing
+    CajaEn(CType(d, AssemblyDocument).ComponentDefinition.Occurrences, b)
+    If b Is Nothing Then Return rb
+    Return b
+End Function
+
+Sub CajaEn(occs As Object, ByRef b As Box)
+    For Each o As ComponentOccurrence In occs
+        Try
+            If o.Suppressed OrElse EsRef(o) Then Continue For
+            If o.DefinitionDocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+                CajaEn(o.SubOccurrences, b)
+                Continue For
+            End If
+            Dim pd As PartDocument = TryCast(o.Definition.Document, PartDocument)
+            If pd IsNot Nothing AndAlso pd.ComponentDefinition.SurfaceBodies.Count = 0 Then Continue For
+            Dim r As Box = o.RangeBox
+            If b Is Nothing Then
+                b = r.Copy()
+            Else
+                b.Extend(r.MinPoint)
+                b.Extend(r.MaxPoint)
+            End If
+        Catch
+        End Try
+    Next
+End Sub

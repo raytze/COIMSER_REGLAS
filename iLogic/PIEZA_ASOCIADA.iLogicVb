@@ -1,5 +1,5 @@
 ' =====================================================================
-'  PIEZA_ASOCIADA  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  PIEZA_ASOCIADA  v1.2  -  Regla externa iLogic (Inventor 2026) - COIMSER
 '  Crea una pieza que DEPENDE de otra geometria: si esa geometria cambia, la pieza cambia.
 '  El vinculo vive en la propia pieza (pieza derivada), no en el ensamble.
 '
@@ -12,13 +12,26 @@
 '   2) DESDE OTRA PIEZA
 '      Deriva la forma de la pieza elegida como SUPERFICIE de referencia (no pesa, no se
 '      numera) y sus planos/bocetos. Dibujas sobre sus caras; si esa pieza cambia, esta tambien.
-'   3) CONGELAR / 4) DESCONGELAR
+'   3) DESDE LAS CARAS DE UN SOLIDO DE FORMA  (v1.2 - chutes, tolvas, ductos)
+'      El solido de forma (NUEVA_REFERENCIA opcion 4, BOM Referencia, no pesa) es el molde.
+'      Eliges sus caras en la pantalla (Esc = terminar) y sale UNA CHAPA POR CARA:
+'        - la cara se engrosa con el espesor; la forma no aporta masa (AFUERA entra como superficie,
+'          ADENTRO la chapa se intersecta con la forma y el cuerpo de la forma se consume)
+'        - AFUERA: el interior del chute = la forma (las esquinas no se cruzan)
+'          ADENTRO: el exterior = la forma; en las esquinas la primera cara elegida PASA
+'          y las siguientes se RECORTAN contra ella (no se duplica material)
+'        - se genera el desarrollo (plasma / cut list). Cara curva -> CODIGO r (rolada)
+'        - opcion JUNTAR: varias caras unidas por radios = una sola chapa plegada
+'      Si cambias el solido de forma, las chapas (y su desarrollo) se actualizan.
+'   4) CONGELAR / 5) DESCONGELAR
 '      Suspende (o reactiva) el vinculo: usalo al emitir o enviar a plasma, para que un cambio
 '      del skeleton no modifique piezas ya cortadas. Propiedad CONGELADA = SI / NO.
 '
 '  Nombre, carpeta y propiedades como NUEVA_PIEZA:  <ensamble>\Piezas\<ENSAMBLE>-PL-001.ipt
-'  Propiedades extra: ASOCIADA = SI, MODO_ASOCIACION (SKELETON / PIEZA), DEPENDE_DE, CONGELADA.
-'  Argumentos (pruebas): silencioso, modo=skeleton|pieza|congelar|descongelar, tipo=<naturaleza>,
+'  Propiedades extra: ASOCIADA = SI, MODO_ASOCIACION (SKELETON / PIEZA / FORMA),
+'     CARA_ORIGEN, LADO (caras), DEPENDE_DE, CONGELADA.
+'  Argumentos (pruebas): silencioso, modo=skeleton|pieza|caras|congelar|descongelar, tipo=<naturaleza>,
+'     caras=3,4,5 (indice de cara del solido de forma), lado=AFUERA|ADENTRO, juntar=SI, forma=<archivo>,
 '     espesor=, grado=, base=<boceto o plano>, skeleton=<archivo>, origen=<componente>,
 '     objeto=<componente o TODAS>
 ' =====================================================================
@@ -56,16 +69,19 @@ Sub Main()
         Dim ops As New List(Of String)
         ops.Add("1 - Pieza desde el SKELETON (recomendado)")
         ops.Add("2 - Pieza desde OTRA PIEZA")
-        ops.Add("3 - CONGELAR piezas asociadas (no cambian mas)")
-        ops.Add("4 - DESCONGELAR piezas asociadas")
+        ops.Add("3 - Planchas desde las CARAS de un SOLIDO DE FORMA (chute / tolva)")
+        ops.Add("4 - CONGELAR piezas asociadas (no cambian mas)")
+        ops.Add("5 - DESCONGELAR piezas asociadas")
         Dim op As String = InputListBox("Pieza asociada en " & NomSin(destino), ops, ops(0), "PIEZA_ASOCIADA", "Que quieres hacer?")
         If op Is Nothing OrElse op = "" Then Exit Sub
-        Dim modos() As String = {"skeleton", "pieza", "congelar", "descongelar"}
+        Dim modos() As String = {"skeleton", "pieza", "caras", "congelar", "descongelar"}
         modo = modos(CInt(op.Substring(0, 1)) - 1)
     End If
     Select Case modo
         Case "skeleton", "pieza"
             Crear(top, destino, modo)
+        Case "caras"
+            DesdeCaras(top, destino)
         Case "congelar"
             Congelar(top, destino, True)
         Case "descongelar"
@@ -167,7 +183,7 @@ Sub Crear(top As AssemblyDocument, destino As AssemblyDocument, modo As String)
 
     ' ---------- archivo ----------
     Dim nomEns As String = NomSin(destino)
-    Dim carpeta As String = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(destino.FullFileName), nomEns, "Piezas")
+    Dim carpeta As String = System.IO.Path.Combine(CarpetaHija(destino), "Piezas")
     System.IO.Directory.CreateDirectory(carpeta)
     Dim n As Integer = 1
     Dim ruta As String
@@ -378,6 +394,417 @@ Function MatrizEn(o As ComponentOccurrence, top As AssemblyDocument, destino As 
     Return m
 End Function
 
+' ===================== 3) planchas desde las caras de un solido de forma =====================
+Sub DesdeCaras(top As AssemblyDocument, destino As AssemblyDocument)
+    ' ---------- solido de forma ----------
+    Dim formas As New List(Of ComponentOccurrence)
+    BuscarFormas(destino.ComponentDefinition.Occurrences, formas)
+    If formas.Count = 0 AndAlso destino IsNot top Then BuscarFormas(top.ComponentDefinition.Occurrences, formas)
+    If formas.Count = 0 Then
+        MessageBox.Show("No encuentro un SOLIDO DE FORMA en " & NomSin(destino) & "." & vbCrLf & "Crealo con NUEVA_REFERENCIA (opcion 4), modela ahi el volumen del chute y vuelve a correr esta regla.", "PIEZA_ASOCIADA")
+        Exit Sub
+    End If
+
+    ' ---------- espesor, material, lado ----------
+    Dim esp As New List(Of String)
+    For Each e As String In New String() {"3", "4.5", "6", "8", "9.5", "10", "12", "12.7", "16", "19", "20", "25"}
+        esp.Add(e)
+    Next
+    Dim espesor As String = Arg("espesor")
+    If espesor = "" Then espesor = If(silencioso, "9.5", InputListBox("Espesor de las planchas (mm):", esp, "9.5", "PIEZA_ASOCIADA", "Espesor"))
+    If espesor Is Nothing OrElse espesor = "" Then Exit Sub
+    Dim espCm As Double = Double.Parse(espesor.Replace(",", "."), System.Globalization.CultureInfo.InvariantCulture) / 10.0
+    Dim grados As New List(Of String)
+    For Each g As String In New String() {"ASTM A36", "ASTM A572 GR.50", "ASTM A588", "ASTM A240 304", "HARDOX 400", "HARDOX 450"}
+        grados.Add(g)
+    Next
+    Dim grado As String = Arg("grado")
+    If grado = "" Then grado = If(silencioso, grados(0), InputListBox("Material / grado:", grados, grados(0), "PIEZA_ASOCIADA", "Material"))
+    If grado Is Nothing OrElse grado = "" Then Exit Sub
+    Dim lado As String = Arg("lado").ToUpper()
+    If lado = "" Then
+        If silencioso Then
+            lado = "AFUERA"
+        Else
+            Dim ls As New List(Of String)
+            ls.Add("AFUERA - el INTERIOR del chute = la forma (esquinas sin cruce)")
+            ls.Add("ADENTRO - el EXTERIOR del chute = la forma (recorta esquinas)")
+            Dim r As String = InputListBox("Hacia donde crece el espesor?", ls, ls(0), "PIEZA_ASOCIADA", "Lado")
+            If r Is Nothing OrElse r = "" Then Exit Sub
+            lado = r.Split(" "c)(0)
+        End If
+    End If
+    Dim dirEsp As PartFeatureExtentDirectionEnum = If(lado = "ADENTRO", PartFeatureExtentDirectionEnum.kNegativeExtentDirection, PartFeatureExtentDirectionEnum.kPositiveExtentDirection)
+
+    ' ---------- caras ----------
+    Dim fOcc As ComponentOccurrence = Nothing
+    Dim caras As New List(Of Face)
+    Dim argC As String = Arg("caras")
+    If argC <> "" Then
+        fOcc = formas(0)
+        Dim nf As String = Arg("forma").ToLower()
+        If nf <> "" Then
+            For Each o As ComponentOccurrence In formas
+                If System.IO.Path.GetFileNameWithoutExtension(o.Definition.Document.FullFileName).ToLower() = System.IO.Path.GetFileNameWithoutExtension(nf) Then fOcc = o
+            Next
+        End If
+        Dim cuerpo As SurfaceBody = CType(fOcc.Definition, PartComponentDefinition).SurfaceBodies.Item(1)
+        For Each t As String In argC.Split(","c)
+            If t.Trim() <> "" Then caras.Add(cuerpo.Faces.Item(CInt(t.Trim())))
+        Next
+    Else
+        If silencioso Then Exit Sub
+        Dim hs As HighlightSet = Nothing
+        Try
+            hs = top.CreateHighlightSet()
+        Catch
+        End Try
+        Do
+            Dim sel As Object = Nothing
+            Try
+                sel = ThisApplication.CommandManager.Pick(SelectionFilterEnum.kPartFaceFilter, "Cara " & (caras.Count + 1) & " del solido de forma  (Esc = terminar)")
+            Catch
+            End Try
+            If sel Is Nothing Then Exit Do
+            Dim fx As FaceProxy = TryCast(sel, FaceProxy)
+            If fx Is Nothing Then Continue Do
+            Dim o As ComponentOccurrence = fx.ContainingOccurrence
+            If Not EsForma(o.Definition.Document) Then
+                MessageBox.Show("Esa cara es de " & System.IO.Path.GetFileName(o.Definition.Document.FullFileName) & ", que no es un solido de forma." & vbCrLf & "Elige caras del solido de forma (referencia).", "PIEZA_ASOCIADA")
+                Continue Do
+            End If
+            If fOcc Is Nothing Then
+                fOcc = o
+            ElseIf o.Definition.Document IsNot fOcc.Definition.Document Then
+                MessageBox.Show("Todas las caras deben ser del mismo solido de forma (" & System.IO.Path.GetFileName(fOcc.Definition.Document.FullFileName) & ").", "PIEZA_ASOCIADA")
+                Continue Do
+            End If
+            Dim nat As Face = CType(fx.NativeObject, Face)
+            Dim repetida As Boolean = False
+            For Each c0 As Face In caras
+                If c0.TransientKey = nat.TransientKey Then repetida = True
+            Next
+            If repetida Then Continue Do
+            caras.Add(nat)
+            Try
+                hs.AddItem(fx)
+            Catch
+            End Try
+        Loop
+        Try
+            hs.Clear()
+        Catch
+        End Try
+    End If
+    If caras.Count = 0 OrElse fOcc Is Nothing Then Exit Sub
+    Dim fuente As String = fOcc.Definition.Document.FullFileName
+    Dim fuenteDoc As PartDocument = CType(fOcc.Definition.Document, PartDocument)
+    Dim cuerpoF As SurfaceBody = fuenteDoc.ComponentDefinition.SurfaceBodies.Item(1)
+    Dim mFuente As Matrix = MatrizEn(fOcc, top, destino)
+
+    ' ---------- una chapa por cara, o todas juntas ----------
+    Dim juntar As Boolean = (Arg("juntar").ToUpper() = "SI")
+    If caras.Count > 1 AndAlso Arg("juntar") = "" AndAlso Not silencioso Then
+        Dim js As New List(Of String)
+        js.Add("UNA CHAPA POR CARA (" & caras.Count & " chapas)")
+        js.Add("UNA SOLA CHAPA plegada con todas (solo si las caras estan unidas por radios)")
+        Dim r As String = InputListBox("Elegiste " & caras.Count & " caras:", js, js(0), "PIEZA_ASOCIADA", "Chapas")
+        If r Is Nothing OrElse r = "" Then Exit Sub
+        juntar = r.StartsWith("UNA SOLA")
+    End If
+    Dim grupos As New List(Of List(Of Face))
+    If juntar Then
+        grupos.Add(caras)
+    Else
+        For Each c0 As Face In caras
+            Dim g As New List(Of Face)
+            g.Add(c0)
+            grupos.Add(g)
+        Next
+    End If
+
+    ' ---------- crear ----------
+    Dim nomEns As String = NomSin(destino)
+    Dim carpeta As String = System.IO.Path.Combine(CarpetaHija(destino), "Piezas")
+    System.IO.Directory.CreateDirectory(carpeta)
+    Dim hechas As New List(Of String)               ' rutas de las chapas ya creadas (en orden)
+    Dim hechasCaras As New List(Of List(Of Face))   ' sus caras de origen
+    For Each g As List(Of Face) In grupos
+        Dim curvas As Integer = 0
+        For Each c0 As Face In g
+            If c0.SurfaceType <> SurfaceTypeEnum.kPlaneSurface Then curvas += 1
+        Next
+        Dim pref As String = If(g.Count = 1 AndAlso curvas = 0, "PL", "CH")
+        Dim naturaleza As String = If(pref = "PL", "ESTRUCTURAL - Plancha / cartela", If(curvas = g.Count, "ESTRUCTURAL - Plancha rolada", "ESTRUCTURAL - Chapa plegada"))
+        Dim n As Integer = 1
+        Dim ruta As String
+        Do
+            ruta = System.IO.Path.Combine(carpeta, nomEns & "-" & pref & "-" & n.ToString("000") & ".ipt")
+            If Not System.IO.File.Exists(ruta) AndAlso Not hechas.Contains(ruta) Then Exit Do
+            n += 1
+        Loop
+        Dim indices As New List(Of String)
+        For Each c0 As Face In g
+            indices.Add(IndiceCara(cuerpoF, c0).ToString())
+        Next
+
+        Dim p As PartDocument = CType(ThisApplication.Documents.Add(DocumentTypeEnum.kPartDocumentObject, BuscarPlantilla("Sheet Metal (mm).ipt"), False), PartDocument)
+        Dim sm As SheetMetalComponentDefinition = CType(p.ComponentDefinition, SheetMetalComponentDefinition)
+        Try : sm.UseSheetMetalStyleThickness = False : Catch : End Try
+        sm.Thickness.Expression = espesor & " mm"
+        Dim cd As PartComponentDefinition = CType(p.ComponentDefinition, PartComponentDefinition)
+        ' AFUERA : la forma entra como SUPERFICIE de trabajo (masa 0) y se engrosa la cara.
+        ' ADENTRO: la forma entra como solido; la chapa se INTERSECTA con ella (sus bordes quedan al ras
+        '          de las bocas) y el cuerpo de la forma se consume: masa 0.
+        Dim dps As DerivedPartComponents = cd.ReferenceComponents.DerivedPartComponents
+        Dim df As DerivedPartUniformScaleDef = dps.CreateDefinition(fuente)
+        df.DeriveStyle = If(lado = "ADENTRO", DerivedComponentStyleEnum.kDeriveAsSingleBodyNoSeams, DerivedComponentStyleEnum.kDeriveAsWorkSurface)
+        Try : df.IncludeAllSurfaces = DerivedComponentOptionEnum.kDerivedExcludeAll : Catch : End Try
+        Try : df.IncludeAllSketches = DerivedComponentOptionEnum.kDerivedExcludeAll : Catch : End Try
+        Try : df.IncludeAllWorkFeatures = DerivedComponentOptionEnum.kDerivedExcludeAll : Catch : End Try
+        Try
+            For Each pe As DerivedPartEntity In df.Parameters
+                pe.IncludeEntity = False
+            Next
+        Catch
+        End Try
+        dps.Add(df)
+        Dim sup As SurfaceBody = Nothing
+        Dim vForma As Double = 0
+        Try
+            If lado = "ADENTRO" Then
+                sup = cd.SurfaceBodies.Item(1)
+                vForma = sup.Volume(0.001)
+            Else
+                sup = cd.WorkSurfaces.Item(cd.WorkSurfaces.Count).SurfaceBodies.Item(1)
+            End If
+        Catch
+        End Try
+        Dim fc As FaceCollection = ThisApplication.TransientObjects.CreateFaceCollection()
+        For Each c0 As Face In g
+            Dim m As Face = CaraIgual(sup, c0)
+            If m IsNot Nothing Then fc.Add(m)
+        Next
+        If sup Is Nothing OrElse fc.Count <> g.Count Then
+            bitacora.AppendLine("NO se pudo ubicar la(s) cara(s) " & String.Join(",", indices) & " en la forma derivada: se omite.")
+            p.Close(True)
+            Continue For
+        End If
+        Dim feats As Object = cd.Features
+        Dim th As Object = Nothing
+        Try
+            th = feats.ThickenFeatures.Add(fc, espCm, dirEsp, PartFeatureOperationEnum.kNewBodyOperation, False)
+            Try
+                th.Distance.Expression = sm.Thickness.Name
+            Catch
+            End Try
+        Catch ex As Exception
+            bitacora.AppendLine("Cara(s) " & String.Join(",", indices) & ": no se pudo dar espesor (" & ex.Message & "). Se omite.")
+            p.Close(True)
+            Continue For
+        End Try
+        ' chapa vs forma: la chapa es el cuerpo que no tiene el volumen de la forma
+        Dim chapa As SurfaceBody = Nothing
+        Dim cuerpoForma As SurfaceBody = Nothing
+        For Each b As SurfaceBody In cd.SurfaceBodies
+            If Math.Abs(b.Volume(0.001) - vForma) < Math.Max(0.01, vForma * 0.000001) AndAlso cuerpoForma Is Nothing Then
+                cuerpoForma = b
+            Else
+                chapa = b
+            End If
+        Next
+        Dim limpia As Boolean = (lado <> "ADENTRO" AndAlso cd.SurfaceBodies.Count = 1)
+        If lado = "ADENTRO" AndAlso chapa IsNot Nothing AndAlso cuerpoForma IsNot Nothing Then
+            Try
+                Dim col As ObjectCollection = ThisApplication.TransientObjects.CreateObjectCollection()
+                col.Add(cuerpoForma)
+                feats.CombineFeatures.Add(chapa, col, PartFeatureOperationEnum.kIntersectOperation, False)
+                limpia = (cd.SurfaceBodies.Count = 1)
+            Catch
+            End Try
+        End If
+        If Not limpia Then
+            bitacora.AppendLine("Cara(s) " & String.Join(",", indices) & ": no se pudo separar la chapa del solido de forma. Se omite.")
+            p.Close(True)
+            Continue For
+        End If
+
+        ' ---------- recorte de esquinas contra las chapas vecinas ya hechas ----------
+        Dim recortes As New List(Of String)
+        For k As Integer = 0 To hechas.Count - 1
+            If Not Vecinas(g, hechasCaras(k)) Then Continue For
+            If Recortar(p, hechas(k)) Then recortes.Add(System.IO.Path.GetFileNameWithoutExtension(hechas(k)))
+        Next
+
+        ' ---------- desarrollo ----------
+        Dim conDesarrollo As Boolean = False
+        Try
+            sm.Unfold()
+            conDesarrollo = True
+            Try
+                sm.FlatPattern.ExitEdit()
+            Catch
+            End Try
+        Catch
+        End Try
+
+        ' ---------- propiedades ----------
+        AsignarMaterial(p, If(grado.Contains("304"), "Stainless Steel", "Steel"))
+        EscribirProp(p, "GRADO", grado)
+        EscribirProp(p, "TIPO_PIEZA", "ESTRUCTURAL")
+        EscribirProp(p, "NATURALEZA", naturaleza)
+        If curvas = g.Count Then EscribirProp(p, "CODIGO", "r")
+        EscribirProp(p, "ESPESOR", espesor)
+        EscribirProp(p, "ASOCIADA", "SI")
+        EscribirProp(p, "MODO_ASOCIACION", "FORMA")
+        EscribirProp(p, "DEPENDE_DE", Relativa(fuente))
+        EscribirProp(p, "CARA_ORIGEN", String.Join(",", indices))
+        EscribirProp(p, "LADO", lado)
+        If recortes.Count > 0 Then EscribirProp(p, "RECORTADA_CON", String.Join(",", recortes))
+        EscribirProp(p, "CONGELADA", "NO")
+        p.PropertySets.Item("Design Tracking Properties").Item("Description").Value = "PL" & espesor
+        p.SaveAs(ruta, False)
+        Dim occ As ComponentOccurrence = destino.ComponentDefinition.Occurrences.Add(ruta, If(mFuente, ThisApplication.TransientGeometry.CreateMatrix()))
+        Try
+            occ.Grounded = True
+        Catch
+        End Try
+        p.Close(True)
+        hechas.Add(ruta)
+        hechasCaras.Add(g)
+        bitacora.AppendLine(System.IO.Path.GetFileName(ruta) & "  <- cara " & String.Join(",", indices) & "  PL" & espesor & " " & lado & _
+            If(recortes.Count > 0, "  recortada con " & String.Join(", ", recortes), "") & _
+            If(conDesarrollo, "", "  ** SIN DESARROLLO: cara cerrada (cono/cilindro completo) o de forma libre -> dividela en el solido de forma **"))
+    Next
+    If hechas.Count = 0 Then Exit Sub
+    Try
+        System.IO.File.WriteAllText(System.IO.Path.Combine(carpeta, "_ultima_pieza.txt"), hechas(hechas.Count - 1))
+    Catch
+    End Try
+    bitacora.Insert(0, "Chapas creadas desde " & System.IO.Path.GetFileName(fuente) & " (" & hechas.Count & "):" & vbCrLf)
+    bitacora.AppendLine("")
+    bitacora.AppendLine("La forma no pesa (BOM Referencia). Si la cambias, las chapas y su desarrollo se actualizan.")
+    bitacora.AppendLine("Antes de plasma / emision: CONGELAR. Luego TEKLA_NUMERACION.")
+    bitacora.AppendLine("Guarda el ensamble.")
+End Sub
+
+Sub BuscarFormas(occs As Object, l As List(Of ComponentOccurrence))
+    For Each o As ComponentOccurrence In occs
+        Try
+            If o.Suppressed Then Continue For
+            If o.DefinitionDocumentType = DocumentTypeEnum.kPartDocumentObject Then
+                If EsForma(o.Definition.Document) Then l.Add(o)
+            ElseIf o.DefinitionDocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+                If UProp(o.Definition.Document, "REFERENCIA").ToUpper() <> "SI" Then BuscarFormas(o.SubOccurrences, l)
+            End If
+        Catch
+        End Try
+    Next
+End Sub
+
+' Solido de forma: TIPO_REFERENCIA = FORMA, o cualquier pieza de referencia que tenga solidos
+Function EsForma(d As Document) As Boolean
+    If d.DocumentType <> DocumentTypeEnum.kPartDocumentObject Then Return False
+    If UProp(d, "TIPO_REFERENCIA").ToUpper() = "FORMA" Then Return True
+    If UProp(d, "REFERENCIA").ToUpper() = "SI" AndAlso UProp(d, "TIPO_REFERENCIA").ToUpper() <> "SKELETON" Then
+        Try
+            Return CType(d, PartDocument).ComponentDefinition.SurfaceBodies.Count > 0
+        Catch
+        End Try
+    End If
+    Return False
+End Function
+
+Function IndiceCara(b As SurfaceBody, f As Face) As Integer
+    For i As Integer = 1 To b.Faces.Count
+        If b.Faces.Item(i).TransientKey = f.TransientKey Then Return i
+    Next
+    Return 0
+End Function
+
+' La cara de la superficie derivada que coincide con la cara original (misma area y mismo punto)
+Function CaraIgual(sup As SurfaceBody, f As Face) As Face
+    If sup Is Nothing Then Return Nothing
+    Dim a As Double = f.Evaluator.Area
+    Dim pt As Point = f.PointOnFace
+    Dim mejor As Face = Nothing
+    Dim dMin As Double = 0.01
+    For Each c0 As Face In sup.Faces
+        If Math.Abs(c0.Evaluator.Area - a) > Math.Max(0.001, a * 0.000001) Then Continue For
+        Dim dd As Double = c0.PointOnFace.DistanceTo(pt)
+        If dd < dMin Then
+            dMin = dd
+            mejor = c0
+        End If
+    Next
+    If mejor Is Nothing Then
+        ' respaldo: el punto de la cara original cae sobre la cara derivada
+        For Each c0 As Face In sup.Faces
+            If Math.Abs(c0.Evaluator.Area - a) > Math.Max(0.001, a * 0.0001) Then Continue For
+            mejor = c0
+            Exit For
+        Next
+    End If
+    Return mejor
+End Function
+
+' Dos grupos de caras son vecinos si comparten una arista en el solido de forma
+Function Vecinas(a As List(Of Face), b As List(Of Face)) As Boolean
+    For Each fa As Face In a
+        For Each e As Edge In fa.Edges
+            For Each f2 As Face In e.Faces
+                For Each fb As Face In b
+                    If f2.TransientKey = fb.TransientKey AndAlso f2.TransientKey <> fa.TransientKey Then Return True
+                Next
+            Next
+        Next
+    Next
+    Return False
+End Function
+
+' Recorta la chapa nueva con la chapa vecina (la vecina pasa). Si no se tocan, no deja nada.
+Function Recortar(p As PartDocument, otra As String) As Boolean
+    Dim cd As PartComponentDefinition = CType(p.ComponentDefinition, PartComponentDefinition)
+    Dim dps As DerivedPartComponents = cd.ReferenceComponents.DerivedPartComponents
+    Dim dc As DerivedPartComponent = Nothing
+    Dim cf As Object = Nothing
+    Try
+        Dim v0 As Double = cd.SurfaceBodies.Item(1).Volume(0.001)
+        Dim df As DerivedPartUniformScaleDef = dps.CreateDefinition(otra)
+        df.DeriveStyle = DerivedComponentStyleEnum.kDeriveAsSingleBodyNoSeams
+        Try : df.IncludeAllSketches = DerivedComponentOptionEnum.kDerivedExcludeAll : Catch : End Try
+        Try : df.IncludeAllWorkFeatures = DerivedComponentOptionEnum.kDerivedExcludeAll : Catch : End Try
+        Try : df.IncludeAllSurfaces = DerivedComponentOptionEnum.kDerivedExcludeAll : Catch : End Try
+        Try
+            For Each pe As DerivedPartEntity In df.Parameters
+                pe.IncludeEntity = False
+            Next
+        Catch
+        End Try
+        dc = dps.Add(df)
+        If cd.SurfaceBodies.Count <> 2 Then Throw New Exception("cuerpos")
+        Dim baseB As SurfaceBody = cd.SurfaceBodies.Item(1)
+        Dim herr As SurfaceBody = cd.SurfaceBodies.Item(2)
+        Dim col As ObjectCollection = ThisApplication.TransientObjects.CreateObjectCollection()
+        col.Add(herr)
+        Dim feats As Object = cd.Features
+        cf = feats.CombineFeatures.Add(baseB, col, PartFeatureOperationEnum.kCutOperation, False)
+        Dim v1 As Double = cd.SurfaceBodies.Item(1).Volume(0.001)
+        If cd.SurfaceBodies.Count = 1 AndAlso v1 < v0 - 0.01 Then Return True
+        Throw New Exception("no se tocan")
+    Catch
+        Try
+            If cf IsNot Nothing Then cf.Delete()
+        Catch
+        End Try
+        Try
+            If dc IsNot Nothing Then dc.Delete()
+        Catch
+        End Try
+    End Try
+    Return False
+End Function
+
 ' ===================== congelar / descongelar =====================
 Sub Congelar(top As AssemblyDocument, destino As AssemblyDocument, congelar As Boolean)
     Dim piezas As New List(Of PartDocument)
@@ -517,3 +944,17 @@ End Sub
 Sub Aviso(t As String)
     If Not silencioso Then MessageBox.Show(t, "PIEZA_ASOCIADA")
 End Sub
+
+' Carpeta para los hijos de un ensamble: <carpeta>\<NOMBRE>\  ;  una FASE que ya vive en su propia
+' carpeta (<obra>\<COD>-<FASE>\<COD>-<FASE>.iam) usa esa misma carpeta (no se duplica el nombre).
+Function CarpetaHija(d As Document) As String
+    Dim dir As String = System.IO.Path.GetDirectoryName(d.FullFileName)
+    Dim nom As String = System.IO.Path.GetFileNameWithoutExtension(d.FullFileName)
+    Dim tipoEns As String = ""
+    Try
+        tipoEns = CStr(d.PropertySets.Item("Inventor User Defined Properties").Item("TIPO_ENSAMBLE").Value).Trim().ToUpper()
+    Catch
+    End Try
+    If tipoEns = "PLANTA" AndAlso System.IO.Path.GetFileName(dir).ToUpper() = nom.ToUpper() Then Return dir
+    Return System.IO.Path.Combine(dir, nom)
+End Function

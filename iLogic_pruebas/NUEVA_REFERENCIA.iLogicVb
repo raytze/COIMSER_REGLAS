@@ -1,5 +1,5 @@
 ' =====================================================================
-'  NUEVA_REFERENCIA  v1.1  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  NUEVA_REFERENCIA  v1.2  -  Regla externa iLogic (Inventor 2026) - COIMSER
 '  Piezas y ensambles de REFERENCIA guardados DENTRO de la carpeta de la obra.
 '  Una referencia no se numera, no sale en listas, corte, plasma ni planos (se oculta).
 '
@@ -15,11 +15,15 @@
 '   3) CONVERTIR un componente ya puesto (pieza o ensamble) en referencia: lo pasa a la
 '      carpeta que le toca con el nombre que le toca y el ensamble queda apuntando ahi.
 '      El archivo original NO se borra (avisa su ruta).
+'   4) SOLIDO DE FORMA  -> <ensamble>\Referencias\<ENSAMBLE>-FRM-01.ipt   (v1.2)
+'                          volumen "molde" de un chute / tolva / ducto: lo modelas como solido
+'                          y PIEZA_ASOCIADA (opcion 3) saca una plancha de cada cara que elijas.
+'                          BOM = Referencia: no pesa, no se numera, no sale en reportes ni planos.
 '
-'  Escribe: REFERENCIA = SI, TIPO_REFERENCIA (SKELETON / EQUIPO / EXISTENTE), PROYECTO,
+'  Escribe: REFERENCIA = SI, TIPO_REFERENCIA (SKELETON / FORMA / EQUIPO / EXISTENTE), PROYECTO,
 '           COD_PROYECTO, PLANTA (skeleton), ORIGEN (archivo de donde vino). Quita MARCA.
 '  El skeleton no se crea en el ensamble GENERAL: abre la fase o el conjunto.
-'  Argumentos (pruebas): silencioso, accion=skeleton|traer|convertir,
+'  Argumentos (pruebas): silencioso, accion=skeleton|traer|convertir|forma,
 '     tipo=SKELETON|EQUIPO|EXISTENTE, archivo=<ruta>, nombre=<nombre>,
 '     modo=SIMPLIFICADO|COMPLETO, objeto=<nombre de ocurrencia o de archivo>
 ' =====================================================================
@@ -62,9 +66,11 @@ Sub Main()
         ops.Add("1 - Skeleton nuevo (boceto para Frame Generator / layout)")
         ops.Add("2 - Traer un equipo o archivo existente (.ipt .iam .stp .step)")
         ops.Add("3 - Convertir en referencia un componente ya puesto")
+        ops.Add("4 - Solido de FORMA (chute / tolva: molde para sacar planchas)")
         Dim op As String = InputListBox("Que referencia quieres?" & vbCrLf & "Obra: " & obra, ops, ops(0), "NUEVA_REFERENCIA", "Referencia")
         If op Is Nothing OrElse op = "" Then Exit Sub
-        accion = If(op.StartsWith("1"), "skeleton", If(op.StartsWith("2"), "traer", "convertir"))
+        Dim acciones() As String = {"skeleton", "traer", "convertir", "forma"}
+        accion = acciones(CInt(op.Substring(0, 1)) - 1)
     End If
     Select Case accion
         Case "skeleton"
@@ -73,6 +79,8 @@ Sub Main()
             Traer(destino)
         Case "convertir"
             Convertir(top)
+        Case "forma"
+            NuevaForma(destino)
         Case Else
             MessageBox.Show("accion desconocida: " & accion, "NUEVA_REFERENCIA")
     End Select
@@ -110,6 +118,34 @@ Sub NuevoSkeleton(destino As AssemblyDocument)
     bitacora.AppendLine("Fijo en el origen de " & NomSin(destino) & ", BOM = Referencia, sin marca.")
     bitacora.AppendLine("Dibuja el boceto 3D (o planos/ejes de trabajo) y luego inserta perfiles con Frame Generator sobre sus aristas.")
     bitacora.AppendLine("Guarda el ensamble.")
+    If Not silencioso AndAlso occ IsNot Nothing Then
+        Try
+            occ.Edit()
+        Catch
+        End Try
+    End If
+End Sub
+
+' ===================== 4) solido de forma =====================
+Sub NuevaForma(destino As AssemblyDocument)
+    If EsGeneral(destino) Then
+        MessageBox.Show(NomSin(destino) & " es el ensamble GENERAL de la obra." & vbCrLf & "El solido de forma va dentro del CONJUNTO del chute (ej. " & codObra & "-ALM-CH-001.iam).", "NUEVA_REFERENCIA")
+        Exit Sub
+    End If
+    Dim carpeta As String = CarpetaDe(destino, "FORMA")
+    System.IO.Directory.CreateDirectory(carpeta)
+    Dim ruta As String = SiguienteSK(carpeta, NomSin(destino), ".ipt", "FRM")
+    Dim p As PartDocument = CType(ThisApplication.Documents.Add(DocumentTypeEnum.kPartDocumentObject, BuscarPlantilla(), False), PartDocument)
+    p.PropertySets.Item("Design Tracking Properties").Item("Description").Value = "FORMA " & NomSin(destino)
+    Marcar(p, "FORMA", "", destino)
+    p.SaveAs(ruta, False)
+    Dim occ As ComponentOccurrence = Insertar(destino, ruta)
+    p.Close(True)
+    bitacora.AppendLine("Solido de forma creado: " & ruta)
+    bitacora.AppendLine("Fijo en el origen de " & NomSin(destino) & ", BOM = Referencia: no pesa ni sale en reportes.")
+    bitacora.AppendLine("1) Modela el VOLUMEN del chute (extrusion, solevado, revolucion...). Usa parametros con nombre (ANCHO, ALTO...) para cambiarlo facil.")
+    bitacora.AppendLine("2) Sal de la edicion, guarda y corre PIEZA_ASOCIADA opcion 3: eliges las caras y salen las planchas.")
+    bitacora.AppendLine("Conos o cilindros completos: dividelos en 2 mitades (si no, no se pueden desarrollar).")
     If Not silencioso AndAlso occ IsNot Nothing Then
         Try
             occ.Edit()
@@ -478,7 +514,7 @@ Sub Marcar(d As Document, tipo As String, origen As String, ctx As Document)
     EscribirProp(d, "TIPO_REFERENCIA", tipo)
     If proyObra <> "" Then EscribirProp(d, "PROYECTO", proyObra)
     EscribirProp(d, "COD_PROYECTO", codObra)
-    If tipo = "SKELETON" AndAlso UProp(ctx, "PLANTA") <> "" AndAlso Not EsGeneral(ctx) Then EscribirProp(d, "PLANTA", UProp(ctx, "PLANTA").ToUpper())
+    If (tipo = "SKELETON" OrElse tipo = "FORMA") AndAlso UProp(ctx, "PLANTA") <> "" AndAlso Not EsGeneral(ctx) Then EscribirProp(d, "PLANTA", UProp(ctx, "PLANTA").ToUpper())
     If origen <> "" Then EscribirProp(d, "ORIGEN", origen)
     Dim mk As String = UProp(d, "MARCA")
     If mk <> "" Then
@@ -532,14 +568,14 @@ End Function
 
 ' Skeleton: junto al ensamble que lo usa. Equipo / existente: carpeta REFERENCIAS de la obra.
 Function CarpetaDe(ens As Document, tipo As String) As String
-    If tipo = "SKELETON" Then Return System.IO.Path.Combine(CarpetaHija(ens), "Referencias")
+    If tipo = "SKELETON" OrElse tipo = "FORMA" Then Return System.IO.Path.Combine(CarpetaHija(ens), "Referencias")
     Return System.IO.Path.Combine(obra, "REFERENCIAS", If(tipo = "EXISTENTE", "EXISTENTE", "EQUIPOS"))
 End Function
 
-Function SiguienteSK(carpeta As String, base As String, ext As String) As String
+Function SiguienteSK(carpeta As String, base As String, ext As String, Optional pref As String = "SK") As String
     Dim n As Integer = 1
     Do
-        Dim r As String = System.IO.Path.Combine(carpeta, base & "-SK-" & n.ToString("00") & ext)
+        Dim r As String = System.IO.Path.Combine(carpeta, base & "-" & pref & "-" & n.ToString("00") & ext)
         If Not System.IO.File.Exists(r) AndAlso Not System.IO.File.Exists(System.IO.Path.ChangeExtension(r, If(ext = ".ipt", ".iam", ".ipt"))) Then Return r
         n += 1
     Loop

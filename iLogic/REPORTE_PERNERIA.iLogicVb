@@ -1,0 +1,454 @@
+' =====================================================================
+'  REPORTE_PERNERIA  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Lista de COMPRA de perneria y comerciales de la fase (o del conjunto) abierto:
+'   - Perneria = Content Center no estructural (pernos, tuercas, arandelas, anclajes...),
+'     piezas COMPRADO en la lista de materiales, comerciales del Design Accelerator
+'     (DA_TIPO = COMERCIAL-...) y CODIGO hn, wl, e, st.  Los EQUIPOS (EQUIPO = SI) no entran
+'     (van en la lista de TAG_EQUIPOS).
+'   - Agrupa por TIPO (perno, tuerca, arandela, anclaje, esparrago, otro), descripcion,
+'     diametro, largo, grado/material y acabado.
+'   - Cantidad del modelo + RESERVA (% , argumento reserva=5) = CANTIDAD A COMPRAR (redondeada
+'     hacia arriba), peso unitario y total, y DONDE VA: "ALM-BA1 x8, ALM-V1 x4".
+'   - Hoja CAMBIOS: compara con la corrida anterior (NUEVA / AUMENTA / DISMINUYE / ELIMINADA).
+'  Salida: <fase>\PLANOS\REPORTES\<ENSAMBLE>-PERNERIA.xlsx  (sin Excel: .csv)
+'  Argumentos: silencioso, reserva=5
+' =====================================================================
+
+Sub Main()
+    silencioso = RuleArguments.Exists("silencioso")
+    Dim asm As AssemblyDocument = TryCast(ThisApplication.ActiveDocument, AssemblyDocument)
+    If asm Is Nothing Then
+        MessageBox.Show("Abre el ensamble de la fase (o un conjunto) y ejecuta la regla ahi.", "REPORTE_PERNERIA")
+        Exit Sub
+    End If
+    If EsGeneral(asm) Then
+        MessageBox.Show("Este es el GENERAL de la obra. Usa EJECUTAR_FASES -> REPORTE_PERNERIA (todas las fases) o abre una fase.", "REPORTE_PERNERIA")
+        Exit Sub
+    End If
+    Dim reserva As Double = 5
+    If Arg("reserva") <> "" Then Double.TryParse(Arg("reserva"), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, reserva)
+    Dim nom As String = System.IO.Path.GetFileNameWithoutExtension(asm.FullFileName)
+
+    Recorrer(asm.ComponentDefinition.Occurrences, nom)
+
+    If items.Count = 0 Then
+        Aviso("No hay perneria ni comerciales en " & nom & ".")
+        Exit Sub
+    End If
+
+    ' ---------- tabla ----------
+    Dim filas As New List(Of Object())
+    filas.Add(New Object() {"TIPO", "DESCRIPCION", "PART NUMBER", "DIAMETRO", "LARGO", "GRADO / MATERIAL", "ACABADO", "CANT. MODELO", "RESERVA %", "CANT. A COMPRAR", "PESO UNIT (kg)", "PESO TOTAL (kg)", "DONDE VA"})
+    Dim claves As New List(Of String)(items.Keys)
+    claves.Sort()
+    Dim foto As New Dictionary(Of String, Object())
+    Dim pesoT As Double = 0
+    For Each k As String In claves
+        Dim it As Object() = items(k)
+        Dim q As Integer = CInt(it(7))
+        Dim compra As Integer = CInt(Math.Ceiling(q * (1 + reserva / 100.0) - 0.000001))
+        Dim pu As Double = CDbl(it(8))
+        pesoT += pu * compra
+        Dim donde As New List(Of String)
+        Dim dd As Dictionary(Of String, Integer) = CType(it(9), Dictionary(Of String, Integer))
+        For Each kv As KeyValuePair(Of String, Integer) In dd
+            donde.Add(kv.Key & " x" & kv.Value)
+        Next
+        filas.Add(New Object() {it(0), it(1), it(2), it(3), it(4), it(5), it(6), q, reserva, compra, Math.Round(pu, 3), Math.Round(pu * compra, 2), String.Join(", ", donde)})
+        foto(k) = New Object() {CStr(it(1)) & " " & CStr(it(5)), CDbl(q), "und"}
+    Next
+    filas.Add(New Object() {"TOTAL", "", "", "", "", "", "", Nothing, Nothing, Nothing, Nothing, Math.Round(pesoT, 1), ""})
+
+    ' ---------- cambios ----------
+    Dim dirRep As String = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(asm.FullFileName), "PLANOS\REPORTES")
+    System.IO.Directory.CreateDirectory(dirRep)
+    Dim fAnt As String = ElegirFoto(dirRep, "PERNERIA", silencioso)
+    Dim nC As Integer = 0
+    Dim filasC As List(Of Object()) = Cambios(LeerFoto(fAnt), foto, Nothing, nC)
+    GuardarFoto(dirRep, "PERNERIA", foto)
+
+    Dim wb As Object = NuevoLibro()
+    If wb Is Nothing Then
+        GuardarCsv(System.IO.Path.Combine(dirRep, nom & "-PERNERIA_CAMBIOS.csv"), filasC)
+        GuardarCsv(System.IO.Path.Combine(dirRep, nom & "-PERNERIA.csv"), filas)
+    Else
+        Dim ws As Object = Hoja(wb, "PERNERIA", True)
+        ws.Cells(1, 1).Value = "PERNERIA Y COMERCIALES - " & nom & " - " & UProp(asm, "PROYECTO") & " - " & DateTime.Now.ToString("yyyy-MM-dd HH:mm")
+        Tabla(ws, 3, filas)
+        Dim wc As Object = Hoja(wb, "CAMBIOS", False)
+        wc.Cells(1, 1).Value = "Comparado con: " & If(fAnt = "", "(no hay corrida anterior)", System.IO.Path.GetFileNameWithoutExtension(fAnt)) & "   -   cambios: " & nC
+        Tabla(wc, 3, filasC)
+        ColorEstado(wc, 3, filasC, 7)
+        GuardarLibro(wb, System.IO.Path.Combine(dirRep, nom & "-PERNERIA.xlsx"))
+    End If
+    Aviso("Perneria: " & claves.Count & " tipos, " & Math.Round(pesoT, 1) & " kg (con " & reserva & "% de reserva)" & vbCrLf & "Cambios respecto a la anterior: " & nC & vbCrLf & rutaSalida)
+End Sub
+
+Private silencioso As Boolean
+Private xl As Object
+Private rutaSalida As String = ""
+' clave -> {tipo, desc, pn, diam, largo, grado, acabado, cant, pesoUnit, donde(dict)}
+Private items As New Dictionary(Of String, Object())
+
+Sub Recorrer(occs As Object, dueno As String)
+    For Each o As ComponentOccurrence In occs
+        Try
+            If o.Suppressed Then Continue For
+            Dim bs As BOMStructureEnum = o.BOMStructure
+            If bs = BOMStructureEnum.kReferenceBOMStructure Then Continue For
+            Dim d As Document = o.Definition.Document
+            If UProp(d, "EQUIPO").ToUpper() = "SI" Then Continue For
+            If o.DefinitionDocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+                If bs = BOMStructureEnum.kPurchasedBOMStructure Then
+                    Sumar(d, dueno)
+                    Continue For
+                End If
+                Dim nd As String = dueno
+                If UProp(d, "PREFIJO") <> "" AndAlso bs <> BOMStructureEnum.kPhantomBOMStructure Then
+                    nd = UProp(d, "MARCA")
+                    If nd = "" Then nd = PropDT(d, "Part Number")
+                End If
+                Recorrer(o.SubOccurrences, nd)
+            Else
+                If bs = BOMStructureEnum.kPhantomBOMStructure Then Continue For
+                If EsPerneria(d, bs) Then Sumar(d, dueno)
+            End If
+        Catch
+        End Try
+    Next
+End Sub
+
+Function EsPerneria(d As Document, bs As BOMStructureEnum) As Boolean
+    If bs = BOMStructureEnum.kPurchasedBOMStructure Then Return True
+    If UProp(d, "DA_TIPO").ToUpper().StartsWith("COMERCIAL") Then Return True
+    Dim cod As String = UProp(d, "CODIGO").ToLower()
+    If cod = "hn" Or cod = "wl" Or cod = "e" Or cod = "st" Then Return True
+    Try
+        If CType(d, PartDocument).ComponentDefinition.IsContentMember Then
+            Dim fam As String = (PropDT(d, "Categories") & " " & PropDT(d, "Description")).ToLower()
+            If Not (fam.Contains("structural") Or fam.Contains("perfil") Or fam.Contains("estructural")) Then Return True
+        End If
+    Catch
+    End Try
+    Return False
+End Function
+
+Sub Sumar(d As Document, dueno As String)
+    Dim pn As String = PropDT(d, "Part Number")
+    Dim de As String = PropDT(d, "Description")
+    If de = "" Then de = pn
+    Dim grado As String = UProp(d, "GRADO")
+    If grado = "" Then
+        Try
+            grado = CType(d, PartDocument).ComponentDefinition.Material.Name
+        Catch
+        End Try
+    End If
+    Dim acab As String = UProp(d, "ACABADO")
+    Dim k As String = (de & "|" & pn & "|" & grado & "|" & acab).ToUpper()
+    If Not items.ContainsKey(k) Then
+        Dim txt As String = (de & " " & pn & " " & PropDT(d, "Categories")).ToLower()
+        Dim diam As String = ""
+        Dim largo As String = ""
+        Dim m As System.Text.RegularExpressions.Match = System.Text.RegularExpressions.Regex.Match(de & " " & pn, "\b(M\d+(?:[.,]\d+)?)\s*[xX]\s*(\d+(?:[.,]\d+)?)", System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+        If m.Success Then
+            diam = m.Groups(1).Value.ToUpper()
+            largo = m.Groups(2).Value
+        Else
+            m = System.Text.RegularExpressions.Regex.Match(de & " " & pn, "\b(M\d+)\b|(\d+\s*/\s*\d+|\d+(?:\.\d+)?)\s*(?:in|""|pulg)", System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+            If m.Success Then diam = m.Value.Trim()
+        End If
+        Dim peso As Double = 0
+        Try
+            peso = CType(d, PartDocument).ComponentDefinition.MassProperties.Mass
+        Catch
+            Try
+                peso = CType(d, AssemblyDocument).ComponentDefinition.MassProperties.Mass
+            Catch
+            End Try
+        End Try
+        items(k) = New Object() {Tipo(txt), de, pn, diam, largo, grado, acab, 0, peso, New Dictionary(Of String, Integer)}
+    End If
+    items(k)(7) = CInt(items(k)(7)) + 1
+    Dim dd As Dictionary(Of String, Integer) = CType(items(k)(9), Dictionary(Of String, Integer))
+    If dd.ContainsKey(dueno) Then dd(dueno) += 1 Else dd(dueno) = 1
+End Sub
+
+Function Tipo(t As String) As String
+    If t.Contains("anclaje") Or t.Contains("anchor") Or t.Contains("expansion") Or t.Contains("quimico") Then Return "ANCLAJE"
+    If t.Contains("tuerca") Or t.Contains(" nut") Or t.StartsWith("nut") Then Return "TUERCA"
+    If t.Contains("arandela") Or t.Contains("washer") Then Return "ARANDELA"
+    If t.Contains("esparrago") Or t.Contains("varilla") Or t.Contains("stud") Or t.Contains("threaded rod") Then Return "ESPARRAGO"
+    If t.Contains("perno") Or t.Contains("tornillo") Or t.Contains("bolt") Or t.Contains("screw") Then Return "PERNO"
+    Return "OTRO"
+End Function
+
+Sub ColorEstado(ws As Object, filaIni As Integer, filas As List(Of Object()), colEst As Integer)
+    Try
+        For i As Integer = 1 To filas.Count - 1
+            Dim e As String = CStr(filas(i)(colEst - 1))
+            Dim c As Integer = -1
+            If e.StartsWith("ELIMINADA") Then c = 13421823
+            If e = "NUEVA" Then c = 13434828
+            If e = "AUMENTA" Then c = 10092543
+            If e = "DISMINUYE" Then c = 16772300
+            If c >= 0 Then ws.Range(ws.Cells(filaIni + i, 1), ws.Cells(filaIni + i, colEst)).Interior.Color = c
+        Next
+    Catch
+    End Try
+End Sub
+
+Sub Aviso(t As String)
+    If Not silencioso Then MessageBox.Show(t, "REPORTE_PERNERIA")
+End Sub
+
+' ===================== comunes COIMSER =====================
+Function Arg(n As String) As String
+    Try
+        If RuleArguments.Exists(n) Then Return CStr(RuleArguments.Value(n))
+    Catch
+    End Try
+    Return ""
+End Function
+
+Function UProp(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Inventor User Defined Properties").Item(n).Value).Trim()
+    Catch
+        Return ""
+    End Try
+End Function
+
+Function PropDT(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Design Tracking Properties").Item(n).Value).Trim()
+    Catch
+        Return ""
+    End Try
+End Function
+
+Sub EscribirProp(d As Document, n As String, v As String)
+    Dim ps As PropertySet = d.PropertySets.Item("Inventor User Defined Properties")
+    Try
+        ps.Item(n).Value = v
+    Catch
+        ps.Add(v, n)
+    End Try
+End Sub
+
+' Carpeta de la obra: la primera hacia arriba que tiene _OBRA.txt
+Function CarpetaObra(ruta As String) As String
+    Dim x As String = System.IO.Path.GetDirectoryName(ruta)
+    For i As Integer = 0 To 8
+        If x Is Nothing OrElse x = "" Then Exit For
+        If System.IO.File.Exists(System.IO.Path.Combine(x, "_OBRA.txt")) Then Return x
+        x = System.IO.Path.GetDirectoryName(x)
+    Next
+    Return ""
+End Function
+
+Function EsGeneral(d As Document) As Boolean
+    If UProp(d, "TIPO_ENSAMBLE").ToUpper() = "GENERAL" Then Return True
+    Return System.IO.Path.GetFileNameWithoutExtension(d.FullFileName).ToUpper().EndsWith("-GENERAL")
+End Function
+
+' Fases del ensamble general: PLANTA -> ruta del .iam
+Function FasesDe(g As AssemblyDocument) As Dictionary(Of String, String)
+    Dim r As New Dictionary(Of String, String)
+    For Each oc As ComponentOccurrence In g.ComponentDefinition.Occurrences
+        Try
+            Dim d As Document = oc.Definition.Document
+            Dim pl As String = UProp(d, "PLANTA").ToUpper()
+            If UProp(d, "TIPO_ENSAMBLE").ToUpper() = "PLANTA" AndAlso pl <> "" AndAlso Not r.ContainsKey(pl) Then r.Add(pl, d.FullFileName)
+        Catch
+        End Try
+    Next
+    Return r
+End Function
+
+Function Limpia(s As String) As String
+    If s Is Nothing Then Return ""
+    Return s.Replace(";", ",").Replace(vbCr, " ").Replace(vbLf, " ").Trim()
+End Function
+
+' ===================== Excel (si no hay Excel se guarda CSV) =====================
+Function NuevoLibro() As Object
+    Try
+        xl = CreateObject("Excel.Application")
+        xl.Visible = False
+        xl.DisplayAlerts = False
+        Dim wb As Object = xl.Workbooks.Add()
+        Do While wb.Worksheets.Count > 1
+            wb.Worksheets(wb.Worksheets.Count).Delete()
+        Loop
+        Return wb
+    Catch
+        xl = Nothing
+        Return Nothing
+    End Try
+End Function
+
+Function Hoja(wb As Object, nombre As String, primera As Boolean) As Object
+    Dim ws As Object
+    If primera Then
+        ws = wb.Worksheets(1)
+    Else
+        ws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count))
+    End If
+    ws.Name = nombre
+    Return ws
+End Function
+
+' Escribe una tabla (fila 1 = titulos) en una hoja; devuelve la ultima fila
+Function Tabla(ws As Object, filaIni As Integer, filas As List(Of Object())) As Integer
+    Dim r As Integer = filaIni
+    For Each f() As Object In filas
+        For c As Integer = 0 To f.Length - 1
+            If f(c) Is Nothing Then Continue For
+            ws.Cells(r, c + 1).Value = f(c)
+        Next
+        r += 1
+    Next
+    Try
+        Dim nc As Integer = filas(0).Length
+        ws.Range(ws.Cells(filaIni, 1), ws.Cells(filaIni, nc)).Font.Bold = True
+        ws.Range(ws.Cells(filaIni, 1), ws.Cells(filaIni, nc)).Interior.Color = 14277081
+        ws.Columns.AutoFit()
+    Catch
+    End Try
+    Return r - 1
+End Function
+
+Sub GuardarLibro(wb As Object, ruta As String)
+    Try
+        If System.IO.File.Exists(ruta) Then System.IO.File.Delete(ruta)
+    Catch
+        ruta = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(ruta), System.IO.Path.GetFileNameWithoutExtension(ruta) & "_" & DateTime.Now.ToString("HHmmss") & ".xlsx")
+    End Try
+    wb.Worksheets(1).Activate()
+    wb.SaveAs(ruta, 51)
+    wb.Close(False)
+    xl.Quit()
+    System.Runtime.InteropServices.Marshal.ReleaseComObject(wb)
+    System.Runtime.InteropServices.Marshal.ReleaseComObject(xl)
+    xl = Nothing
+    rutaSalida = ruta
+End Sub
+
+' CSV de respaldo (;) cuando no hay Excel
+Sub GuardarCsv(ruta As String, filas As List(Of Object()))
+    Dim sb As New System.Text.StringBuilder()
+    For Each f() As Object In filas
+        Dim l As New List(Of String)
+        For Each v As Object In f
+            l.Add(If(v Is Nothing, "", Limpia(CStr(v))))
+        Next
+        sb.AppendLine(String.Join(";", l))
+    Next
+    System.IO.File.WriteAllText(ruta, sb.ToString(), System.Text.Encoding.UTF8)
+    rutaSalida = ruta
+End Sub
+
+' ===================== FOTOS (historial para la hoja CAMBIOS) =====================
+' Foto = CSV  clave;descripcion;cantidad;unidad  en <REPORTES>\_HISTORIAL\<PREFIJO>_<fecha>.csv
+Sub GuardarFoto(dir As String, prefijo As String, datos As Dictionary(Of String, Object()))
+    Dim h As String = System.IO.Path.Combine(dir, "_HISTORIAL")
+    System.IO.Directory.CreateDirectory(h)
+    Dim sb As New System.Text.StringBuilder()
+    sb.AppendLine("CLAVE;DESCRIPCION;CANTIDAD;UNIDAD")
+    For Each kv As KeyValuePair(Of String, Object()) In datos
+        sb.AppendLine(Limpia(kv.Key) & ";" & Limpia(CStr(kv.Value(0))) & ";" & CDbl(kv.Value(1)).ToString(System.Globalization.CultureInfo.InvariantCulture) & ";" & Limpia(CStr(kv.Value(2))))
+    Next
+    System.IO.File.WriteAllText(System.IO.Path.Combine(h, prefijo & "_" & DateTime.Now.ToString("yyyyMMdd_HHmmss") & ".csv"), sb.ToString(), System.Text.Encoding.UTF8)
+End Sub
+
+' Fotos anteriores, la mas reciente primero
+Function ListaFotos(dir As String, prefijo As String) As List(Of String)
+    Dim l As New List(Of String)
+    Dim h As String = System.IO.Path.Combine(dir, "_HISTORIAL")
+    If System.IO.Directory.Exists(h) Then l.AddRange(System.IO.Directory.GetFiles(h, prefijo & "_*.csv"))
+    l.Sort()
+    l.Reverse()
+    Return l
+End Function
+
+Function LeerFoto(ruta As String) As Dictionary(Of String, Object())
+    Dim r As New Dictionary(Of String, Object())
+    If ruta = "" OrElse Not System.IO.File.Exists(ruta) Then Return r
+    Dim primera As Boolean = True
+    For Each ln As String In System.IO.File.ReadAllLines(ruta, System.Text.Encoding.UTF8)
+        If primera Then
+            primera = False
+            Continue For
+        End If
+        Dim c() As String = ln.Split(";"c)
+        If c.Length < 4 OrElse c(0) = "" Then Continue For
+        Dim q As Double = 0
+        Double.TryParse(c(2), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, q)
+        r(c(0)) = New Object() {c(1), q, c(3)}
+    Next
+    Return r
+End Function
+
+' Elige con que foto comparar (por defecto la ultima). Devuelve "" si no hay.
+Function ElegirFoto(dir As String, prefijo As String, silencioso As Boolean) As String
+    Dim l As List(Of String) = ListaFotos(dir, prefijo)
+    If l.Count = 0 Then Return ""
+    If silencioso OrElse l.Count = 1 Then Return l(0)
+    Dim ops As New List(Of String)
+    For Each f As String In l
+        ops.Add(System.IO.Path.GetFileNameWithoutExtension(f))
+    Next
+    Dim r As String = InputListBox("Comparar con la emision / corrida de:", ops, ops(0), prefijo, "Foto anterior")
+    If r Is Nothing OrElse r = "" Then Return l(0)
+    For Each f As String In l
+        If System.IO.Path.GetFileNameWithoutExtension(f) = r Then Return f
+    Next
+    Return l(0)
+End Function
+
+' Filas de la hoja CAMBIOS. extraEliminada(clave) -> texto adicional (ej. SOBRANTE EN TALLER)
+Function Cambios(ant As Dictionary(Of String, Object()), act As Dictionary(Of String, Object()), extraEliminada As Dictionary(Of String, String), ByRef nCambios As Integer) As List(Of Object())
+    Dim filas As New List(Of Object())
+    filas.Add(New Object() {"CLAVE", "DESCRIPCION", "UNIDAD", "ANTES", "AHORA", "DIFERENCIA", "ESTADO"})
+    Dim claves As New List(Of String)(act.Keys)
+    For Each k As String In ant.Keys
+        If Not act.ContainsKey(k) Then claves.Add(k)
+    Next
+    claves.Sort()
+    nCambios = 0
+    For Each k As String In claves
+        Dim qa As Double = 0
+        Dim qn As Double = 0
+        Dim desc As String = ""
+        Dim un As String = ""
+        If ant.ContainsKey(k) Then
+            qa = CDbl(ant(k)(1))
+            desc = CStr(ant(k)(0))
+            un = CStr(ant(k)(2))
+        End If
+        If act.ContainsKey(k) Then
+            qn = CDbl(act(k)(1))
+            desc = CStr(act(k)(0))
+            un = CStr(act(k)(2))
+        End If
+        Dim est As String
+        If ant.Count = 0 Then
+            est = "PRIMERA EMISION"
+        ElseIf Not ant.ContainsKey(k) Then
+            est = "NUEVA"
+        ElseIf Not act.ContainsKey(k) Then
+            est = "ELIMINADA (no se compra)"
+            If extraEliminada IsNot Nothing AndAlso extraEliminada.ContainsKey(k) Then est &= " - " & extraEliminada(k)
+        ElseIf Math.Abs(qn - qa) < 0.0005 Then
+            est = "SIN CAMBIO"
+        ElseIf qn > qa Then
+            est = "AUMENTA"
+        Else
+            est = "DISMINUYE"
+        End If
+        If est <> "SIN CAMBIO" AndAlso est <> "PRIMERA EMISION" Then nCambios += 1
+        filas.Add(New Object() {k, desc, un, Math.Round(qa, 3), Math.Round(qn, 3), Math.Round(qn - qa, 3), est})
+    Next
+    Return filas
+End Function
