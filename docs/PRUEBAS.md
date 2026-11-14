@@ -98,3 +98,7 @@ PROBADAS en Inventor (con argumentos, modo silencioso):
 Falta probar: seleccion de caras con el mouse (Pick), cuadros de dialogo, caras curvas con la regla
 (probado a mano: media cana y medio cono desarrollan; cono completo NO -> partirlo), JUNTAR,
 y el resto de reglas nuevas (MENU, EJECUTAR_FASES, REORGANIZAR_OBRA, PERNERIA, CAMBIOS, EMITIR, COPIAR).
+
+- COPIAR_PIEZA v1.0 (nueva): PROBADA. Reemplazar + mantener vinculo -> PL-005 sigue a la forma;
+  insertar + independiente -> PL-006 queda fija; MARCA borrada, COPIA_DE puesto, original intacta.
+  Falta probar la seleccion con el mouse y los cuadros de dialogo.
