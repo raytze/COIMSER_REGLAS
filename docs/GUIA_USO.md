@@ -50,6 +50,7 @@ OBRA        2026-004 MAJES\            MAJ-GENERAL.iam  (solo para ver todo)
    PIEZA_ASOCIADA (pieza que sigue al skeleton u otra pieza; CONGELAR cuando ya esta emitida).
    Equipos comprados: INSERTAR_EQUIPO.
 6. **Repetir un conjunto en otra fase** - COPIAR_CONJUNTO (nunca insertar el mismo archivo en dos fases).
+   **Cambiar el nombre de un conjunto** - RENOMBRAR_CONJUNTO (antes del check-in en Vault; con check-in usar COPIAR_CONJUNTO + LIMPIAR_OBSOLETOS).
 7. **Revisar** - REVISAR_JERARQUIA: piezas sueltas, conjuntos sin prefijo, referencias mal puestas.
 8. **Numerar** - TEKLA_NUMERACION. Configuracion: 1 INICIAL (solo antes de emitir), 2 ANTES DE PLANOS,
    3 DESPUES DE PLANOS, 4 DESPUES DE EMITIR. Fajas / equipos: TAG_EQUIPOS.

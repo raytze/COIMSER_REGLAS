@@ -1,5 +1,5 @@
 ' =====================================================================
-'  COPIAR_PIEZA  v1.1  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  COPIAR_PIEZA  v1.2  -  Regla externa iLogic (Inventor 2026) - COIMSER
 '  Copia UNA pieza (.ipt) para modificarla sin tocar la original, dentro del orden de la obra:
 '
 '     MAJ-ALM-BA-001\Piezas\MAJ-ALM-BA-001-PL-002.ipt
@@ -15,8 +15,11 @@
 '  - Pieza ASOCIADA (skeleton / solido de forma / otra pieza): la copia puede MANTENER el
 '    vinculo (sigue cambiando con su fuente) o quedar INDEPENDIENTE (vinculo roto, forma fija).
 '  - No copia piezas de biblioteca (Content Center) ni referencias. Un perfil de Frame Generator
-'    copiado queda como pieza normal (ya no lo controla el Frame).
+'    copiado queda como pieza normal (ya no lo controla el Frame) y va al conjunto, no al Frame.
 '  v1.1 - INSERTAR deja la copia LIBRE (antes copiaba el 'fijo' de la original).
+'  v1.2 - PERFIL DE FRAME GENERATOR: la copia NO va dentro del ensamble Frame (lo maneja Frame
+'         Generator): sube al CONJUNTO que contiene el frame, como pieza normal (prefijo PF),
+'         en la misma posicion y libre. Siempre INSERTAR (no se reemplaza un miembro del frame).
 '  Argumentos (pruebas): silencioso, objeto=<ocurrencia o archivo>, accion=reemplazar|insertar,
 '     vinculo=mantener|independiente
 ' =====================================================================
@@ -85,15 +88,46 @@ Sub Main()
         padre = CType(nat.Parent.Document, AssemblyDocument)
     Catch
     End Try
+    ' ---------- perfil de Frame Generator: la copia sube al conjunto que contiene el frame ----------
+    Dim mPos As Matrix = Nothing
+    Dim esFrame As Boolean = EsFG(src)
+    If esFrame AndAlso EsFG(padre) Then
+        Dim ruta0 As New List(Of ComponentOccurrence)
+        Try
+            For Each o As ComponentOccurrence In occ.OccurrencePath
+                ruta0.Add(o)
+            Next
+        Catch
+        End Try
+        ' ruta0 = top > ... > frame > perfil ; busca el ensamble mas profundo que NO sea de Frame Generator
+        Dim nuevoPadre As AssemblyDocument = Nothing
+        Dim occPadre As ComponentOccurrence = Nothing
+        For k As Integer = ruta0.Count - 2 To 0 Step -1
+            Dim dk As Document = ruta0(k).Definition.Document
+            If Not EsFG(dk) Then
+                nuevoPadre = CType(dk, AssemblyDocument)
+                occPadre = ruta0(k)
+                Exit For
+            End If
+        Next
+        If nuevoPadre Is Nothing AndAlso Not EsFG(top) Then nuevoPadre = top
+        If nuevoPadre Is Nothing Then
+            MessageBox.Show("Ese perfil es de Frame Generator y tienes abierto el ensamble del Frame." & vbCrLf & "Abre el CONJUNTO que contiene el frame y vuelve a correr la regla: la copia va al conjunto.", "COPIAR_PIEZA")
+            Exit Sub
+        End If
+        padre = nuevoPadre
+        mPos = occ.Transformation.Copy()
+        If occPadre IsNot Nothing Then
+            Dim inv As Matrix = occPadre.Transformation.Copy()
+            inv.Invert()
+            inv.PostMultiplyBy(mPos)
+            mPos = inv
+        End If
+    End If
     If padre.FullFileName = "" Then
         MessageBox.Show("Guarda primero el ensamble " & padre.DisplayName & ".", "COPIAR_PIEZA")
         Exit Sub
     End If
-    Dim esFrame As Boolean = False
-    Try
-        esFrame = src.DocumentInterests.HasInterest("{AC211AE0-A7A5-4589-916D-81C529DA6D17}")
-    Catch
-    End Try
     Dim asociada As Boolean = (UProp(src, "ASOCIADA").ToUpper() = "SI")
     Dim nDeriv As Integer = 0
     Try
@@ -103,6 +137,7 @@ Sub Main()
 
     ' ---------- opciones ----------
     Dim accion As String = Arg("accion").ToLower()
+    If esFrame Then accion = "insertar"
     If accion = "" Then
         If silencioso Then
             accion = "reemplazar"
@@ -135,7 +170,7 @@ Sub Main()
     Dim nomPadre As String = NomSin(padre)
     Dim carpeta As String = System.IO.Path.Combine(CarpetaHija(padre), "Piezas")
     System.IO.Directory.CreateDirectory(carpeta)
-    Dim pref As String = Prefijo(src)
+    Dim pref As String = If(esFrame, "PF", Prefijo(src))
     Dim n As Integer = 1
     Dim ruta As String
     Do
@@ -186,7 +221,7 @@ Sub Main()
             nat.Replace(ruta, False)
             hecho = "Reemplazada en " & nomPadre & " la instancia " & nat.Name & " (las demas instancias siguen con la original)."
         Else
-            Dim nueva As ComponentOccurrence = padre.ComponentDefinition.Occurrences.Add(ruta, nat.Transformation)
+            Dim nueva As ComponentOccurrence = padre.ComponentDefinition.Occurrences.Add(ruta, If(mPos, nat.Transformation))
             Try
                 nueva.Grounded = False
             Catch
@@ -206,7 +241,10 @@ Sub Main()
     bitacora.AppendLine("En:    " & carpeta)
     bitacora.AppendLine(hecho)
     If nDeriv > 0 Then bitacora.AppendLine(If(vinculo = "independiente", "Vinculo ROTO (" & rotos & "): la copia ya no cambia con " & FuenteDe(src) & ".", "Vinculo MANTENIDO con " & FuenteDe(src) & "."))
-    If esFrame Then bitacora.AppendLine("Era un perfil de Frame Generator: la copia es una pieza normal (el Frame ya no la controla).")
+    If esFrame Then
+        bitacora.AppendLine("Era un perfil de Frame Generator: la copia es una pieza normal en " & nomPadre & " (fuera del Frame).")
+        bitacora.AppendLine("El perfil original sigue en el Frame. Si la copia lo sustituye, borralo con Frame Generator > Eliminar.")
+    End If
     bitacora.AppendLine("MARCA borrada: corre TEKLA_NUMERACION para que reciba la suya. Guarda el ensamble.")
     Try
         System.IO.File.WriteAllText(System.IO.Path.Combine(carpeta, "_ultima_pieza.txt"), ruta)
@@ -245,6 +283,14 @@ Function FuenteDe(p As PartDocument) As String
     Catch
     End Try
     Return "su fuente"
+End Function
+
+Function EsFG(d As Document) As Boolean
+    Try
+        Return d.DocumentInterests.HasInterest("{AC211AE0-A7A5-4589-916D-81C529DA6D17}")
+    Catch
+    End Try
+    Return False
 End Function
 
 Function Abierto(ruta As String) As Boolean
