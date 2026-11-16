@@ -1,0 +1,266 @@
+' =====================================================================
+'  LIMPIAR_OBSOLETOS  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Ordena la carpeta de una FASE antes de emitir o de hacer Check In en Vault:
+'   - Busca los .ipt / .iam dentro de la carpeta de la fase (Piezas, Frame, Referencias,
+'     conjuntos...) que YA NO USA ningun ensamble de la obra (fase, otras fases, GENERAL).
+'   - Te muestra la lista y, si confirmas, los MUEVE (no borra) a
+'         <fase>\_OBSOLETO\<fecha_hora>\<misma ruta relativa>
+'   - Si alguno ya se habia enviado a corte (PLANOS\PLASMA\_HISTORIAL_CORTE.csv) lo avisa:
+'     "YA CORTADA -> sobrante en taller".
+'   - Registro: <fase>\_OBSOLETO\_OBSOLETOS.csv (FECHA;ARCHIVO;MOVIDO_A;MARCA;NOTA)
+'   - NO toca: PLANOS, OldVersions, _OBSOLETO, _to_delete, archivos abiertos por ti, ni los
+'     que esten en solo lectura (en Vault: esos se mueven desde Vault).
+'  Ejecutar desde la FASE (ej. ISL-1F.iam) con todo GUARDADO.
+'  Para deshacer: vuelve a copiar el archivo desde _OBSOLETO\<fecha>\ a su carpeta.
+'  Argumentos (pruebas): silencioso, mover=SI (sin preguntar)
+' =====================================================================
+Imports System.Collections.Generic
+
+Sub Main()
+    silencioso = RuleArguments.Exists("silencioso")
+    Dim fase As AssemblyDocument = Nothing
+    Try
+        fase = TryCast(ThisDoc.Document, AssemblyDocument)
+    Catch
+    End Try
+    If fase Is Nothing Then fase = TryCast(ThisApplication.ActiveDocument, AssemblyDocument)
+    If fase Is Nothing OrElse EsGeneral(fase) OrElse UProp(fase, "TIPO_ENSAMBLE").ToUpper() <> "PLANTA" Then
+        MessageBox.Show("Abre el ensamble de la FASE (ej. ISL-1F.iam) y ejecuta la regla ahi.", "LIMPIAR_OBSOLETOS")
+        Exit Sub
+    End If
+    If fase.Dirty AndAlso Not silencioso Then
+        Dim r As DialogResult = MessageBox.Show(NomSin(fase) & " tiene cambios SIN GUARDAR." & vbCrLf & "La revision usa lo que esta en memoria; guarda primero para que el disco coincida." & vbCrLf & vbCrLf & "Continuar igual?", "LIMPIAR_OBSOLETOS", MessageBoxButtons.YesNo)
+        If r <> DialogResult.Yes Then Exit Sub
+    End If
+    Dim dirFase As String = System.IO.Path.GetDirectoryName(fase.FullFileName)
+    If System.IO.Path.GetFileName(dirFase).ToUpper() <> NomSin(fase).ToUpper() Then
+        MessageBox.Show("La fase no esta en su propia carpeta (" & dirFase & ")." & vbCrLf & "Primero REORGANIZAR_OBRA; asi no se revisan archivos de otras fases.", "LIMPIAR_OBSOLETOS")
+        Exit Sub
+    End If
+
+    ' ---------- lo que se USA: esta fase + GENERAL (otras fases) + derivadas ----------
+    Dim usados As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+    Agregar(fase, usados)
+    Dim obra As String = CarpetaObra(fase.FullFileName)
+    Dim gen As String = ""
+    If obra <> "" Then
+        For Each f As String In System.IO.Directory.GetFiles(obra, "*-GENERAL.iam")
+            gen = f
+        Next
+    End If
+    Dim genAbierto As Boolean = False
+    Dim genDoc As Document = Nothing
+    If gen <> "" Then
+        For Each d As Document In ThisApplication.Documents
+            If d.FullFileName.ToLower() = gen.ToLower() Then genDoc = d
+        Next
+        genAbierto = (genDoc IsNot Nothing)
+        Try
+            If genDoc Is Nothing Then genDoc = ThisApplication.Documents.Open(gen, False)
+            Agregar(genDoc, usados)
+        Catch
+            resumen.AppendLine("Aviso: no se pudo abrir " & System.IO.Path.GetFileName(gen) & "; solo se reviso esta fase.")
+        End Try
+    End If
+    ' documentos que tienes abiertos (visibles) cuentan como usados
+    For Each d As Document In ThisApplication.Documents
+        Try
+            If d.Views.Count > 0 Then usados.Add(d.FullFileName)
+        Catch
+        End Try
+    Next
+
+    ' ---------- candidatos ----------
+    Dim cands As New List(Of String)
+    Dim enVault As New List(Of String)
+    Buscar(dirFase, dirFase, usados, cands, enVault)
+    If Not genAbierto AndAlso genDoc IsNot Nothing Then
+        Try
+            genDoc.Close(True)
+        Catch
+        End Try
+    End If
+    If cands.Count = 0 Then
+        Aviso("Carpeta de " & NomSin(fase) & " en orden: no hay archivos sin uso." & If(enVault.Count > 0, vbCrLf & vbCrLf & "En solo lectura (Vault), sin uso: " & vbCrLf & String.Join(vbCrLf, enVault), ""))
+        Exit Sub
+    End If
+
+    ' ---------- marca y corte ----------
+    Dim cortadas As Dictionary(Of String, String) = LeerCortes(System.IO.Path.Combine(dirFase, "PLANOS\PLASMA\_HISTORIAL_CORTE.csv"))
+    Dim marcas As New Dictionary(Of String, String)
+    Dim notas As New Dictionary(Of String, String)
+    For Each c As String In cands
+        Dim mk As String = ""
+        Dim d As Document = Nothing
+        Dim yaAbierto As Boolean = False
+        For Each x As Document In ThisApplication.Documents
+            If x.FullFileName.ToLower() = c.ToLower() Then
+                d = x
+                yaAbierto = True
+            End If
+        Next
+        Try
+            If d Is Nothing Then d = ThisApplication.Documents.Open(c, False)
+            mk = UProp(d, "MARCA")
+        Catch
+        End Try
+        marcas(c) = mk
+        Dim nota As String = ""
+        Dim nomArch As String = System.IO.Path.GetFileName(c).ToLower()
+        If (mk <> "" AndAlso cortadas.ContainsKey("M|" & mk.ToLower())) OrElse cortadas.ContainsKey("F|" & nomArch) Then nota = "YA CORTADA -> sobrante en taller"
+        notas(c) = nota
+        Try
+            If d IsNot Nothing Then d.Close(True)
+        Catch
+        End Try
+    Next
+
+    ' ---------- confirmar ----------
+    Dim lista As New System.Text.StringBuilder
+    For Each c As String In cands
+        lista.AppendLine("  " & Rel(dirFase, c) & If(marcas(c) <> "", "   [" & marcas(c) & "]", "") & If(notas(c) <> "", "   ** " & notas(c) & " **", ""))
+    Next
+    Dim sello As String = DateTime.Now.ToString("yyyyMMdd_HHmm")
+    Dim destinoBase As String = System.IO.Path.Combine(dirFase, "_OBSOLETO\" & sello)
+    Dim mover As Boolean = (Arg("mover").ToUpper() = "SI")
+    If Not mover AndAlso Not silencioso Then
+        Dim msg As String = cands.Count & " archivo(s) de " & NomSin(fase) & " que ya no usa ningun ensamble de la obra:" & vbCrLf & vbCrLf & lista.ToString() & vbCrLf & _
+            "Moverlos a  _OBSOLETO\" & sello & "\ ?  (no se borran)"
+        If enVault.Count > 0 Then msg &= vbCrLf & vbCrLf & "En solo lectura (Vault), no se mueven: " & enVault.Count
+        mover = (MessageBox.Show(msg, "LIMPIAR_OBSOLETOS", MessageBoxButtons.YesNo) = DialogResult.Yes)
+    End If
+    If Not mover Then
+        resumen.AppendLine("Sin mover. Candidatos:")
+        resumen.Append(lista.ToString())
+        Aviso(resumen.ToString())
+        Exit Sub
+    End If
+
+    ' ---------- mover + registro ----------
+    Dim reg As String = System.IO.Path.Combine(dirFase, "_OBSOLETO\_OBSOLETOS.csv")
+    System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(reg))
+    Dim sb As New System.Text.StringBuilder
+    If Not System.IO.File.Exists(reg) Then sb.AppendLine("FECHA;ARCHIVO;MOVIDO_A;MARCA;NOTA")
+    Dim movidos As Integer = 0
+    For Each c As String In cands
+        Dim dest As String = System.IO.Path.Combine(destinoBase, Rel(dirFase, c))
+        Try
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(dest))
+            System.IO.File.Move(c, dest)
+            movidos += 1
+            sb.AppendLine(DateTime.Now.ToString("yyyy-MM-dd HH:mm") & ";" & Rel(dirFase, c) & ";" & Rel(dirFase, dest) & ";" & marcas(c) & ";" & notas(c))
+            resumen.AppendLine("  movido: " & Rel(dirFase, c) & If(notas(c) <> "", "   ** " & notas(c) & " **", ""))
+        Catch ex As Exception
+            resumen.AppendLine("  NO se pudo mover " & Rel(dirFase, c) & ": " & ex.Message)
+        End Try
+    Next
+    Try
+        System.IO.File.AppendAllText(reg, sb.ToString(), System.Text.Encoding.UTF8)
+    Catch
+    End Try
+    resumen.Insert(0, movidos & " archivo(s) movidos a " & Rel(dirFase, destinoBase) & vbCrLf)
+    If enVault.Count > 0 Then
+        resumen.AppendLine("")
+        resumen.AppendLine("En solo lectura (Vault) y sin uso -> muevelos desde Vault:")
+        For Each v As String In enVault
+            resumen.AppendLine("  " & Rel(dirFase, v))
+        Next
+    End If
+    resumen.AppendLine("")
+    resumen.AppendLine("Registro: " & Rel(dirFase, reg) & ".  Para deshacer, copia el archivo de vuelta a su carpeta.")
+    Aviso(resumen.ToString())
+End Sub
+
+Private silencioso As Boolean
+Private resumen As New System.Text.StringBuilder
+
+Sub Agregar(d As Document, usados As HashSet(Of String))
+    usados.Add(d.FullFileName)
+    For Each r As Document In d.AllReferencedDocuments
+        Try
+            usados.Add(r.FullFileName)
+        Catch
+        End Try
+    Next
+End Sub
+
+Sub Buscar(dir As String, raiz As String, usados As HashSet(Of String), cands As List(Of String), enVault As List(Of String))
+    Dim n As String = System.IO.Path.GetFileName(dir).ToUpper()
+    If dir <> raiz AndAlso (n = "PLANOS" OrElse n = "OLDVERSIONS" OrElse n.StartsWith("_OBSOLETO") OrElse n = "_TO_DELETE" OrElse n = "_V") Then Exit Sub
+    For Each f As String In System.IO.Directory.GetFiles(dir)
+        Dim ext As String = System.IO.Path.GetExtension(f).ToLower()
+        If ext <> ".ipt" AndAlso ext <> ".iam" Then Continue For
+        If usados.Contains(f) Then Continue For
+        If (System.IO.File.GetAttributes(f) And System.IO.FileAttributes.ReadOnly) = System.IO.FileAttributes.ReadOnly Then
+            enVault.Add(f)
+        Else
+            cands.Add(f)
+        End If
+    Next
+    For Each s As String In System.IO.Directory.GetDirectories(dir)
+        Buscar(s, raiz, usados, cands, enVault)
+    Next
+End Sub
+
+' marcas y archivos ya enviados a corte (estado distinto de ANULADA)
+Function LeerCortes(h As String) As Dictionary(Of String, String)
+    Dim r As New Dictionary(Of String, String)
+    If Not System.IO.File.Exists(h) Then Return r
+    Try
+        For Each ln As String In System.IO.File.ReadAllLines(h)
+            Dim c() As String = ln.Split(";"c)
+            If c.Length < 4 OrElse c(0) = "FECHA" Then Continue For
+            Dim n As Integer = 0
+            Integer.TryParse(c(3), n)
+            If n <= 0 Then Continue For
+            r("M|" & c(2).Trim().ToLower()) = c(3)
+            If c.Length > 9 AndAlso c(9) <> "" Then r("F|" & System.IO.Path.GetFileName(c(9).Trim()).ToLower()) = c(3)
+        Next
+    Catch
+    End Try
+    Return r
+End Function
+
+Function Rel(baseDir As String, f As String) As String
+    If f.ToLower().StartsWith(baseDir.ToLower()) Then Return f.Substring(baseDir.Length).TrimStart("\"c)
+    Return f
+End Function
+
+Function NomSin(d As Document) As String
+    Return System.IO.Path.GetFileNameWithoutExtension(d.FullFileName)
+End Function
+
+Function Arg(n As String) As String
+    Try
+        If RuleArguments.Exists(n) Then Return CStr(RuleArguments.Value(n))
+    Catch
+    End Try
+    Return ""
+End Function
+
+Function UProp(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Inventor User Defined Properties").Item(n).Value).Trim()
+    Catch
+    End Try
+    Return ""
+End Function
+
+Function CarpetaObra(ruta As String) As String
+    Dim x As String = System.IO.Path.GetDirectoryName(ruta)
+    For i As Integer = 0 To 8
+        If x Is Nothing OrElse x = "" Then Exit For
+        If System.IO.File.Exists(System.IO.Path.Combine(x, "_OBRA.txt")) Then Return x
+        x = System.IO.Path.GetDirectoryName(x)
+    Next
+    Return ""
+End Function
+
+Function EsGeneral(d As Document) As Boolean
+    If UProp(d, "TIPO_ENSAMBLE").ToUpper() = "GENERAL" Then Return True
+    Return System.IO.Path.GetFileNameWithoutExtension(d.FullFileName).ToUpper().EndsWith("-GENERAL")
+End Function
+
+Sub Aviso(t As String)
+    If Not silencioso Then MessageBox.Show(t, "LIMPIAR_OBSOLETOS")
+End Sub

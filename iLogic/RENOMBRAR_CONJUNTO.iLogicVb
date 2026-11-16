@@ -1,0 +1,398 @@
+' =====================================================================
+'  RENOMBRAR_CONJUNTO  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Cambia el NOMBRE de un conjunto (no de la fase) con todos sus archivos, conservando marcas:
+'
+'     MAJ-ALM\MAJ-ALM-BA-001.iam + MAJ-ALM-BA-001\Frame, Piezas, Referencias
+'        ->  MAJ-ALM\MAJ-ALM-BA-005.iam + MAJ-ALM-BA-005\Frame, Piezas, Referencias
+'
+'  - Renombra el .iam, su carpeta y todo archivo/carpeta que lleve el nombre viejo
+'    (MAJ-ALM-BA-001-PL-001.ipt -> MAJ-ALM-BA-005-PL-001.ipt). Lo que no lleva el nombre
+'    (Frame Generator, skeleton, librerias) conserva su nombre de archivo y solo cambia de carpeta.
+'  - Re-enlaza todas las referencias: entre los archivos del conjunto, la FASE abierta y los
+'    planos (.idw) de la obra. Actualiza iProperties que lleven el nombre viejo (Part Number,
+'    PREFIJO, CONJUNTO...). La MARCA NO se toca: la numeracion se conserva.
+'  - Actualiza el historial de corte (PLANOS\PLASMA\_HISTORIAL_CORTE.csv, con respaldo .bak) y
+'    anota el cambio en <obra>\_RENOMBRADOS.csv.
+'  - Nada se borra: los archivos viejos van a <obra>\_to_delete\<fecha>\.
+'  - NO se ejecuta si algun archivo es de solo lectura (check-in en Vault Basic: el nombre queda
+'    fijo; usa COPIAR_CONJUNTO + LIMPIAR_OBSOLETOS), si hay cambios sin guardar o planos abiertos.
+'  Ejecutar desde la FASE que contiene el conjunto (seleccionalo antes o eligelo de la lista).
+'  Despues: abre la fase, revisa y corre TEKLA_NUMERACION + GENERAR_PLANOS si quieres planos nuevos.
+'  PRUEBALO PRIMERO EN UNA OBRA DE PRUEBA.   Argumentos: silencioso, nuevo=<nombre nuevo>, planos=NO
+' =====================================================================
+
+Sub Main()
+    silencioso = RuleArguments.Exists("silencioso")
+    Dim faseAct As AssemblyDocument = TryCast(ThisApplication.ActiveDocument, AssemblyDocument)
+    If faseAct Is Nothing OrElse EsGeneral(faseAct) Then
+        MessageBox.Show("Abre la FASE que contiene el conjunto a renombrar.", "RENOMBRAR_CONJUNTO")
+        Exit Sub
+    End If
+    If faseAct.Dirty Then
+        MessageBox.Show("Guarda primero " & faseAct.DisplayName & " (tiene cambios sin guardar).", "RENOMBRAR_CONJUNTO")
+        Exit Sub
+    End If
+    For Each dd As Document In ThisApplication.Documents
+        If dd.DocumentType = DocumentTypeEnum.kDrawingDocumentObject Then
+            MessageBox.Show("Cierra los planos abiertos antes de renombrar (" & System.IO.Path.GetFileName(dd.FullFileName) & ").", "RENOMBRAR_CONJUNTO")
+            Exit Sub
+        End If
+    Next
+
+    ' ---------- conjunto origen ----------
+    Dim src As AssemblyDocument = Nothing
+    Try
+        For Each o As Object In faseAct.SelectSet
+            Dim oc As ComponentOccurrence = TryCast(o, ComponentOccurrence)
+            If oc IsNot Nothing AndAlso oc.DefinitionDocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then src = CType(oc.Definition.Document, AssemblyDocument)
+        Next
+    Catch
+    End Try
+    If src Is Nothing Then
+        Dim conj As New Dictionary(Of String, AssemblyDocument)
+        For Each oc As ComponentOccurrence In faseAct.ComponentDefinition.Occurrences
+            Try
+                Dim d As Document = oc.Definition.Document
+                If d.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject AndAlso UProp(d, "PREFIJO") <> "" Then
+                    Dim nn As String = System.IO.Path.GetFileNameWithoutExtension(d.FullFileName)
+                    If Not conj.ContainsKey(nn) Then conj.Add(nn, CType(d, AssemblyDocument))
+                End If
+            Catch
+            End Try
+        Next
+        If conj.Count = 0 Then
+            MessageBox.Show("No hay conjuntos (con PREFIJO) en " & faseAct.DisplayName & ".", "RENOMBRAR_CONJUNTO")
+            Exit Sub
+        End If
+        Dim l As New List(Of String)(conj.Keys)
+        l.Sort()
+        Dim r As String = InputListBox("Conjunto a renombrar:", l, l(0), "RENOMBRAR_CONJUNTO", "Conjunto")
+        If r Is Nothing OrElse r = "" Then Exit Sub
+        src = conj(r)
+    End If
+    If src.Dirty Then
+        MessageBox.Show("Guarda primero " & src.DisplayName & " (tiene cambios sin guardar).", "RENOMBRAR_CONJUNTO")
+        Exit Sub
+    End If
+    Dim srcIam As String = src.FullFileName
+    Dim srcName As String = System.IO.Path.GetFileNameWithoutExtension(srcIam)
+    Dim baseDir As String = System.IO.Path.GetDirectoryName(srcIam)
+    Dim srcFolder As String = System.IO.Path.Combine(baseDir, srcName)
+    Dim faseNom As String = System.IO.Path.GetFileNameWithoutExtension(faseAct.FullFileName)
+
+    Dim obra As String = CarpetaObra(faseAct.FullFileName)
+    If obra = "" Then
+        MessageBox.Show("No encuentro la obra (_OBRA.txt) encima de " & faseAct.FullFileName, "RENOMBRAR_CONJUNTO")
+        Exit Sub
+    End If
+
+    ' ---------- nombre nuevo ----------
+    Dim newName As String = Arg("nuevo").Trim()
+    If newName = "" Then
+        newName = InputBox("Nombre nuevo para " & srcName & ":" & vbCrLf & "(ej. " & faseNom & "-" & UProp(src, "PREFIJO") & "-005)", "RENOMBRAR_CONJUNTO", srcName).Trim()
+    End If
+    If newName = "" OrElse newName.ToUpper() = srcName.ToUpper() Then Exit Sub
+    If newName.IndexOfAny(System.IO.Path.GetInvalidFileNameChars()) >= 0 Then
+        MessageBox.Show("El nombre tiene caracteres no validos.", "RENOMBRAR_CONJUNTO")
+        Exit Sub
+    End If
+    If Not newName.ToUpper().StartsWith(faseNom.ToUpper() & "-") AndAlso Not silencioso Then
+        If MessageBox.Show("El nombre nuevo no empieza con " & faseNom & "-. Continuar de todos modos?", "RENOMBRAR_CONJUNTO", MessageBoxButtons.YesNo, MessageBoxIcon.Question) <> DialogResult.Yes Then Exit Sub
+    End If
+    Dim newFolder As String = System.IO.Path.Combine(baseDir, newName)
+
+    ' ---------- archivos del conjunto ----------
+    Dim mapa As New Dictionary(Of String, String)(StringComparer.OrdinalIgnoreCase)
+    mapa.Add(srcIam, System.IO.Path.Combine(baseDir, newName & ".iam"))
+    Dim fuera As Integer = 0
+    For Each d As Document In src.AllReferencedDocuments
+        Dim f As String = d.FullFileName
+        If f.ToLower().StartsWith(srcFolder.ToLower() & "\") Then
+            If Not mapa.ContainsKey(f) Then mapa.Add(f, NuevaRuta(f, srcFolder, srcName, newFolder, newName))
+        Else
+            fuera += 1
+        End If
+    Next
+    For Each v As String In mapa.Values
+        If System.IO.File.Exists(v) Then
+            MessageBox.Show("Ya existe " & v & ". No hago nada.", "RENOMBRAR_CONJUNTO")
+            Exit Sub
+        End If
+    Next
+    If System.IO.Directory.Exists(newFolder) Then
+        MessageBox.Show("Ya existe la carpeta " & newFolder & ". No hago nada.", "RENOMBRAR_CONJUNTO")
+        Exit Sub
+    End If
+    ' Vault / solo lectura / cambios sin guardar
+    Dim ro As New List(Of String)
+    For Each f As String In mapa.Keys
+        If (System.IO.File.GetAttributes(f) And System.IO.FileAttributes.ReadOnly) = System.IO.FileAttributes.ReadOnly Then ro.Add(System.IO.Path.GetFileName(f))
+    Next
+    If ro.Count > 0 Then
+        Dim lt As String = String.Join(vbCrLf, ro.GetRange(0, Math.Min(8, ro.Count)).ToArray())
+        MessageBox.Show(ro.Count & " archivos son de solo lectura (check-in en Vault?):" & vbCrLf & lt & vbCrLf & vbCrLf & _
+            "Con Vault Basic el nombre queda fijo despues del check-in. Usa COPIAR_CONJUNTO + LIMPIAR_OBSOLETOS, o haz check-out de todo el conjunto y reintenta.", "RENOMBRAR_CONJUNTO")
+        Exit Sub
+    End If
+    For Each dd As Document In ThisApplication.Documents
+        If dd.Dirty AndAlso mapa.ContainsKey(dd.FullFileName) Then
+            MessageBox.Show("Guarda primero " & System.IO.Path.GetFileName(dd.FullFileName) & " (tiene cambios sin guardar).", "RENOMBRAR_CONJUNTO")
+            Exit Sub
+        End If
+    Next
+    If Not silencioso Then
+        If MessageBox.Show("Renombrar " & srcName & " -> " & newName & " (" & mapa.Count & " archivos)?" & vbCrLf & _
+            fuera & " archivos de fuera del conjunto no se tocan." & vbCrLf & _
+            "Se re-enlazan la fase y los planos. Los archivos viejos van a _to_delete." & vbCrLf & vbCrLf & _
+            "Tienes copia de la obra o esta en Git/Vault? Continuar?", "RENOMBRAR_CONJUNTO", MessageBoxButtons.YesNo, MessageBoxIcon.Question) <> DialogResult.Yes Then Exit Sub
+    End If
+
+    ' ---------- 1) copiar con nombres nuevos ----------
+    For Each kv As KeyValuePair(Of String, String) In mapa
+        System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(kv.Value))
+        System.IO.File.Copy(kv.Key, kv.Value, False)
+        Try
+            System.IO.File.SetAttributes(kv.Value, System.IO.File.GetAttributes(kv.Value) And Not System.IO.FileAttributes.ReadOnly)
+        Catch
+        End Try
+    Next
+
+    ' ---------- 2) re-enlazar dentro de las copias (piezas primero, ensambles hondos despues) ----------
+    Dim orden As New List(Of String)
+    For Each v As String In mapa.Values
+        If v.ToLower().EndsWith(".ipt") Then orden.Add(v)
+    Next
+    Dim ensambles As New List(Of String)
+    For Each v As String In mapa.Values
+        If v.ToLower().EndsWith(".iam") Then ensambles.Add(v)
+    Next
+    ensambles.Sort(Function(a, b) b.Split("\"c).Length.CompareTo(a.Split("\"c).Length))
+    orden.AddRange(ensambles)
+    Dim nuevoIam As String = mapa(srcIam)
+    Dim nRef As Integer = 0
+    Dim errores As New List(Of String)
+    For Each v As String In orden
+        Dim d As Document = Nothing
+        Try
+            d = ThisApplication.Documents.Open(v, False)
+            For Each fd As FileDescriptor In d.File.ReferencedFileDescriptors
+                If mapa.ContainsKey(fd.FullFileName) Then
+                    fd.ReplaceReference(mapa(fd.FullFileName))
+                    nRef += 1
+                End If
+            Next
+            Props(d, srcName, newName, faseNom, v.ToLower() = nuevoIam.ToLower())
+            d.Save()
+        Catch ex As Exception
+            errores.Add(System.IO.Path.GetFileName(v) & ": " & ex.Message)
+        End Try
+        Try
+            If d IsNot Nothing Then d.Close(True)
+        Catch
+        End Try
+    Next
+
+    ' ---------- 3) re-enlazar la fase abierta ----------
+    Try
+        For Each fd As FileDescriptor In faseAct.File.ReferencedFileDescriptors
+            If mapa.ContainsKey(fd.FullFileName) Then
+                fd.ReplaceReference(mapa(fd.FullFileName))
+                nRef += 1
+            End If
+        Next
+        faseAct.Save()
+    Catch ex As Exception
+        errores.Add("Fase " & faseNom & ": " & ex.Message)
+    End Try
+
+    ' ---------- 4) re-enlazar planos de la obra ----------
+    Dim nPlanos As Integer = 0
+    If Arg("planos").ToUpper() <> "NO" Then
+        For Each idw As String In BuscarPlanos(obra)
+            Dim dp As Document = Nothing
+            Try
+                dp = ThisApplication.Documents.Open(idw, False)
+                Dim cambio As Boolean = False
+                For Each fd As FileDescriptor In dp.File.ReferencedFileDescriptors
+                    If mapa.ContainsKey(fd.FullFileName) Then
+                        fd.ReplaceReference(mapa(fd.FullFileName))
+                        nRef += 1
+                        cambio = True
+                    End If
+                Next
+                If cambio Then
+                    dp.Save()
+                    nPlanos += 1
+                End If
+            Catch ex As Exception
+                errores.Add(System.IO.Path.GetFileName(idw) & ": " & ex.Message)
+            End Try
+            Try
+                If dp IsNot Nothing Then dp.Close(True)
+            Catch
+            End Try
+        Next
+    End If
+
+    ' ---------- 5) historial de corte ----------
+    Dim nHist As Integer = 0
+    For Each h As String In System.IO.Directory.GetFiles(obra, "_HISTORIAL_CORTE.csv", System.IO.SearchOption.AllDirectories)
+        If h.ToLower().Contains("\_to_delete\") OrElse h.ToLower().Contains("\_obsoleto") Then Continue For
+        Try
+            Dim txt As String = System.IO.File.ReadAllText(h, System.Text.Encoding.Default)
+            If txt.ToUpper().Contains(srcName.ToUpper()) Then
+                System.IO.File.Copy(h, h & ".bak", True)
+                txt = System.Text.RegularExpressions.Regex.Replace(txt, System.Text.RegularExpressions.Regex.Escape(srcName), newName, System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+                System.IO.File.WriteAllText(h, txt, System.Text.Encoding.Default)
+                nHist += 1
+            End If
+        Catch ex As Exception
+            errores.Add("Historial " & System.IO.Path.GetFileName(h) & ": " & ex.Message)
+        End Try
+    Next
+
+    ' ---------- 6) archivos viejos a _to_delete ----------
+    Dim papelera As String = System.IO.Path.Combine(obra, "_to_delete", DateTime.Now.ToString("yyyyMMdd_HHmm"))
+    Dim pendientes As Integer = 0
+    For Each f As String In mapa.Keys
+        Try
+            Dim rel As String = f.Substring(obra.Length + 1)
+            Dim dest As String = System.IO.Path.Combine(papelera, rel)
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(dest))
+            System.IO.File.Move(f, dest)
+        Catch
+            pendientes += 1
+        End Try
+    Next
+    BorrarVacias(srcFolder)
+
+    ' ---------- registro ----------
+    Try
+        Dim reg As String = System.IO.Path.Combine(obra, "_RENOMBRADOS.csv")
+        If Not System.IO.File.Exists(reg) Then System.IO.File.AppendAllText(reg, "FECHA;ANTERIOR;NUEVO;ARCHIVOS;PLANOS;FASE" & vbCrLf, System.Text.Encoding.Default)
+        System.IO.File.AppendAllText(reg, DateTime.Now.ToString("yyyy-MM-dd HH:mm") & ";" & srcName & ";" & newName & ";" & mapa.Count & ";" & nPlanos & ";" & faseNom & vbCrLf, System.Text.Encoding.Default)
+    Catch
+    End Try
+
+    Dim t As String = "Renombrado " & srcName & " -> " & newName & vbCrLf & _
+        mapa.Count & " archivos, " & nRef & " referencias re-enlazadas, " & nPlanos & " planos, " & nHist & " historial(es) de corte." & vbCrLf & _
+        "Archivos viejos en " & papelera & vbCrLf & _
+        "Revisa la fase (guardada) y corre TEKLA_NUMERACION si hubo cambios."
+    If pendientes > 0 Then t &= vbCrLf & vbCrLf & pendientes & " archivos viejos no se pudieron mover (en uso): cierra Inventor y muevelos a mano a _to_delete."
+    If errores.Count > 0 Then t &= vbCrLf & vbCrLf & "REVISAR:" & vbCrLf & String.Join(vbCrLf, errores.ToArray())
+    Aviso(t)
+End Sub
+
+Private silencioso As Boolean
+
+' Ruta nueva: cambia el nombre viejo por el nuevo en carpetas y archivos que lo lleven;
+' el resto conserva su nombre (solo cambia la carpeta del conjunto).
+Function NuevaRuta(f As String, srcFolder As String, srcName As String, newFolder As String, newName As String) As String
+    Dim rel As String = f.Substring(srcFolder.Length + 1)
+    Dim partes() As String = rel.Split("\"c)
+    For i As Integer = 0 To partes.Length - 1
+        Dim p As String = partes(i)
+        If p.ToUpper().Contains(srcName.ToUpper()) Then
+            partes(i) = System.Text.RegularExpressions.Regex.Replace(p, System.Text.RegularExpressions.Regex.Escape(srcName), newName, System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+        End If
+    Next
+    Return System.IO.Path.Combine(newFolder, String.Join("\", partes))
+End Function
+
+' Cambia el nombre viejo en las propiedades que lo lleven; la MARCA no se toca
+Sub Props(d As Document, srcName As String, newName As String, faseNom As String, esConjunto As Boolean)
+    Dim ps As PropertySet = d.PropertySets.Item("Inventor User Defined Properties")
+    For i As Integer = 1 To ps.Count
+        Try
+            Dim p As Object = ps.Item(i)
+            If p.Name.ToUpper() = "MARCA" Then Continue For
+            Dim s As String = TryCast(p.Value, String)
+            If s IsNot Nothing AndAlso s.ToUpper().Contains(srcName.ToUpper()) Then
+                p.Value = System.Text.RegularExpressions.Regex.Replace(s, System.Text.RegularExpressions.Regex.Escape(srcName), newName, System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+            End If
+        Catch
+        End Try
+    Next
+    Try
+        Dim dt As PropertySet = d.PropertySets.Item("Design Tracking Properties")
+        Dim pnum As String = CStr(dt.Item("Part Number").Value)
+        If pnum.ToUpper().Contains(srcName.ToUpper()) Then
+            dt.Item("Part Number").Value = System.Text.RegularExpressions.Regex.Replace(pnum, System.Text.RegularExpressions.Regex.Escape(srcName), newName, System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+        End If
+    Catch
+    End Try
+    ' PREFIJO del conjunto segun el nombre nuevo: <fase>-<PREFIJO>-nnn
+    If esConjunto Then
+        Dim m As System.Text.RegularExpressions.Match = System.Text.RegularExpressions.Regex.Match(newName, "^" & System.Text.RegularExpressions.Regex.Escape(faseNom) & "-(.+)-\d+$", System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+        If m.Success AndAlso UProp(d, "PREFIJO") <> "" Then EscribirProp(d, "PREFIJO", m.Groups(1).Value.ToUpper())
+    End If
+End Sub
+
+' Planos (.idw) de la obra, sin papelera ni versiones viejas
+Function BuscarPlanos(obra As String) As List(Of String)
+    Dim r As New List(Of String)
+    For Each f As String In System.IO.Directory.GetFiles(obra, "*.idw", System.IO.SearchOption.AllDirectories)
+        Dim x As String = f.ToLower()
+        If x.Contains("\_to_delete\") OrElse x.Contains("\oldversions\") OrElse x.Contains("\_obsoleto") Then Continue For
+        r.Add(f)
+    Next
+    Return r
+End Function
+
+' Borra carpetas vacias (de abajo hacia arriba)
+Sub BorrarVacias(dir As String)
+    Try
+        If Not System.IO.Directory.Exists(dir) Then Exit Sub
+        For Each s As String In System.IO.Directory.GetDirectories(dir)
+            BorrarVacias(s)
+        Next
+        If System.IO.Directory.GetFiles(dir).Length = 0 AndAlso System.IO.Directory.GetDirectories(dir).Length = 0 Then System.IO.Directory.Delete(dir)
+    Catch
+    End Try
+End Sub
+
+Sub Aviso(t As String)
+    If Not silencioso Then MessageBox.Show(t, "RENOMBRAR_CONJUNTO")
+End Sub
+
+' ===================== comunes COIMSER =====================
+Function Arg(n As String) As String
+    Try
+        If RuleArguments.Exists(n) Then Return CStr(RuleArguments.Value(n))
+    Catch
+    End Try
+    Return ""
+End Function
+
+Function UProp(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Inventor User Defined Properties").Item(n).Value).Trim()
+    Catch
+        Return ""
+    End Try
+End Function
+
+Sub EscribirProp(d As Document, n As String, v As String)
+    Dim ps As PropertySet = d.PropertySets.Item("Inventor User Defined Properties")
+    Try
+        ps.Item(n).Value = v
+    Catch
+        ps.Add(v, n)
+    End Try
+End Sub
+
+' Carpeta de la obra: la primera hacia arriba que tiene _OBRA.txt
+Function CarpetaObra(ruta As String) As String
+    Dim x As String = System.IO.Path.GetDirectoryName(ruta)
+    For i As Integer = 0 To 8
+        If x Is Nothing OrElse x = "" Then Exit For
+        If System.IO.File.Exists(System.IO.Path.Combine(x, "_OBRA.txt")) Then Return x
+        x = System.IO.Path.GetDirectoryName(x)
+    Next
+    Return ""
+End Function
+
+Function EsGeneral(d As Document) As Boolean
+    If UProp(d, "TIPO_ENSAMBLE").ToUpper() = "GENERAL" Then Return True
+    Return System.IO.Path.GetFileNameWithoutExtension(d.FullFileName).ToUpper().EndsWith("-GENERAL")
+End Function

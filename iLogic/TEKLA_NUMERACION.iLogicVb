@@ -1,5 +1,5 @@
 ' =====================================================================
-'  TEKLA_NUMERACION  v3.7  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  TEKLA_NUMERACION  v3.8  -  Regla externa iLogic (Inventor 2026) - COIMSER
 '  Marcacion jerarquica segun A0.61 MARCACION DE PIEZAS (TABLA_MARCAS.csv)
 '
 '   PROYECTO   ANTAPACCAY          -> propiedad PROYECTO del ensamble principal (registro unico)
@@ -55,6 +55,8 @@
 '  v3.5 - SIN REDONDEOS: el perfil de plancha y la LONGITUD respetan los decimales del modelo
 '     (PL4.5x232.4, L=4076.5). La huella sigue comparando en mm enteros, asi las marcas ya
 '     asignadas no cambian por este ajuste.
+'  v3.8 - ESPEJO: pieza creada con ESPEJO_PIEZA (ESPEJO_DE) y QUIRAL=SI recibe marca propia
+'         (la inercia no distingue izquierda de derecha). QUIRAL=NO -> misma marca que la original.
 '  v3.7 - BISEL: se mide contra la cara principal de la plancha (no contra los ejes X/Y/Z), asi
 '         una plancha inclinada (tolva, chute, arriostre) con cantos rectos ya no sale como b.
 '         (El 'SI' con tilde se escribe con ChrW: el archivo queda solo ASCII.)
@@ -431,8 +433,11 @@ Sub NumerarParte(p As PartDocument, dueno As String)
     If marcaDoc.ContainsKey(p.FullFileName) Then Exit Sub
     Dim inf() As String = Info(p)
     If inf Is Nothing Then Exit Sub
-    Dim claveP As String = "P|" & planta & "|" & inf(5)
-    Dim marca As String = Asignar(claveP, dueno & "-" & inf(0), Existente(p), "P|" & planta & "|" & inf(6), LeerProp(p, "MARCA"), p.FullFileName)
+    ' v3.8: pieza ESPEJO (ESPEJO_PIEZA) quiral -> izquierda/derecha distintas -> marca propia
+    Dim esp As String = ""
+    If LeerProp(p, "ESPEJO_DE") <> "" AndAlso LeerProp(p, "QUIRAL").ToUpper() <> "NO" Then esp = "|ESP"
+    Dim claveP As String = "P|" & planta & "|" & inf(5) & esp
+    Dim marca As String = Asignar(claveP, dueno & "-" & inf(0), Existente(p), "P|" & planta & "|" & inf(6) & esp, LeerProp(p, "MARCA"), p.FullFileName)
     claveP = ClaveDe(claveP, marca)
     marcaDoc(p.FullFileName) = marca
     Vincular(claveP, p, "PARTE", inf(1))

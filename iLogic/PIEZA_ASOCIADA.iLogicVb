@@ -1,5 +1,5 @@
 ' =====================================================================
-'  PIEZA_ASOCIADA  v1.2  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  PIEZA_ASOCIADA  v1.3  -  Regla externa iLogic (Inventor 2026) - COIMSER
 '  Crea una pieza que DEPENDE de otra geometria: si esa geometria cambia, la pieza cambia.
 '  El vinculo vive en la propia pieza (pieza derivada), no en el ensamble.
 '
@@ -221,6 +221,7 @@ Sub Crear(top As AssemblyDocument, destino As AssemblyDocument, modo As String)
     Catch
     End Try
     Dim dc As DerivedPartComponent = dps.Add(df)
+    OcultarSuperficies(cd)
 
     If forma = "chapa" Then
         Dim sm As SheetMetalComponentDefinition = CType(p.ComponentDefinition, SheetMetalComponentDefinition)
@@ -603,6 +604,7 @@ Sub DesdeCaras(top As AssemblyDocument, destino As AssemblyDocument)
             p.Close(True)
             Continue For
         End Try
+        OcultarSuperficies(cd)
         ' chapa vs forma: la chapa es el cuerpo que no tiene el volumen de la forma
         Dim chapa As SurfaceBody = Nothing
         Dim cuerpoForma As SurfaceBody = Nothing
@@ -958,3 +960,13 @@ Function CarpetaHija(d As Document) As String
     If tipoEns = "PLANTA" AndAlso System.IO.Path.GetFileName(dir).ToUpper() = nom.ToUpper() Then Return dir
     Return System.IO.Path.Combine(dir, nom)
 End Function
+
+' v1.3: las superficies de referencia (derivadas de la forma/skeleton) quedan ocultas
+Sub OcultarSuperficies(cd As PartComponentDefinition)
+    Try
+        For Each w As WorkSurface In cd.WorkSurfaces
+            w.Visible = False
+        Next
+    Catch
+    End Try
+End Sub

@@ -19,6 +19,9 @@ falta comprobar su comportamiento en Inventor.
 | EMITIR_PLANOS | 1.0 | nueva: escribe propiedades en planos, PDF | medio |
 | REORGANIZAR_OBRA | 1.0 | nueva: mueve archivos de fase | **alto** - copia de respaldo antes |
 | COPIAR_CONJUNTO | 1.0 | nueva: copia y re-enlaza archivos | **alto** - solo en obra de prueba |
+| ESPEJO_PIEZA | 1.0 | nueva: derivada espejo + posicion reflejada | medio - probar en obra de prueba |
+| TEKLA_NUMERACION | 3.8 | espejo quiral -> marca propia | bajo |
+| RENOMBRAR_CONJUNTO | 1.0 | nueva: renombra archivos/carpeta, re-enlaza fase y planos | **alto** - solo en obra de prueba, nunca con check-in en Vault |
 
 ## Como probar una regla (a mano)
 1. Copiar la regla de `iLogic_pruebas\` a la carpeta de reglas con un nombre temporal unico:
@@ -40,6 +43,7 @@ falta comprobar su comportamiento en Inventor.
 | 7 | EJECUTAR_FASES | GENERAL | TODAS y una fase; RESUMEN DE OBRA |
 | 8 | GENERAR_PLANOS v2.5 + EMITIR_PLANOS | fase | Rev A/0, PDF en EMITIDOS y VIGENTES, transmittal, lista; PENDIENTES tras un cambio |
 | 9 | COPIAR_CONJUNTO | fase con un conjunto | Copia en la otra fase, abre sin errores, Frame Generator editable, original intacto |
+| 9b | RENOMBRAR_CONJUNTO | fase con un conjunto (en TST) | Archivos y carpeta con nombre nuevo, fase y planos abren sin pedir referencias, marcas intactas, viejos en _to_delete, _RENOMBRADOS.csv; con archivos de solo lectura NO hace nada |
 | 10 | REORGANIZAR_OBRA | GENERAL de una COPIA de una obra vieja | Fase movida, GENERAL abre bien, planos re-enlazados |
 
 ## Ejecucion desde Claude (servidor MCP `inventor`, execute_python)
@@ -72,6 +76,7 @@ Argumentos utiles (`silencioso` evita las ventanas):
 - REPORTE_PERNERIA: `reserva=5 silencioso` · CAMBIOS_MATERIAL: `silencioso` / `solo_foto`
 - EMITIR_PLANOS: `planos=TODOS motivo=PARA APROBACION para=CLIENTE silencioso`
 - COPIAR_CONJUNTO: seleccionar el conjunto y `fase=A2 silencioso`
+- RENOMBRAR_CONJUNTO: seleccionar el conjunto y `nuevo=TST-ALM-CH-009 silencioso` (`planos=NO` para no tocar planos)
 - REORGANIZAR_OBRA: `silencioso` / `planos=NO`
 
 ## Chequeo de compilacion (antes de copiar a Inventor)
@@ -102,3 +107,7 @@ y el resto de reglas nuevas (MENU, EJECUTAR_FASES, REORGANIZAR_OBRA, PERNERIA, C
 - COPIAR_PIEZA v1.0 (nueva): PROBADA. Reemplazar + mantener vinculo -> PL-005 sigue a la forma;
   insertar + independiente -> PL-006 queda fija; MARCA borrada, COPIA_DE puesto, original intacta.
   Falta probar la seleccion con el mouse y los cuadros de dialogo.
+- CAMBIOS_MATERIAL v1.0: PROBADA en ISLAS (ISL-1F). Foto antes / borrar una 1F-f2 / foto despues:
+  MARCAS 1F-f2 8 -> 7 DISMINUYE; PLANCHAS PL1.5 271.44 -> 267.85 kg (-3.59). Perfiles sin cambio.
+- LIMPIAR_OBSOLETOS v1.0 (nueva): PROBADA. TST-ALM: movio solo PL-001 (reemplazada por COPIAR_PIEZA);
+  ISL-1F: movio Frame...-PZ-001/002 (copias viejas sin uso), dejo PZ-003 (en uso). Sin referencias rotas.

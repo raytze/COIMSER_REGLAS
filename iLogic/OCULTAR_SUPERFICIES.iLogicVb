@@ -1,0 +1,113 @@
+' =====================================================================
+'  OCULTAR_SUPERFICIES  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Apaga (o vuelve a mostrar) las superficies de referencia de las piezas: las que deja
+'  PIEZA_ASOCIADA al derivar la forma o el skeleton. Solo cambia la visibilidad: la pieza
+'  sigue asociada y su geometria no cambia.
+'
+'  - Ejecutar con la FASE, un CONJUNTO o una PIEZA abierta: recorre todas sus piezas.
+'  - Guarda solo las piezas que cambio. Salta las de solo lectura (check-in en Vault) y las
+'    que estan fuera de la obra (Content Center, librerias): las lista al final.
+'  - Las piezas de REFERENCIA (TIPO_REFERENCIA, forma, skeleton) no se tocan.
+'  Argumentos: silencioso, mostrar=SI (para volver a mostrarlas)
+' =====================================================================
+
+Sub Main()
+    silencioso = RuleArguments.Exists("silencioso")
+    Dim mostrar As Boolean = (Arg("mostrar").ToUpper() = "SI")
+    Dim raiz As Document = ThisApplication.ActiveDocument
+    If raiz Is Nothing OrElse (raiz.DocumentType <> DocumentTypeEnum.kAssemblyDocumentObject AndAlso raiz.DocumentType <> DocumentTypeEnum.kPartDocumentObject) Then
+        MessageBox.Show("Abre una fase, un conjunto o una pieza.", "OCULTAR_SUPERFICIES")
+        Exit Sub
+    End If
+    Dim obra As String = CarpetaObra(raiz.FullFileName)
+    If obra = "" Then obra = System.IO.Path.GetDirectoryName(raiz.FullFileName)
+
+    Dim piezas As New List(Of Document)
+    If raiz.DocumentType = DocumentTypeEnum.kPartDocumentObject Then
+        piezas.Add(raiz)
+    Else
+        For Each d As Document In raiz.AllReferencedDocuments
+            If d.DocumentType = DocumentTypeEnum.kPartDocumentObject Then piezas.Add(d)
+        Next
+    End If
+
+    Dim nPiezas As Integer = 0
+    Dim nSup As Integer = 0
+    Dim saltadas As New List(Of String)
+    For Each d As Document In piezas
+        Dim nom As String = System.IO.Path.GetFileName(d.FullFileName)
+        If Not d.FullFileName.ToLower().StartsWith(obra.ToLower() & "\") Then Continue For
+        If EsReferencia(d) Then Continue For
+        Dim cd As PartComponentDefinition = CType(d, PartDocument).ComponentDefinition
+        Dim cambio As Integer = 0
+        Try
+            For Each w As WorkSurface In cd.WorkSurfaces
+                If w.Visible <> mostrar Then
+                    cambio += 1
+                End If
+            Next
+        Catch
+        End Try
+        If cambio = 0 Then Continue For
+        If (System.IO.File.GetAttributes(d.FullFileName) And System.IO.FileAttributes.ReadOnly) = System.IO.FileAttributes.ReadOnly Then
+            saltadas.Add(nom & " (solo lectura)")
+            Continue For
+        End If
+        Try
+            For Each w As WorkSurface In cd.WorkSurfaces
+                w.Visible = mostrar
+            Next
+            d.Save()
+            nPiezas += 1
+            nSup += cambio
+        Catch ex As Exception
+            saltadas.Add(nom & " (" & ex.Message & ")")
+        End Try
+    Next
+    Try
+        raiz.Update()
+        ThisApplication.ActiveView.Update()
+    Catch
+    End Try
+
+    Dim t As String = If(mostrar, "Mostradas ", "Ocultas ") & nSup & " superficies en " & nPiezas & " piezas."
+    If saltadas.Count > 0 Then t &= vbCrLf & vbCrLf & "NO se tocaron:" & vbCrLf & String.Join(vbCrLf, saltadas.GetRange(0, Math.Min(20, saltadas.Count)).ToArray())
+    If Not silencioso Then MessageBox.Show(t, "OCULTAR_SUPERFICIES")
+End Sub
+
+Private silencioso As Boolean
+
+' Piezas de referencia (forma, skeleton, equipo): su geometria es la que se ve, no se tocan
+Function EsReferencia(d As Document) As Boolean
+    If UProp(d, "TIPO_REFERENCIA") <> "" Then Return True
+    If UProp(d, "REFERENCIA").ToUpper() = "SI" Then Return True
+    Return False
+End Function
+
+' ===================== comunes COIMSER =====================
+Function Arg(n As String) As String
+    Try
+        If RuleArguments.Exists(n) Then Return CStr(RuleArguments.Value(n))
+    Catch
+    End Try
+    Return ""
+End Function
+
+Function UProp(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Inventor User Defined Properties").Item(n).Value).Trim()
+    Catch
+        Return ""
+    End Try
+End Function
+
+' Carpeta de la obra: la primera hacia arriba que tiene _OBRA.txt
+Function CarpetaObra(ruta As String) As String
+    Dim x As String = System.IO.Path.GetDirectoryName(ruta)
+    For i As Integer = 0 To 8
+        If x Is Nothing OrElse x = "" Then Exit For
+        If System.IO.File.Exists(System.IO.Path.Combine(x, "_OBRA.txt")) Then Return x
+        x = System.IO.Path.GetDirectoryName(x)
+    Next
+    Return ""
+End Function
