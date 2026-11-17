@@ -1,0 +1,7 @@
+CONCEPTO;UNIDAD;TARIFA;MERMA_%;NOTA
+PERFIL;kg;0;5;perfil: material + habilitado
+PLANCHA;kg;0;15;plancha: material + corte
+MECANIZADO;kg;0;0;pieza mecanizada
+OTRO;kg;0;5;otras piezas fabricadas
+PERNERIA;und;0;0;precio promedio por perno
+PINTURA;m2;0;10;preparacion + pintura

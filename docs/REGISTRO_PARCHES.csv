@@ -1,0 +1,44 @@
+FECHA;HORA;REGLA;CARPETA;VERSION_ANT;VERSION_NUEVA;TIPO;DESCRIPCION;PROBLEMA;PRUEBA;ESTADO;REINICIAR
+<=2026-11-16;;GENERAR_PLANOS;4_PLANOS;v2.5;v2.6;MEJORA;Habilitados de chapa con vista del desarrollo;Las planchas no mostraban desarrollo en el plano;TST;INSTALADO;SI
+<=2026-11-16;;GENERAR_PLANOS;4_PLANOS;v2.6;v2.7;MEJORA;Busca ESTILO_PLANO y NOTAS_FABRICACION en subcarpetas (notas de la obra primero);Reglas movidas a carpetas por actividad;TST;INSTALADO;SI
+<=2026-11-16;;GENERAR_PLANOS;4_PLANOS;v2.7;v2.8;CORRECCION;Desarrollo con la cara A en la cara mayor;Desarrollos de canto;TST;INSTALADO;SI
+<=2026-11-16;;GENERAR_PLANOS;4_PLANOS;v2.8;v2.9;MEJORA;Vistas con los ejes propios del modelo y argumento rehacer=SI;Vistas torcidas en modelos girados (STEP);TST;INSTALADO;SI
+<=2026-11-16;;GENERAR_PLANOS;4_PLANOS;v2.9;v2.10;MEJORA;Hojas torcidas existentes se rehacen solas;Seguian saliendo torcidas sin rehacer;PLCAY;INSTALADO;SI
+<=2026-11-16;;REHACER_PLANOS;4_PLANOS;-;v1.0;NUEVA;Redibuja todo el plano (GENERAR con rehacer=SI);Rehacer vistas sin borrar el plano a mano;TST;INSTALADO;SI
+<=2026-11-16;;TEKLA_NUMERACION;3_NUMERACION;v3.8;v3.9;MEJORA;Familia y largo del perfil desde la propiedad PERFIL;Perfiles del STEP sin clasificar;PLCAY;INSTALADO;SI
+<=2026-11-16;;TEKLA_NUMERACION;3_NUMERACION;v3.9;v3.10;CORRECCION;Desarrollo bien orientado y dimensiones de planchas inclinadas;Planchas sin marca (no se pudo clasificar);PLCAY;INSTALADO;SI
+<=2026-11-16;;EXTRAER_PIEZA;2_MODELADO;v1.0;v1.1;MEJORA;Pide designacion del perfil y la guarda en PERFIL;Perfiles extraidos sin designacion;TST;INSTALADO;SI
+<=2026-11-16;;EXTRAER_PIEZA;2_MODELADO;v1.1;v1.2;CORRECCION;Desarrollo con la cara A en la cara mayor;Planchas de canto;TST;INSTALADO;SI
+<=2026-11-16;;EXTRAER_PIEZA;2_MODELADO;v1.2;v1.3;MEJORA;Cuerpos elegidos en azul, otro clic los quita;Pedido del usuario;TST;INSTALADO;SI
+<=2026-11-16;;AGRUPAR_EN_CONJUNTO;1_OBRA;v1.0;v1.1;MEJORA;Agrupar en un conjunto existente;Mover piezas a un conjunto ya creado;TST;INSTALADO;SI
+<=2026-11-16;;AGRUPAR_EN_CONJUNTO;1_OBRA;v1.1;v1.2;MEJORA;Copia en vez de mover si la pieza se usa en otra fase;Piezas compartidas entre fases;TST;INSTALADO;SI
+<=2026-11-16;;CAMBIAR_NATURALEZA;2_MODELADO;-;v1.2;NUEVA;Cambiar naturaleza de piezas (perfil pide designacion);Pedido del usuario;TST;INSTALADO;SI
+<=2026-11-16;;PERFIL_A_OBRA;2_MODELADO;-;v1.2;NUEVA;Perfil de Content Center a pieza de la obra (incluye CC personalizados);CC fuera de la obra no reconocido;TST;INSTALADO;SI
+<=2026-11-16;;COPIAR_PIEZA;2_MODELADO;v1.2;v1.3;CORRECCION;Deteccion de Frame Generator corregida;Conjunto con Frame tomado como Frame;TST;INSTALADO;SI
+<=2026-11-16;;ESPEJO_PIEZA;2_MODELADO;-;v1.1;NUEVA;Simetria con numeracion en serie;Pedido del usuario;TST;INSTALADO;SI
+<=2026-11-16;;MENU_COIMSER;(raiz);v1.x;v2.0;MEJORA;Menu de dos niveles por actividad;Reglas ordenadas en carpetas;TST;INSTALADO;SI
+<=2026-11-16;;LIMPIAR_VISTA;6_UTILIDADES;-;v1.0;NUEVA;Ocultar superficies, planos y croquis desde la cabeza;Pedido del usuario;TST;INSTALADO;SI
+<=2026-11-16;;RENOMBRAR_CONJUNTO;1_OBRA;-;v1.0;NUEVA;Renombrar un conjunto con sus archivos;Pedido del usuario;SIN PROBAR;INSTALADO;SI
+<=2026-11-16;;OCULTAR_SUPERFICIES;6_UTILIDADES;-;v1.0;NUEVA;Ocultar superficies de referencia;Pedido del usuario;TST;INSTALADO;SI
+<=2026-11-16;;CUT_LIST;5_FABRICACION;v1.2;v1.3;MEJORA;Pieza con PERFIL+LONGITUD sale como PERFIL;Perfiles del STEP en el cut list;TST;INSTALADO;SI
+2026-11-17;14:33;EXTRAER_PIEZA;2_MODELADO;v1.3;v1.4;CORRECCION;El azul y la posicion usan el ensamble abierto, no el conjunto editado en el sitio;No se pintaba de azul editando en el sitio;SIN PROBAR (requiere clics);INSTALADO;SI
+2026-11-17;14:33;AGRUPAR_EN_CONJUNTO;1_OBRA;v1.2;v1.3;CORRECCION;Misma correccion de ensamble abierto;Edicion en el sitio;SIN PROBAR;INSTALADO;SI
+2026-11-17;14:33;TEKLA_NUMERACION;3_NUMERACION;v3.10;v3.11;MEJORA;Marcas distintas para piezas izquierda/derecha (firma quiral);Pares espejo con la misma marca;TST;INSTALADO;SI
+2026-11-17;14:33;REVISAR_JERARQUIA;3_NUMERACION;v1.1;v1.2;MEJORA;Avisos: perfil sin PERFIL, desarrollo de canto, espesor no comercial, pieza en otra fase;Errores antes de numerar;SIN PROBAR;INSTALADO;SI
+2026-11-17;14:33;VERIFICAR_INSTALACION;6_UTILIDADES;-;v1.0;NUEVA;Revisa carpetas de reglas, versiones, duplicados y Git;Versiones desactualizadas en las PC;SIN PROBAR;INSTALADO;SI
+2026-11-17;14:34;REPORTE_COSTO;5_FABRICACION;-;v1.0;NUEVA;Costo estimado kg x tarifa, perneria, pintura, por conjunto (TARIFAS.csv);Pedido del usuario;TST;INSTALADO;SI
+2026-11-17;14:34;TARIFAS.csv / FORMATOS_PLANCHA.csv;(raiz);-;-;DATOS;Tarifas en 0 y lista de espesores comerciales;Datos para REPORTE_COSTO y REVISAR_JERARQUIA;-;INSTALADO;NO
+2026-11-17;14:33;MENU_COIMSER;(raiz);v2.0;v2.1;MEJORA;Agrega REPORTE_COSTO y VERIFICAR_INSTALACION;Reglas nuevas;-;INSTALADO;SI
+2026-11-17;15:16;CATALOGO_PERFILES;6_UTILIDADES;-;v1.0;NUEVA;Catalogo de perfiles (area e inercias principales) desde el Content Center: 2450 perfiles AISC/ASTM;Reconocer perfiles por seccion;PC trabajo (catalogo generado);INSTALADO;SI
+2026-11-17;15:23;EXTRAER_PIEZA;2_MODELADO;v1.4;v1.5;MEJORA;Perfil reconocido por area neta e inercias, alerta si no coincide o no esta;Malas referencias de perfil;PLCAY (solo lectura);INSTALADO;SI
+2026-11-17;15:23;MENU_COIMSER;(raiz);v2.1;v2.2;MEJORA;Agrega CATALOGO_PERFILES;Regla nueva;-;INSTALADO;SI
+2026-11-17;15:38;ESPEJO_PIEZA;2_MODELADO;v1.1;v2.0;MEJORA;Eleccion en azul, plano en pantalla, simetricas se reutilizan, numeracion en orden con vista previa, un archivo por original;Pedido del usuario, la simetria antes siempre fallaba;TST;INSTALADO;SI
+2026-11-17;15:38;TEKLA_NUMERACION;3_NUMERACION;v3.11;v3.12;CORRECCION;Ejes principales calculados del tensor de inercia;La firma izquierda/derecha no funcionaba (Inventor no da PrincipalAxes);TST;INSTALADO;SI
+2026-11-17;15:45;REVISAR_PERFILES;3_NUMERACION;-;v1.0;NUEVA;Revisa PERFIL de todos los perfiles por area e inercias en fase/conjunto/subconjunto, alerta, indica y corrige;Malas referencias (CH-002: 14 perfiles mal marcados);TST + PLCAY CH-002 (solo reporte);INSTALADO;SI
+2026-11-17;15:45;EXTRAER_PIEZA;2_MODELADO;v1.5;v1.5;CORRECCION;Formato de diferencias en % (salia -+0.0%);Texto de los avisos;TST;INSTALADO;SI
+2026-11-17;15:45;MENU_COIMSER;(raiz);v2.2;v2.3;MEJORA;Agrega REVISAR_PERFILES;Regla nueva;-;INSTALADO;SI
+2026-11-17;16:01;GENERAR_PLANOS;4_PLANOS;v2.10;v2.11;CORRECCION;Vista proyectada con reintento (se fuerza el calculo de la base) y una hoja que falla ya no detiene el plano;CH-002 no generaba: 'El parametro no es correcto' en habilitado CP1-CH1-c1 (perfiles girados de 665 mm);PLCAY (dibujo temporal, 3 de 3 OK);INSTALADO;SI
+2026-11-17;16:35;EXTRAER_PIEZA;2_MODELADO;v1.5;v1.6;MEJORA;Cuerpos identicos (cartelas, planchas, perfiles con mismos agujeros) comparten un solo ipt repetido; compara vertices y agujeros a <=1 mm; reutiliza piezas ya extraidas; resumen previo y agrupar=NO;Exceso de ipts iguales al extraer de un STEP;TST (9 cuerpos -> 3 ipts, 6 repeticiones, agujero a 3 mm separado);INSTALADO;SI
+2026-11-17;16:50;TEKLA_NUMERACION;3_NUMERACION;v3.12;v3.13;CORRECCION;El numero de la marca del conjunto sale del numero del archivo (CH-002 -> CP1-CH2) y no del orden de ejecucion; Configuracion 1 (INICIAL) solo desde la planta;Correr TEKLA dentro de CH-002 le ponia CH1 y las piezas iguales quedaban con marcas CH1 en los dos chutes;TST (CH-002 primero -> CH2, luego CH-001 -> CH1; INICIAL desde conjunto rechazado);INSTALADO;SI
+2026-11-17;17:10;EJECUTAR_FASES;6_UTILIDADES;v1.1;v1.2;MEJORA;GENERAR_PLANOS por fases genera ademas UN PLANO POR CONJUNTO/SUBCONJUNTO (<COD>-CH-001-FAB.idw) en la carpeta PLANOS de la fase (conjuntos=NO para omitir);Solo salia el plano unico de la fase (PLCAY-CP1-FAB);TST (EJECUTAR_FASES: FAB + CH-001, CH-002, BS-001 .idw con sus PDF);INSTALADO;SI
+2026-11-17;17:10;GENERAR_PLANOS;4_PLANOS;v2.11;v2.12;CORRECCION;Nombre del plano de un conjunto sin repetir la planta (PLCAY-CP1-CH-001-FAB);Un conjunto salia como CP1-PLCAY-CP1-CH-001-FAB;TST (3 conjuntos -> 3 idw + FAB de la fase);INSTALADO;SI

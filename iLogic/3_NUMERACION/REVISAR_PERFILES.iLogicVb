@@ -1,0 +1,540 @@
+'=====================================================================
+'  REVISAR_PERFILES  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Revisa que la designacion (propiedad PERFIL) de cada PERFIL ESTRUCTURAL corresponda a su
+'  geometria real, midiendo el AREA NETA y las INERCIAS PRINCIPALES de la seccion (igual que
+'  EXTRAER_PIEZA) y comparandolas con PERFILES_CATALOGO.csv (CATALOGO_PERFILES).
+'
+'  - Se ejecuta en lo que tengas abierto: FASE, CONJUNTO, SUBCONJUNTO (o editando uno en el
+'    sitio: revisa solo ese), o una pieza. Revisa cada archivo una vez aunque se repita.
+'  - Perfil = propiedad PERFIL, nombre ...-PF-###, naturaleza Perfil, Frame Generator o
+'    Content Center (no chapas).
+'  - Estados:  OK | NO COINCIDE (la designacion no es la del cuerpo) | SIN PERFIL |
+'              NO EN CATALOGO (no se puede comprobar) | NO PRISMATICO (cortes / no es perfil)
+'  - ALERTA con la lista y la INDICACION del perfil que si coincide. Puedes:
+'       corregir una por una (la pieza se pinta de azul; eliges el perfil indicado, otro de la
+'       lista, escribir uno o dejarla), corregir todas con el indicado, o solo reporte.
+'  - Al corregir: PERFIL, Descripcion, PERFIL_VERIFICADO y PERFIL_ANTERIOR; guarda la pieza.
+'    Luego corre TEKLA_NUMERACION (la marca depende del perfil).
+'  - Reporte: <fase>\PLANOS\REPORTES\<ensamble>-PERFILES_<fecha>.csv
+'  Argumentos: silencioso (solo reporte), corregir=NO|RECOMENDADO, salida=<carpeta del reporte>
+' =====================================================================
+Imports System.Collections.Generic
+
+Sub Main()
+    silencioso = RuleArguments.Exists("silencioso")
+    Dim doc As Document = ThisDoc.Document
+    Dim top As Document = ThisApplication.ActiveDocument
+    If Not (doc Is top) AndAlso Not (ThisApplication.ActiveEditDocument Is doc) Then top = doc
+    If Catalogo() Is Nothing Then
+        MessageBox.Show("No hay catalogo de perfiles (PERFILES_CATALOGO.csv)." & vbCrLf & "Ejecuta primero CATALOGO_PERFILES (menu 6).", "REVISAR_PERFILES")
+        Exit Sub
+    End If
+
+    ' ---------- piezas perfil (una vez por archivo) ----------
+    Dim piezas As New List(Of PartDocument)
+    Dim vistos As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+    Dim nInst As New Dictionary(Of String, Integer)(StringComparer.OrdinalIgnoreCase)
+    If doc.DocumentType = DocumentTypeEnum.kPartDocumentObject Then
+        piezas.Add(CType(doc, PartDocument))
+        nInst(doc.FullFileName) = 1
+    ElseIf doc.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+        For Each o As ComponentOccurrence In CType(doc, AssemblyDocument).ComponentDefinition.Occurrences.AllLeafOccurrences
+            Try
+                If o.Suppressed Then Continue For
+                If o.DefinitionDocumentType <> DocumentTypeEnum.kPartDocumentObject Then Continue For
+                Dim p As PartDocument = CType(o.Definition.Document, PartDocument)
+                nInst(p.FullFileName) = If(nInst.ContainsKey(p.FullFileName), nInst(p.FullFileName), 0) + 1
+                If vistos.Contains(p.FullFileName) Then Continue For
+                vistos.Add(p.FullFileName)
+                If EsPerfil(p) Then piezas.Add(p)
+            Catch
+            End Try
+        Next
+    Else
+        MessageBox.Show("Abre una fase, conjunto o pieza.", "REVISAR_PERFILES")
+        Exit Sub
+    End If
+    If piezas.Count = 0 Then
+        If Not silencioso Then MessageBox.Show("No hay perfiles estructurales en " & doc.DisplayName & ".", "REVISAR_PERFILES")
+        Exit Sub
+    End If
+    piezas.Sort(Function(x, y) String.Compare(NomSin(x), NomSin(y), StringComparison.OrdinalIgnoreCase))
+
+    ' ---------- medir y comparar ----------
+    Dim res As New List(Of Revision)
+    For Each p As PartDocument In piezas
+        Dim rv As New Revision
+        rv.p = p
+        rv.actual = UProp(p, "PERFIL")
+        If rv.actual = "" AndAlso p.ComponentDefinition.IsContentMember Then rv.actual = PropDT(p, "Description")
+        Try
+            rv.prism = MedirSeccion(p.ComponentDefinition, rv.A, rv.i1, rv.i2, rv.L)
+            If rv.A > 0 Then rv.cands = Candidatos(rv.A, rv.i1, rv.i2)
+        Catch
+        End Try
+        If rv.cands Is Nothing Then rv.cands = New List(Of String())
+        rv.exacto = rv.cands.Count > 0 AndAlso Num(rv.cands(0)(5)) <= 1
+        If rv.exacto Then rv.indicado = rv.cands(0)(0)
+        Dim cc() As String = If(rv.actual = "", Nothing, BuscarEnCatalogo(rv.actual))
+        If rv.A <= 0 Then
+            rv.estado = "NO SE PUDO MEDIR"
+        ElseIf rv.actual = "" Then
+            rv.estado = "SIN PERFIL"
+        ElseIf cc Is Nothing Then
+            rv.estado = If(rv.exacto, "NO EN CATALOGO", "NO EN CATALOGO")
+        Else
+            rv.cat = cc
+            Dim eA As Double = Math.Abs(rv.A / Num(cc(2)) - 1), e1 As Double = Math.Abs(rv.i1 / Num(cc(3)) - 1), e2 As Double = Math.Abs(rv.i2 / Num(cc(4)) - 1)
+            If eA <= 0.08 AndAlso e1 <= 0.08 AndAlso e2 <= 0.12 Then
+                rv.estado = "OK"
+                rv.indicado = cc(0)
+            Else
+                rv.estado = "NO COINCIDE"
+            End If
+        End If
+        If rv.estado <> "OK" AndAlso Not rv.prism AndAlso rv.cands.Count = 0 Then rv.estado &= " / NO PRISMATICO"
+        res.Add(rv)
+    Next
+
+    ' ---------- resumen y alerta ----------
+    Dim malos As New List(Of Revision)
+    For Each rv As Revision In res
+        If rv.estado <> "OK" Then malos.Add(rv)
+    Next
+    Dim rutaRep As String = Reporte(doc, res, nInst)
+    If malos.Count = 0 Then
+        If Not silencioso Then MessageBox.Show(res.Count & " perfil(es) revisados en " & doc.DisplayName & ": TODOS coinciden con su area e inercias." & vbCrLf & vbCrLf & rutaRep, "REVISAR_PERFILES")
+        Exit Sub
+    End If
+    Dim modo As String = Arg("corregir").ToUpper()
+    If silencioso AndAlso modo = "" Then modo = "NO"
+    If modo = "" Then
+        Dim sb As New System.Text.StringBuilder()
+        sb.AppendLine(res.Count & " perfil(es) revisados en " & doc.DisplayName & ":   " & (res.Count - malos.Count) & " OK,   " & malos.Count & " con problema:")
+        sb.AppendLine()
+        Dim n As Integer = 0
+        For Each rv As Revision In malos
+            n += 1
+            If n > 25 Then
+                sb.AppendLine("  ... y " & (malos.Count - 25) & " mas (ver reporte)")
+                Exit For
+            End If
+            sb.AppendLine("  " & NomSin(rv.p) & "   [" & rv.estado & "]   PERFIL: " & If(rv.actual = "", "(vacio)", rv.actual) & "   ->   " & Indicacion(rv))
+        Next
+        sb.AppendLine()
+        sb.AppendLine("Reporte: " & rutaRep)
+        MessageBox.Show(sb.ToString(), "REVISAR_PERFILES - ALERTA: perfiles que no cuadran", MessageBoxButtons.OK, MessageBoxIcon.Warning)
+        Dim ls As New List(Of String)
+        ls.Add("UNA POR UNA - ver cada pieza (en azul) y elegir el perfil")
+        ls.Add("TODAS CON EL INDICADO - solo las que tienen un perfil que coincide exacto")
+        ls.Add("SOLO REPORTE - no cambiar nada")
+        Dim r As String = InputListBox("Corregir la propiedad PERFIL?", ls, ls(0), "REVISAR_PERFILES", "Accion")
+        If r Is Nothing OrElse r = "" OrElse r.StartsWith("SOLO") Then Exit Sub
+        modo = If(r.StartsWith("TODAS"), "RECOMENDADO", "UNA")
+    End If
+    If modo = "NO" Then Exit Sub
+
+    ' ---------- corregir ----------
+    Dim hechos As New List(Of String)
+    For Each rv As Revision In malos
+        Dim nuevo As String = ""
+        If modo = "RECOMENDADO" Then
+            If rv.exacto AndAlso ClavePerfil(rv.indicado) <> ClavePerfil(rv.actual) Then nuevo = rv.indicado
+        Else
+            Dim hs As HighlightSet = Pintar(top, rv.p)
+            nuevo = Preguntar(rv, nInst)
+            Borrar(hs)
+            If nuevo Is Nothing Then Exit For   ' cancelar = terminar
+        End If
+        If nuevo = "" Then Continue For
+        Try
+            If UProp(rv.p, "PERFIL") <> "" Then EscribirProp(rv.p, "PERFIL_ANTERIOR", UProp(rv.p, "PERFIL"))
+            EscribirProp(rv.p, "PERFIL", nuevo.ToUpper().Replace(" ", ""))
+            Dim cc() As String = BuscarEnCatalogo(nuevo)
+            Dim ver As String = "MANUAL-NO EN CATALOGO"
+            If cc IsNot Nothing Then
+                Dim eA As Double = Math.Abs(rv.A / Num(cc(2)) - 1), e1 As Double = Math.Abs(rv.i1 / Num(cc(3)) - 1), e2 As Double = Math.Abs(rv.i2 / Num(cc(4)) - 1)
+                ver = If(eA <= 0.08 AndAlso e1 <= 0.08 AndAlso e2 <= 0.12, "CATALOGO", "MANUAL-NO COINCIDE")
+            End If
+            EscribirProp(rv.p, "PERFIL_VERIFICADO", ver & " " & DateTime.Now.ToString("yyyy-MM-dd"))
+            Try
+                rv.p.PropertySets.Item("Design Tracking Properties").Item("Description").Value = nuevo.ToUpper()
+            Catch
+            End Try
+            rv.p.Save2(False)
+            hechos.Add("  " & NomSin(rv.p) & ":  " & If(rv.actual = "", "(vacio)", rv.actual) & "  ->  " & nuevo.ToUpper() & "   (" & ver & ")")
+        Catch ex As Exception
+            hechos.Add("  " & NomSin(rv.p) & ":  NO SE PUDO GUARDAR (" & ex.Message & ")  -  esta en Vault sin desproteger?")
+        End Try
+    Next
+    If Not silencioso Then
+        If hechos.Count = 0 Then
+            MessageBox.Show("No se cambio ninguna pieza.", "REVISAR_PERFILES")
+        Else
+            MessageBox.Show("Perfiles corregidos:" & vbCrLf & String.Join(vbCrLf, hechos.ToArray()) & vbCrLf & vbCrLf & "Corre TEKLA_NUMERACION para actualizar las marcas.", "REVISAR_PERFILES")
+        End If
+    End If
+End Sub
+
+Private silencioso As Boolean
+
+Class Revision
+    Public p As PartDocument
+    Public actual As String = ""
+    Public A As Double
+    Public i1 As Double
+    Public i2 As Double
+    Public L As Double
+    Public prism As Boolean
+    Public cands As List(Of String())
+    Public exacto As Boolean
+    Public indicado As String = ""
+    Public cat() As String
+    Public estado As String = ""
+End Class
+
+Function Indicacion(rv As Revision) As String
+    If rv.exacto Then Return "es " & rv.cands(0)(0)
+    If rv.cands.Count > 0 Then Return "parecido a " & rv.cands(0)(0) & " (aprox.)"
+    Return "ningun perfil del catalogo (" & TxtSec(rv.A, rv.i1, rv.i2) & ")"
+End Function
+
+' una pieza: devuelve la designacion nueva, "" = dejarla, Nothing = cancelar todo
+Function Preguntar(rv As Revision, nInst As Dictionary(Of String, Integer)) As String
+    Dim ls As New List(Of String)
+    For Each c() As String In rv.cands
+        ls.Add(c(0) & "   A " & Dif(rv.A, Num(c(2))) & "  Imax " & Dif(rv.i1, Num(c(3))) & "  Imin " & Dif(rv.i2, Num(c(4))) & If(Num(c(5)) <= 1, "   <- COINCIDE", "") & "   (" & c(1) & ")")
+    Next
+    ls.Add("DEJAR COMO ESTA")
+    ls.Add("ESCRIBIR OTRA DESIGNACION")
+    Dim txt As String = NomSin(rv.p) & "   (" & If(nInst.ContainsKey(rv.p.FullFileName), nInst(rv.p.FullFileName), 1) & " en el ensamble, en AZUL)" & vbCrLf & _
+        "Estado: " & rv.estado & "     PERFIL actual: " & If(rv.actual = "", "(vacio)", rv.actual) & vbCrLf & _
+        "Cuerpo:   " & TxtSec(rv.A, rv.i1, rv.i2) & "   largo " & (rv.L * 10).ToString("0") & " mm" & vbCrLf
+    If rv.cat IsNot Nothing Then txt &= rv.cat(0) & ": " & TxtSec(Num(rv.cat(2)), Num(rv.cat(3)), Num(rv.cat(4))) & vbCrLf
+    txt &= If(rv.cands.Count = 0, "Ningun perfil del catalogo coincide." & vbCrLf, "") & vbCrLf & "Perfil correcto:"
+    Dim r As String = InputListBox(txt, ls, ls(0), "REVISAR_PERFILES", "Perfil")
+    If r Is Nothing OrElse r = "" Then Return Nothing
+    If r.StartsWith("DEJAR") Then Return ""
+    If r.StartsWith("ESCRIBIR") Then
+        Dim w As String = InputBox(txt.Replace("Perfil correcto:", "") & vbCrLf & "Designacion (W18x50, C6x8.2, L4x4x1/2...):", "REVISAR_PERFILES", rv.actual)
+        If w Is Nothing Then Return ""
+        Return w.Trim()
+    End If
+    Return rv.cands(ls.IndexOf(r))(0)
+End Function
+
+Function EsPerfil(p As PartDocument) As Boolean
+    If p.SubType = "{9C464203-9BAE-11D3-8BAD-0060B0CE6BB4}" Then Return False
+    If UProp(p, "REFERENCIA").ToUpper() = "SI" OrElse UProp(p, "TIPO_REFERENCIA") <> "" Then Return False
+    If UProp(p, "PERFIL") <> "" Then Return True
+    If System.Text.RegularExpressions.Regex.IsMatch(NomSin(p).ToUpper(), "-PF-\d{2,4}$") Then Return True
+    If UProp(p, "NATURALEZA").ToUpper().Contains("PERFIL") Then Return True
+    Try
+        For Each di As DocumentInterest In p.DocumentInterests
+            If di.ClientId = "{AC211AE0-A7A5-4589-916D-81C529DA6D17}" AndAlso di.Name = "FrameMemberDoc" Then Return True
+        Next
+    Catch
+    End Try
+    If p.ComponentDefinition.IsContentMember Then
+        For Each n As String In New String() {"B_L", "G_L"}
+            Try
+                If p.ComponentDefinition.Parameters.Item(n) IsNot Nothing Then Return True
+            Catch
+            End Try
+        Next
+    End If
+    Return False
+End Function
+
+' pinta de azul las instancias de la pieza en el ensamble abierto
+Function Pintar(top As Document, p As PartDocument) As HighlightSet
+    Try
+        If top.DocumentType <> DocumentTypeEnum.kAssemblyDocumentObject Then Return Nothing
+        Dim a As AssemblyDocument = CType(top, AssemblyDocument)
+        Dim hs As HighlightSet = a.CreateHighlightSet()
+        hs.Color = ThisApplication.TransientObjects.CreateColor(30, 144, 255)
+        For Each o As ComponentOccurrence In a.ComponentDefinition.Occurrences.AllLeafOccurrences
+            Try
+                If o.Definition.Document Is p Then hs.AddItem(o)
+            Catch
+            End Try
+        Next
+        Return hs
+    Catch
+        Return Nothing
+    End Try
+End Function
+
+Sub Borrar(hs As HighlightSet)
+    If hs Is Nothing Then Exit Sub
+    Try
+        hs.Clear()
+        hs.Delete()
+    Catch
+    End Try
+End Sub
+
+Function Reporte(doc As Document, res As List(Of Revision), nInst As Dictionary(Of String, Integer)) As String
+    Dim dir As String = Arg("salida")
+    If dir = "" Then
+        Dim base As String = System.IO.Path.GetDirectoryName(doc.FullFileName)
+        ' la carpeta de la fase (la que tiene PLANOS) hacia arriba
+        Dim d As String = base
+        For k As Integer = 0 To 3
+            If d Is Nothing Then Exit For
+            If System.IO.Directory.Exists(System.IO.Path.Combine(d, "PLANOS")) Then
+                base = d
+                Exit For
+            End If
+            d = System.IO.Path.GetDirectoryName(d)
+        Next
+        dir = System.IO.Path.Combine(base, "PLANOS\REPORTES")
+    End If
+    Dim ruta As String = System.IO.Path.Combine(dir, NomSin(doc) & "-PERFILES_" & DateTime.Now.ToString("yyyyMMdd_HHmm") & ".csv")
+    Try
+        System.IO.Directory.CreateDirectory(dir)
+        Dim ci As System.Globalization.CultureInfo = System.Globalization.CultureInfo.InvariantCulture
+        Dim sb As New System.Text.StringBuilder()
+        sb.AppendLine("PIEZA;CANT;PERFIL;ESTADO;INDICADO;A_cm2;Imax_cm4;Imin_cm4;LARGO_mm;A_cat;Imax_cat;Imin_cat;DIF_A;DIF_Imax;DIF_Imin;ARCHIVO")
+        For Each rv As Revision In res
+            Dim c() As String = If(rv.cat IsNot Nothing, rv.cat, If(rv.cands.Count > 0, rv.cands(0), Nothing))
+            sb.AppendLine(String.Join(";", New String() {NomSin(rv.p), If(nInst.ContainsKey(rv.p.FullFileName), nInst(rv.p.FullFileName), 1).ToString(), rv.actual, rv.estado, If(rv.estado = "OK", rv.indicado, Indicacion(rv)), _
+                rv.A.ToString("0.00", ci), rv.i1.ToString("0.0", ci), rv.i2.ToString("0.00", ci), (rv.L * 10).ToString("0", ci), _
+                If(c Is Nothing, "", c(2)), If(c Is Nothing, "", c(3)), If(c Is Nothing, "", c(4)), _
+                If(c Is Nothing, "", Dif(rv.A, Num(c(2)))), If(c Is Nothing, "", Dif(rv.i1, Num(c(3)))), If(c Is Nothing, "", Dif(rv.i2, Num(c(4)))), rv.p.FullFileName}))
+        Next
+        System.IO.File.WriteAllText(ruta, sb.ToString(), System.Text.Encoding.UTF8)
+    Catch ex As Exception
+        ruta = "(no se pudo escribir el reporte: " & ex.Message & ")"
+    End Try
+    Return ruta
+End Function
+
+Function NomSin(d As Document) As String
+    Return System.IO.Path.GetFileNameWithoutExtension(d.FullFileName)
+End Function
+
+Function Arg(n As String) As String
+    Try
+        If RuleArguments.Exists(n) Then Return CStr(RuleArguments.Value(n))
+    Catch
+    End Try
+    Return ""
+End Function
+
+Function UProp(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Inventor User Defined Properties").Item(n).Value).Trim()
+    Catch
+    End Try
+    Return ""
+End Function
+
+Function PropDT(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Design Tracking Properties").Item(n).Value).Trim()
+    Catch
+    End Try
+    Return ""
+End Function
+
+Sub EscribirProp(d As Document, n As String, v As String)
+    Dim ps As PropertySet = d.PropertySets.Item("Inventor User Defined Properties")
+    Try
+        ps.Item(n).Value = v
+    Catch
+        ps.Add(v, n)
+    End Try
+End Sub
+
+' ===================== reconocimiento de perfil por area neta e inercias =====================
+Private catPerfiles As List(Of String()) = Nothing   ' {designacion, familia, A cm2, Imax cm4, Imin cm4}
+Private rutaCat As String = ""
+
+' Seccion del cuerpo (pieza de un solo cuerpo): area neta (cm2), inercias principales de la seccion
+' Imax / Imin (cm4) y largo (cm), con el tensor de inercia del solido (vale en cualquier orientacion).
+' Devuelve True si es claramente prismatico (un extremo plano con el area de la seccion).
+Function MedirSeccion(cd As PartComponentDefinition, ByRef A As Double, ByRef imax As Double, ByRef imin As Double, ByRef largo As Double) As Boolean
+    Dim mp As MassProperties = cd.MassProperties
+    Try
+        mp.Accuracy = MassPropertiesAccuracyEnum.k_VeryHigh
+    Catch
+    End Try
+    Dim V As Double = mp.Volume
+    Dim M As Double = mp.Mass
+    If V <= 0 Then Return False
+    Dim ixx As Double, iyy As Double, izz As Double, ixy As Double, iyz As Double, ixz As Double
+    mp.XYZMomentsOfInertia(ixx, iyy, izz, ixy, iyz, ixz)
+    Dim k As Double = If(M > 0, V / M, 1)
+    Dim tr As Double = (ixx + iyy + izz) / 2
+    ' S = integral(r r^T dV) respecto al centro de gravedad
+    Dim S(2, 2) As Double
+    S(0, 0) = (tr - ixx) * k : S(1, 1) = (tr - iyy) * k : S(2, 2) = (tr - izz) * k
+    S(0, 1) = -ixy * k : S(1, 0) = S(0, 1)
+    S(1, 2) = -iyz * k : S(2, 1) = S(1, 2)
+    S(0, 2) = -ixz * k : S(2, 0) = S(0, 2)
+    Dim ev(2) As Double
+    Dim vec(2, 2) As Double
+    Jacobi(S, ev, vec)
+    ' eje del perfil: el eje principal cuyo extremo plano tiene el area V / L
+    Dim mejor As Integer = -1
+    Dim err As Double = 1.0E+99
+    Dim mayor As Integer = 0
+    For c As Integer = 0 To 2
+        If ev(c) > ev(mayor) Then mayor = c
+        If ev(c) <= 0 Then Continue For
+        Dim L As Double = Math.Sqrt(12 * ev(c) / V)
+        Dim af As Double = AreaExtremo(cd, vec(0, c), vec(1, c), vec(2, c))
+        Dim e As Double = If(af > 0, Math.Abs(af / (V / L) - 1), 1)
+        If e < err Then
+            err = e
+            mejor = c
+        End If
+    Next
+    Dim ok As Boolean = (mejor >= 0 AndAlso err <= 0.15)
+    If Not ok Then mejor = mayor
+    largo = Math.Sqrt(12 * ev(mejor) / V)
+    Dim afin As Double = AreaExtremo(cd, vec(0, mejor), vec(1, mejor), vec(2, mejor))
+    A = If(afin > 0 AndAlso Math.Abs(afin / (V / largo) - 1) <= 0.15, afin, V / largo)
+    Dim lef As Double = V / A
+    Dim o1 As Integer = (mejor + 1) Mod 3, o2 As Integer = (mejor + 2) Mod 3
+    imax = Math.Max(ev(o1), ev(o2)) / lef
+    imin = Math.Min(ev(o1), ev(o2)) / lef
+    Return ok
+End Function
+
+' mayor cara plana perpendicular al eje (ux, uy, uz) = extremo del perfil (cm2)
+Function AreaExtremo(cd As PartComponentDefinition, ux As Double, uy As Double, uz As Double) As Double
+    Dim mx As Double = 0
+    Try
+        For Each bd As SurfaceBody In cd.SurfaceBodies
+            For Each f As Face In bd.Faces
+                If f.SurfaceType <> SurfaceTypeEnum.kPlaneSurface Then Continue For
+                Dim nv As UnitVector = CType(f.Geometry, Plane).Normal
+                If Math.Abs(nv.X * ux + nv.Y * uy + nv.Z * uz) < 0.9995 Then Continue For
+                Dim ar As Double = f.Evaluator.Area
+                If ar > mx Then mx = ar
+            Next
+        Next
+    Catch
+    End Try
+    Return mx
+End Function
+
+' valores y vectores propios de una matriz simetrica 3x3 (vectores en columnas)
+Sub Jacobi(a(,) As Double, d() As Double, v(,) As Double)
+    Dim m(2, 2) As Double
+    For i As Integer = 0 To 2
+        For j As Integer = 0 To 2
+            m(i, j) = a(i, j)
+            v(i, j) = If(i = j, 1, 0)
+        Next
+    Next
+    For it As Integer = 1 To 60
+        Dim p As Integer = 0, q As Integer = 1
+        Dim big As Double = Math.Abs(m(0, 1))
+        If Math.Abs(m(0, 2)) > big Then big = Math.Abs(m(0, 2)) : p = 0 : q = 2
+        If Math.Abs(m(1, 2)) > big Then big = Math.Abs(m(1, 2)) : p = 1 : q = 2
+        If big < 1.0E-12 * (Math.Abs(m(0, 0)) + Math.Abs(m(1, 1)) + Math.Abs(m(2, 2)) + 1.0E-30) Then Exit For
+        Dim th As Double = 0.5 * Math.Atan2(2 * m(p, q), m(q, q) - m(p, p))
+        Dim c As Double = Math.Cos(th), s As Double = Math.Sin(th)
+        For kk As Integer = 0 To 2
+            Dim mkp As Double = m(kk, p), mkq As Double = m(kk, q)
+            m(kk, p) = c * mkp - s * mkq
+            m(kk, q) = s * mkp + c * mkq
+        Next
+        For kk As Integer = 0 To 2
+            Dim mpk As Double = m(p, kk), mqk As Double = m(q, kk)
+            m(p, kk) = c * mpk - s * mqk
+            m(q, kk) = s * mpk + c * mqk
+        Next
+        For kk As Integer = 0 To 2
+            Dim vkp As Double = v(kk, p), vkq As Double = v(kk, q)
+            v(kk, p) = c * vkp - s * vkq
+            v(kk, q) = s * vkp + c * vkq
+        Next
+    Next
+    For i As Integer = 0 To 2
+        d(i) = m(i, i)
+    Next
+End Sub
+
+' perfiles del catalogo que coinciden: {des, familia, A, Imax, Imin, puntaje}; puntaje <= 1 = coincide bien
+Function Candidatos(A As Double, i1 As Double, i2 As Double) As List(Of String())
+    Dim res As New List(Of String())
+    Dim cat As List(Of String()) = Catalogo()
+    If cat Is Nothing Then Return res
+    Dim lista As New List(Of KeyValuePair(Of Double, String()))
+    For Each c() As String In cat
+        Dim ca As Double = Num(c(2)), c1 As Double = Num(c(3)), c2 As Double = Num(c(4))
+        If ca <= 0 OrElse c1 <= 0 OrElse c2 <= 0 Then Continue For
+        Dim eA As Double = Math.Abs(A / ca - 1), e1 As Double = Math.Abs(i1 / c1 - 1), e2 As Double = Math.Abs(i2 / c2 - 1)
+        If eA > 0.08 OrElse e1 > 0.08 OrElse e2 > 0.12 Then Continue For
+        Dim sc As Double = Math.Max(Math.Max(eA / 0.03, e1 / 0.03), e2 / 0.05)
+        lista.Add(New KeyValuePair(Of Double, String())(sc, c))
+    Next
+    lista.Sort(Function(x, y) x.Key.CompareTo(y.Key))
+    For Each kv As KeyValuePair(Of Double, String()) In lista
+        ' el mismo perfil en otra norma (mismas propiedades) no se repite
+        Dim igual As Boolean = False
+        For Each r() As String In res
+            If Math.Abs(Num(r(2)) / Num(kv.Value(2)) - 1) < 0.005 AndAlso Math.Abs(Num(r(3)) / Num(kv.Value(3)) - 1) < 0.005 AndAlso Math.Abs(Num(r(4)) / Num(kv.Value(4)) - 1) < 0.01 Then igual = True
+        Next
+        If igual Then Continue For
+        res.Add(New String() {kv.Value(0), kv.Value(1), kv.Value(2), kv.Value(3), kv.Value(4), kv.Key.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)})
+        If res.Count >= 6 Then Exit For
+    Next
+    Return res
+End Function
+
+Function Catalogo() As List(Of String())
+    If catPerfiles IsNot Nothing Then Return catPerfiles
+    Try
+        For Each rd As String In iLogicVb.Automation.FileOptions.ExternalRuleDirectories
+            If Not System.IO.Directory.Exists(rd) Then Continue For
+            For Each f As String In System.IO.Directory.GetFiles(rd, "PERFILES_CATALOGO.csv", System.IO.SearchOption.AllDirectories)
+                If rutaCat = "" Then rutaCat = f
+            Next
+        Next
+    Catch
+    End Try
+    If rutaCat = "" Then Return Nothing
+    catPerfiles = New List(Of String())
+    For Each ln As String In System.IO.File.ReadAllLines(rutaCat, System.Text.Encoding.UTF8)
+        Dim c() As String = ln.Split(";"c)
+        If c.Length >= 5 AndAlso c(0) <> "DESIGNACION" Then catPerfiles.Add(c)
+    Next
+    Return catPerfiles
+End Function
+
+Function BuscarEnCatalogo(des As String) As String()
+    Dim cat As List(Of String()) = Catalogo()
+    If cat Is Nothing Then Return Nothing
+    Dim k As String = ClavePerfil(des)
+    For Each c() As String In cat
+        If ClavePerfil(c(0)) = k Then Return c
+    Next
+    Return Nothing
+End Function
+
+Function Num(s As String) As Double
+    Dim v As Double = 0
+    Double.TryParse(s.Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, v)
+    Return v
+End Function
+
+Function ClavePerfil(s As String) As String
+    Return s.ToUpper().Replace(" ", "").Replace("*", "X").Replace("-", "")
+End Function
+
+Function TxtSec(A As Double, i1 As Double, i2 As Double) As String
+    Return "A " & A.ToString("0.0") & " cm2   Imax " & i1.ToString("0") & " cm4   Imin " & i2.ToString("0.0") & " cm4"
+End Function
+
+Function Dif(medido As Double, cat As Double) As String
+    If cat <= 0 Then Return "?"
+    Dim v As Double = Math.Round((medido / cat - 1) * 100, 1)
+    If v = 0 Then Return "0.0%"
+    Return v.ToString("+0.0;-0.0", System.Globalization.CultureInfo.InvariantCulture) & "%"
+End Function
+

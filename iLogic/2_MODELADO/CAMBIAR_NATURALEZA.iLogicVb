@@ -1,0 +1,426 @@
+' =====================================================================
+'  CAMBIAR_NATURALEZA  v1.2  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Cambia la NATURALEZA de piezas ya creadas (con NUEVA_PIEZA, EXTRAER_PIEZA, PIEZA_ASOCIADA,
+'  importadas...) con las mismas opciones que NUEVA_PIEZA:
+'
+'     ESTRUCTURAL - Plancha / cartela   ->  ESTRUCTURAL - Plancha rolada   (CODIGO r, chapa)
+'     ESTRUCTURAL - Pieza               ->  MECANICA - Pieza mecanizada    (CODIGO mq)
+'
+'  - Ejecutar con la PIEZA abierta, o en el ensamble con una o varias piezas SELECCIONADAS.
+'  - Actualiza NATURALEZA, TIPO_PIEZA, CODIGO (A0.61; se borra si la naturaleza es automatica),
+'    GRADO, ESPESOR, Descripcion y el material de Inventor (peso).
+'  - Si la nueva naturaleza es de CHAPA (chapa plegada, platina plegada, plancha rolada) y la
+'    pieza no lo es, la CONVIERTE a chapa con el espesor (tomado de la geometria) y crea el
+'    desarrollo. Si deja de ser chapa, vuelve a pieza normal.
+'  - El nombre del archivo (prefijo PL / CH / MQ...) NO cambia; la marca la recalcula
+'    TEKLA_NUMERACION con la naturaleza nueva.
+'  - No toca piezas de biblioteca, de Frame Generator ni de solo lectura (Vault).
+'  v1.1 - Naturaleza PERFIL: pide la designacion (W18x50, C10x15.3, L4x4x1/2, HSS6x6x1/4) y la
+'         guarda en PERFIL: TEKLA lo marca como perfil (w, c, a...) con su largo y sale en CUT_LIST.
+'  Argumentos (pruebas): silencioso, tipo=<naturaleza>, codigo=, grado=, espesor=, perfil=, objeto=<archivo>
+' =====================================================================
+Imports System.Collections.Generic
+
+Sub Main()
+    silencioso = RuleArguments.Exists("silencioso")
+    Dim activo As Document = Nothing
+    Try
+        activo = ThisDoc.Document
+    Catch
+    End Try
+    If activo Is Nothing Then activo = ThisApplication.ActiveDocument
+
+    ' ---------- piezas ----------
+    Dim piezas As New List(Of PartDocument)
+    If activo.DocumentType = DocumentTypeEnum.kPartDocumentObject Then
+        piezas.Add(CType(activo, PartDocument))
+    ElseIf activo.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+        Dim obj As String = Arg("objeto").ToLower()
+        If obj <> "" Then
+            For Each d As Document In activo.AllReferencedDocuments
+                If d.DocumentType = DocumentTypeEnum.kPartDocumentObject AndAlso (System.IO.Path.GetFileName(d.FullFileName).ToLower() = obj OrElse System.IO.Path.GetFileNameWithoutExtension(d.FullFileName).ToLower() = obj) Then piezas.Add(CType(d, PartDocument))
+            Next
+        Else
+            Try
+                For Each o As Object In CType(activo, AssemblyDocument).SelectSet
+                    Dim oc As ComponentOccurrence = TryCast(o, ComponentOccurrence)
+                    If oc Is Nothing OrElse oc.DefinitionDocumentType <> DocumentTypeEnum.kPartDocumentObject Then Continue For
+                    Dim pd As PartDocument = CType(oc.Definition.Document, PartDocument)
+                    If Not piezas.Contains(pd) Then piezas.Add(pd)
+                Next
+            Catch
+            End Try
+            If piezas.Count = 0 AndAlso Not silencioso Then
+                Try
+                    Dim pk As ComponentOccurrence = CType(ThisApplication.CommandManager.Pick(SelectionFilterEnum.kAssemblyLeafOccurrenceFilter, "Selecciona la pieza (Esc = cancelar)"), ComponentOccurrence)
+                    If pk IsNot Nothing Then piezas.Add(CType(pk.Definition.Document, PartDocument))
+                Catch
+                End Try
+            End If
+        End If
+    End If
+    If piezas.Count = 0 Then
+        If Not silencioso Then MessageBox.Show("Abre la pieza, o selecciona las piezas en el ensamble, y ejecuta la regla.", "CAMBIAR_NATURALEZA")
+        Exit Sub
+    End If
+    Dim noVan As New List(Of String)
+    For i As Integer = piezas.Count - 1 To 0 Step -1
+        Dim p As PartDocument = piezas(i)
+        Dim nm As String = System.IO.Path.GetFileName(p.FullFileName)
+        Dim motivo As String = ""
+        If p.ComponentDefinition.IsContentMember Then motivo = "biblioteca (Content Center)"
+        If motivo = "" AndAlso EsFG(p) Then motivo = "perfil de Frame Generator"
+        If motivo = "" AndAlso p.FullFileName <> "" AndAlso (System.IO.File.GetAttributes(p.FullFileName) And System.IO.FileAttributes.ReadOnly) = System.IO.FileAttributes.ReadOnly Then motivo = "solo lectura (Vault)"
+        If motivo <> "" Then
+            noVan.Add(nm & ": " & motivo)
+            piezas.RemoveAt(i)
+        End If
+    Next
+    If piezas.Count = 0 Then
+        MessageBox.Show("No hay piezas que se puedan cambiar:" & vbCrLf & String.Join(vbCrLf, noVan.ToArray()), "CAMBIAR_NATURALEZA")
+        Exit Sub
+    End If
+
+    ' ---------- naturaleza nueva (las de NUEVA_PIEZA) ----------
+    ' naturaleza | forma (plancha / chapa / vacia) | CODIGO A0.61 ("" = automatico)
+    Dim defs()() As String = {
+        New String() {"ESTRUCTURAL - Plancha / cartela", "plancha", ""},
+        New String() {"ESTRUCTURAL - Plancha estriada", "plancha", "pp"},
+        New String() {"ESTRUCTURAL - Chapa plegada", "chapa", ""},
+        New String() {"ESTRUCTURAL - Platina plegada", "chapa", "plf"},
+        New String() {"ESTRUCTURAL - Plancha rolada", "chapa", "r"},
+        New String() {"ESTRUCTURAL - Perfil", "vacia", ""},
+        New String() {"ESTRUCTURAL - Perfil H/I soldado", "vacia", "h"},
+        New String() {"ESTRUCTURAL - Perfil T soldado", "vacia", "t"},
+        New String() {"ESTRUCTURAL - Perfil cajon soldado", "vacia", "i"},
+        New String() {"ESTRUCTURAL - Canal soldado", "vacia", "cs"},
+        New String() {"ESTRUCTURAL - Parrilla de piso (grating)", "vacia", "g"},
+        New String() {"ESTRUCTURAL - Pieza", "vacia", ""},
+        New String() {"MECANICA - Pieza mecanizada", "vacia", "mq"},
+        New String() {"OTRO - Elegir codigo de TABLA_MARCAS (A0.61)", "vacia", "?"}}
+    Dim tipos As New List(Of String)
+    For Each d0() As String In defs
+        tipos.Add(d0(0))
+    Next
+    Dim actual As String = UProp(piezas(0), "NATURALEZA")
+    Dim tipo As String = Arg("tipo")
+    If tipo = "" Then
+        If silencioso Then Exit Sub
+        Dim cab As String = If(piezas.Count = 1, System.IO.Path.GetFileName(piezas(0).FullFileName) & vbCrLf & "Naturaleza actual: " & If(actual = "", "(sin naturaleza)", actual), piezas.Count & " piezas")
+        tipo = InputListBox(cab & vbCrLf & vbCrLf & "Naturaleza NUEVA:", tipos, If(tipos.Contains(actual), actual, tipos(0)), "CAMBIAR_NATURALEZA", "Naturaleza")
+    End If
+    If tipo Is Nothing OrElse tipo = "" Then Exit Sub
+    Dim def() As String = Nothing
+    For Each d0() As String In defs
+        If d0(0).ToUpper() = tipo.ToUpper() Then def = d0
+    Next
+    If def Is Nothing Then
+        MessageBox.Show("Naturaleza no valida: " & tipo, "CAMBIAR_NATURALEZA")
+        Exit Sub
+    End If
+    tipo = def(0)
+    Dim forma As String = def(1)
+    Dim codigo As String = def(2)
+    Dim descCodigo As String = ""
+    If codigo = "?" Then
+        Dim cods As List(Of String) = CodigosTabla(piezas(0))
+        Dim r As String = Arg("codigo")
+        If r = "" Then r = InputListBox("Codigo de parte (A0.61):", cods, cods(0), "CAMBIAR_NATURALEZA", "Codigo")
+        If r Is Nothing OrElse r = "" Then Exit Sub
+        codigo = r.Split(" "c)(0).Trim().ToLower()
+        If r.IndexOf(" - ") > 0 Then descCodigo = r.Substring(r.IndexOf(" - ") + 3)
+    End If
+    Dim esMec As Boolean = (codigo = "mq")
+    ' perfil: designacion
+    Dim perfilDes As String = ""
+    If tipo = "ESTRUCTURAL - Perfil" Then
+        perfilDes = Arg("perfil")
+        If perfilDes = "" AndAlso Not silencioso Then
+            perfilDes = InputBox("Designacion del perfil (como en el plano):" & vbCrLf & "W18x50, W8x31, C10x15.3, L4x4x1/2, HSS6x6x1/4, PIPE4STD, IPE300, UPN200...", "CAMBIAR_NATURALEZA", UProp(piezas(0), "PERFIL"))
+        End If
+        If perfilDes Is Nothing Then perfilDes = ""
+        perfilDes = perfilDes.Trim().ToUpper().Replace(" ", "")
+    End If
+
+    ' ---------- grado ----------
+    Dim grados As New List(Of String)
+    If esMec Then
+        grados.AddRange(New String() {"SAE 1045", "AISI 4140", "AISI 4340", "AISI 304", "AISI 316", "SAE 1020", "BRONCE SAE 65", "NYLON", "UHMW"})
+    Else
+        grados.AddRange(New String() {"ASTM A36", "ASTM A572 GR.50", "ASTM A588", "ASTM A240 304"})
+    End If
+    Dim gAct As String = UProp(piezas(0), "GRADO")
+    If gAct <> "" AndAlso Not grados.Contains(gAct) Then grados.Insert(0, gAct)
+    Dim grado As String = Arg("grado")
+    If grado = "" Then grado = If(silencioso, If(gAct <> "", gAct, grados(0)), InputListBox("Material / grado:", grados, If(gAct <> "" AndAlso grados.Contains(gAct), gAct, grados(0)), "CAMBIAR_NATURALEZA", "Material"))
+    If grado Is Nothing OrElse grado = "" Then Exit Sub
+
+    ' ---------- aplicar ----------
+    Dim hechas As New List(Of String)
+    Dim avisos As New List(Of String)
+    For Each p As PartDocument In piezas
+        Dim nm As String = System.IO.Path.GetFileName(p.FullFileName)
+        Try
+            Dim esChapa As Boolean = (p.SubType = SM_GUID)
+            Dim esp As String = Arg("espesor")
+            If esp = "" AndAlso forma <> "vacia" Then
+                Dim e As Double = 0
+                If esChapa Then
+                    Try
+                        e = CType(p.ComponentDefinition, SheetMetalComponentDefinition).Thickness.Value * 10
+                    Catch
+                    End Try
+                End If
+                If e <= 0 Then e = EspesorGeom(p.ComponentDefinition)
+                If e <= 0 Then e = Num(UProp(p, "ESPESOR"))
+                If e > 0 Then esp = Math.Round(e, 1).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)
+            End If
+            Dim extra As String = ""
+            ' chapa <-> pieza normal
+            If forma = "chapa" AndAlso Not esChapa Then
+                If esp = "" Then
+                    avisos.Add(nm & ": no pude medir el espesor para convertirla a chapa (usa espesor=)")
+                Else
+                    p.SubType = SM_GUID
+                    Dim sm As SheetMetalComponentDefinition = CType(p.ComponentDefinition, SheetMetalComponentDefinition)
+                    Try : sm.UseSheetMetalStyleThickness = False : Catch : End Try
+                    sm.Thickness.Expression = esp & " mm"
+                    extra = "  convertida a chapa " & esp & " mm"
+                    esChapa = True
+                End If
+            ElseIf forma <> "chapa" AndAlso esChapa AndAlso forma <> "plancha" Then
+                p.SubType = PART_GUID
+                extra = "  ya no es chapa"
+                esChapa = False
+            End If
+            If esChapa Then
+                Try
+                    Dim sm As SheetMetalComponentDefinition = CType(p.ComponentDefinition, SheetMetalComponentDefinition)
+                    DesarrolloBien(sm)
+                    If sm.HasFlatPattern Then extra &= "  desarrollo " & (sm.FlatPattern.Length * 10).ToString("0") & " x " & (sm.FlatPattern.Width * 10).ToString("0")
+                Catch
+                    extra &= "  SIN desarrollo (revisala)"
+                End Try
+            End If
+
+            Dim mat As String = "Steel"
+            If grado.StartsWith("BRONCE") Then mat = "Bronze"
+            If grado = "NYLON" Or grado = "UHMW" Then mat = "Nylon"
+            If grado.Contains("304") Or grado.Contains("316") Then mat = "Stainless Steel"
+            AsignarMaterial(p, mat)
+            Dim antes As String = UProp(p, "NATURALEZA")
+            EscribirProp(p, "NATURALEZA", tipo)
+            EscribirProp(p, "TIPO_PIEZA", If(esMec, "MECANICA", "ESTRUCTURAL"))
+            EscribirProp(p, "GRADO", grado)
+            If codigo <> "" Then
+                EscribirProp(p, "CODIGO", codigo)
+            Else
+                BorrarProp(p, "CODIGO")
+            End If
+            If forma <> "vacia" AndAlso esp <> "" Then
+                EscribirProp(p, "ESPESOR", esp)
+            ElseIf forma = "vacia" Then
+                BorrarProp(p, "ESPESOR")
+            End If
+            If antes <> "" AndAlso antes <> tipo Then EscribirProp(p, "NATURALEZA_ANTERIOR", antes)
+            If perfilDes <> "" Then
+                EscribirProp(p, "PERFIL", perfilDes)
+            ElseIf tipo <> "ESTRUCTURAL - Perfil" Then
+                BorrarProp(p, "PERFIL")
+            End If
+            Dim descP As String
+            If esMec Then
+                descP = "PIEZA MECANIZADA"
+            ElseIf perfilDes <> "" Then
+                descP = perfilDes
+            ElseIf forma <> "vacia" AndAlso esp <> "" Then
+                descP = "PL" & esp
+            Else
+                descP = If(descCodigo <> "", descCodigo, tipo.Substring(tipo.IndexOf(" - ") + 3).ToUpper())
+            End If
+            Try
+                p.PropertySets.Item("Design Tracking Properties").Item("Description").Value = descP
+            Catch
+            End Try
+            If p.FullFileName <> "" Then p.Save2(False)
+            hechas.Add("  " & nm & ":  " & If(antes = "", "(sin naturaleza)", antes) & "  ->  " & tipo & If(codigo <> "", " [" & codigo & "]", "") & extra)
+        Catch ex As Exception
+            avisos.Add(nm & ": " & ex.Message)
+        End Try
+    Next
+
+    Dim msg As String = hechas.Count & " piezas cambiadas:" & vbCrLf & String.Join(vbCrLf, hechas.ToArray())
+    If noVan.Count > 0 Then msg &= vbCrLf & vbCrLf & "No se tocaron:" & vbCrLf & String.Join(vbCrLf, noVan.ToArray())
+    If avisos.Count > 0 Then msg &= vbCrLf & vbCrLf & "REVISAR:" & vbCrLf & String.Join(vbCrLf, avisos.ToArray())
+    msg &= vbCrLf & vbCrLf & "Corre TEKLA_NUMERACION para actualizar la marca."
+    If Not silencioso Then MessageBox.Show(msg, "CAMBIAR_NATURALEZA")
+End Sub
+
+Private silencioso As Boolean
+Private Const SM_GUID As String = "{9C464203-9BAE-11D3-8BAD-0060B0CE6BB4}"
+Private Const PART_GUID As String = "{4D29B490-49B2-11D0-93C3-7E0706000000}"
+
+' Espesor (mm) de una plancha por geometria: las 2 caras planas mas grandes, paralelas; 0 si no es plancha
+Function EspesorGeom(cd As PartComponentDefinition) As Double
+    Try
+        Dim b As SurfaceBody = cd.SurfaceBodies.Item(1)
+        Dim f1 As Face = Nothing
+        Dim a1 As Double = 0
+        For Each f As Face In b.Faces
+            If f.SurfaceType = SurfaceTypeEnum.kPlaneSurface AndAlso f.Evaluator.Area > a1 Then
+                a1 = f.Evaluator.Area
+                f1 = f
+            End If
+        Next
+        If f1 Is Nothing Then Return 0
+        Dim p1 As Plane = CType(f1.Geometry, Plane)
+        Dim n1 As UnitVector = p1.Normal
+        Dim mejor As Double = 0
+        For Each f As Face In b.Faces
+            If f Is f1 OrElse f.SurfaceType <> SurfaceTypeEnum.kPlaneSurface Then Continue For
+            If f.Evaluator.Area < 0.5 * a1 Then Continue For
+            Dim p2 As Plane = CType(f.Geometry, Plane)
+            Dim dotv As Double = n1.X * p2.Normal.X + n1.Y * p2.Normal.Y + n1.Z * p2.Normal.Z
+            If Math.Abs(Math.Abs(dotv) - 1) > 0.0001 Then Continue For
+            Dim d As Double = Math.Abs((p2.RootPoint.X - p1.RootPoint.X) * n1.X + (p2.RootPoint.Y - p1.RootPoint.Y) * n1.Y + (p2.RootPoint.Z - p1.RootPoint.Z) * n1.Z)
+            If d > 0.00001 AndAlso (mejor = 0 OrElse d < mejor) Then mejor = d
+        Next
+        If mejor = 0 OrElse mejor > 0.25 * Math.Sqrt(a1) Then Return 0
+        Return mejor * 10
+    Catch
+        Return 0
+    End Try
+End Function
+
+' Codigos de PARTE de TABLA_MARCAS.csv: "pp - PLANCHA ESTRIADA"
+Function CodigosTabla(doc As Document) As List(Of String)
+    Dim l As New List(Of String)
+    Dim dir As String = System.IO.Path.GetDirectoryName(doc.FullFileName)
+    For lvl As Integer = 0 To 7
+        If dir Is Nothing OrElse dir = "" Then Exit For
+        For Each sd As String In New String() {"", "iLogic"}
+            Dim p As String = System.IO.Path.Combine(System.IO.Path.Combine(dir, sd), "TABLA_MARCAS.csv")
+            If l.Count = 0 AndAlso System.IO.File.Exists(p) Then
+                For Each ln As String In System.IO.File.ReadAllLines(p, System.Text.Encoding.UTF8)
+                    Dim c() As String = ln.Split(";"c)
+                    If c.Length >= 3 AndAlso c(0).Trim().ToUpper().EndsWith("PARTE") AndAlso c(1).Trim() <> "" Then l.Add(c(1).Trim().ToLower() & " - " & c(2).Trim())
+                Next
+            End If
+        Next
+        dir = System.IO.Path.GetDirectoryName(dir)
+    Next
+    If l.Count = 0 Then
+        Try
+            For Each rd As String In ThisApplication.FileOptions.ExternalRuleDirectories
+                Dim p As String = System.IO.Path.Combine(rd, "TABLA_MARCAS.csv")
+                If l.Count = 0 AndAlso System.IO.File.Exists(p) Then
+                    For Each ln As String In System.IO.File.ReadAllLines(p, System.Text.Encoding.UTF8)
+                        Dim c() As String = ln.Split(";"c)
+                        If c.Length >= 3 AndAlso c(0).Trim().ToUpper().EndsWith("PARTE") AndAlso c(1).Trim() <> "" Then l.Add(c(1).Trim().ToLower() & " - " & c(2).Trim())
+                    Next
+                End If
+            Next
+        Catch
+        End Try
+    End If
+    If l.Count = 0 Then l.Add("mq - MECANIZADO")
+    Return l
+End Function
+
+Sub AsignarMaterial(p As PartDocument, nombre As String)
+    Dim espanol As New Dictionary(Of String, String)
+    espanol("Steel") = "Acero"
+    espanol("Stainless Steel") = "Acero inoxidable"
+    espanol("Bronze") = "Bronce"
+    espanol("Nylon") = "Nylon"
+    Dim biblio As AssetLibrary = ThisApplication.ActiveMaterialLibrary
+    For Each nm As String In New String() {nombre, If(espanol.ContainsKey(nombre), espanol(nombre), nombre)}
+        Try
+            p.ActiveMaterial = biblio.MaterialAssets.Item(nm)
+            Exit Sub
+        Catch
+        End Try
+    Next
+End Sub
+
+' Solo el Frame (FrameDoc) y sus perfiles (FrameMemberDoc)
+Function EsFG(d As Document) As Boolean
+    Try
+        For Each di As DocumentInterest In d.DocumentInterests
+            If di.ClientId = "{AC211AE0-A7A5-4589-916D-81C529DA6D17}" AndAlso (di.Name = "FrameDoc" OrElse di.Name = "FrameMemberDoc") Then Return True
+        Next
+    Catch
+    End Try
+    Return False
+End Function
+
+Function Num(s As String) As Double
+    Dim v As Double = 0
+    Double.TryParse(s.Replace(",", "."), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, v)
+    Return v
+End Function
+
+Function Arg(n As String) As String
+    Try
+        If RuleArguments.Exists(n) Then Return CStr(RuleArguments.Value(n))
+    Catch
+    End Try
+    Return ""
+End Function
+
+Function UProp(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Inventor User Defined Properties").Item(n).Value).Trim()
+    Catch
+    End Try
+    Return ""
+End Function
+
+Sub EscribirProp(d As Document, n As String, v As String)
+    Dim ps As PropertySet = d.PropertySets.Item("Inventor User Defined Properties")
+    Try
+        ps.Item(n).Value = v
+    Catch
+        ps.Add(v, n)
+    End Try
+End Sub
+
+Sub BorrarProp(d As Document, n As String)
+    Try
+        d.PropertySets.Item("Inventor User Defined Properties").Item(n).Delete()
+    Catch
+    End Try
+End Sub
+
+' Desarrollo de chapa con la cara A en la cara plana MAYOR. Una chapa hecha desde un solido
+' (STEP, derivada) a veces se desarrolla "de canto" (ancho = espesor): aqui se rehace.
+' Devuelve True si hay desarrollo valido.
+Function DesarrolloBien(sm As SheetMetalComponentDefinition) As Boolean
+    Try
+        Dim t As Double = sm.Thickness.Value
+        If sm.HasFlatPattern Then
+            Dim w As Double = Math.Min(sm.FlatPattern.Length, sm.FlatPattern.Width)
+            If w > 1.5 * t Then Return True
+            sm.FlatPattern.Delete()
+        End If
+        Dim big As Face = Nothing
+        Dim a As Double = 0
+        For Each f As Face In sm.SurfaceBodies.Item(1).Faces
+            If f.SurfaceType = SurfaceTypeEnum.kPlaneSurface AndAlso f.Evaluator.Area > a Then
+                a = f.Evaluator.Area
+                big = f
+            End If
+        Next
+        If big IsNot Nothing Then
+            For i As Integer = sm.ASideDefinitions.Count To 1 Step -1
+                Try : sm.ASideDefinitions.Item(i).Delete() : Catch : End Try
+            Next
+            Try : sm.ASideDefinitions.Add(big) : Catch : End Try
+        End If
+        sm.Unfold()
+        Try : sm.FlatPattern.ExitEdit() : Catch : End Try
+        Return sm.HasFlatPattern
+    Catch
+        Return False
+    End Try
+End Function

@@ -26,5 +26,15 @@ comprar y cortar con el reporte de la FASE; nada se borra (_to_delete, _OBSOLETO
 8. Nunca sobrescribir sin respaldo; nunca borrar: mover a `_to_delete`.
 9. Compilar antes de probar (ver docs/PRUEBAS.md, chequeo con vbc).
 10. Dialogos modales: si Inventor no responde, buscar la ventana (win32gui) y pedir al usuario que la cierre.
+11. Inventor 2026: MassProperties NO tiene PrincipalAxes/PrincipalMoments (calcular del tensor
+    XYZMomentsOfInertia, cuyos productos ya son los terminos del tensor); precision =
+    MassPropertiesAccuracyEnum.k_VeryHigh; filtro de planos = SelectionFilterEnum.kAllPlanarEntities.
+12. Un error de compilacion abre un dialogo de iLogic al usuario: probar primero una copia con Main reducido.
+
+## REGISTRO DE PARCHES (obligatorio)
+Cada modificacion, arreglo o regla nueva instalada = una fila en docs/REGISTRO_PARCHES.csv
+(FECHA;HORA;REGLA;CARPETA;VERSION_ANT;VERSION_NUEVA;TIPO;DESCRIPCION;PROBLEMA;PRUEBA;ESTADO;REINICIAR,
+TIPO = NUEVA/MEJORA/CORRECCION/DATOS, sin ';' dentro de los textos), subir la version en la cabecera de la
+regla, regenerar el Excel con `python herramientas/registro_parches.py <repo>` y copiar a git\docs.
 
 ## Una sola sesion de Claude controlando Inventor a la vez. Idioma: espanol.

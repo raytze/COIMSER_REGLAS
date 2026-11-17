@@ -1,5 +1,5 @@
 ' =====================================================================
-'  REVISAR_JERARQUIA  v1.1  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  REVISAR_JERARQUIA  v1.2  -  Regla externa iLogic (Inventor 2026) - COIMSER
 '  Se corre en el ensamble de PLANTA antes de TEKLA_NUMERACION.
 '
 '  1) REVISA todo el arbol y escribe _REVISION_JERARQUIA.txt en la carpeta de la obra:
@@ -14,6 +14,8 @@
 '            - archivo fuera de la carpeta de la obra, o de \Librerias sin EQUIPO = SI
 '            - v1.1: REFERENCIA fuera de la obra, y pieza sin solidos (skeleton) sin marcar
 '              como referencia -> NUEVA_REFERENCIA opcion 3
+'            - v1.2: perfil sin designacion (PERFIL), chapa desarrollada "de canto", espesor no
+'              comercial (FORMATOS_PLANCHA.csv), y ERROR: el mismo archivo usado en otra fase
 '  2) CORRIGE desde un menu (solo propiedades; mover piezas: Reestructurar de Inventor):
 '     cambiar tipo de conjunto, volver transparente (Fantasma), igualar PLANTA/PROYECTO,
 '     forzar CODIGO de pieza, bloquear / desbloquear marcas.
@@ -173,9 +175,119 @@ Sub Revisar()
         Next
         If distintas Then errores.Add("Part Number '" & kv.Key & "' repetido en " & String.Join(", ", kv.Value) & ": el BOM las junta en una fila. Numera con TEKLA_NUMERACION.")
     Next
+    RevisarAntesDeNumerar()
     nErr = errores.Count
     nAvi = avisos.Count
 End Sub
+
+' v1.2: lo que suele salir mal al numerar / fabricar piezas sacadas de un STEP o copiadas
+Sub RevisarAntesDeNumerar()
+    Dim comerciales() As Double = EspesoresComerciales()
+    ' contenido de los .iam de OTRAS fases (para saber si una pieza se usa en dos fases)
+    Dim otros As New Dictionary(Of String, String)
+    Dim propios As New List(Of String)
+    propios.Add(top.FullFileName.ToLower())
+    For Each d0 As Document In top.AllReferencedDocuments
+        propios.Add(d0.FullFileName.ToLower())
+    Next
+    Try
+        Dim raiz As String = obra
+        If raiz <> "" AndAlso System.IO.Directory.Exists(raiz) Then
+            For Each iam As String In System.IO.Directory.GetFiles(raiz, "*.iam", System.IO.SearchOption.AllDirectories)
+                Dim x As String = iam.ToLower()
+                If x.Contains("\_to_delete\") OrElse x.Contains("\oldversions\") OrElse x.Contains("\_obsoleto") OrElse propios.Contains(x) Then Continue For
+                If System.IO.Path.GetFileNameWithoutExtension(x).EndsWith("-general") Then Continue For
+                Dim b() As Byte = System.IO.File.ReadAllBytes(iam)
+                Dim t As String = ""
+                For desfase As Integer = 0 To 1
+                    t &= System.Text.Encoding.Unicode.GetString(b, desfase, b.Length - desfase - ((b.Length - desfase) Mod 2)).ToLower()
+                Next
+                otros(System.IO.Path.GetFileName(iam)) = t
+            Next
+        End If
+    Catch
+    End Try
+    For Each k As String In nombresPieza
+        Dim d As Document = docs(k)
+        If d.DocumentType <> DocumentTypeEnum.kPartDocumentObject Then Continue For
+        Dim p As PartDocument = CType(d, PartDocument)
+        Dim nat As String = UProp(p, "NATURALEZA").ToUpper()
+        Dim esChapa As Boolean = (p.SubType = "{9C464203-9BAE-11D3-8BAD-0060B0CE6BB4}")
+        ' perfil sin designacion
+        If nat.EndsWith("- PERFIL") AndAlso UProp(p, "PERFIL") = "" AndAlso Not TieneParam(p, "G_L") Then
+            avisos.Add(k & ": es PERFIL pero no tiene la designacion (W18x50, C10x15.3...): sale como 'SOLIDO'. CAMBIAR_NATURALEZA -> Perfil.")
+        End If
+        ' chapa desarrollada de canto
+        Dim esp As Double = 0
+        If esChapa Then
+            Try
+                Dim sm As SheetMetalComponentDefinition = CType(p.ComponentDefinition, SheetMetalComponentDefinition)
+                esp = sm.Thickness.Value * 10
+                If sm.HasFlatPattern AndAlso Math.Min(sm.FlatPattern.Length, sm.FlatPattern.Width) <= 1.5 * sm.Thickness.Value Then
+                    avisos.Add(k & ": el desarrollo esta 'de canto' (" & (sm.FlatPattern.Length * 10).ToString("0") & " x " & (sm.FlatPattern.Width * 10).ToString("0.#") & "): TEKLA_NUMERACION v3.10 lo rehace al numerar.")
+                End If
+            Catch
+            End Try
+        ElseIf nat.Contains("PLANCHA") Then
+            esp = Num(UProp(p, "ESPESOR"))
+        End If
+        ' espesor no comercial
+        If esp > 0 Then
+            Dim cerca As Double = 0
+            Dim dif As Double = 1.0E+30
+            For Each c As Double In comerciales
+                If Math.Abs(c - esp) < dif Then dif = Math.Abs(c - esp) : cerca = c
+            Next
+            If dif > 0.15 Then avisos.Add(k & ": espesor " & esp.ToString("0.##") & " mm no es comercial (el mas cercano: " & cerca.ToString("0.##") & "). Corrigelo con CAMBIAR_NATURALEZA espesor=" & cerca.ToString("0.##") & " o agregalo a FORMATOS_PLANCHA.csv.")
+        End If
+        ' usada en otra fase
+        Dim archivo As String = System.IO.Path.GetFileName(p.FullFileName).ToLower()
+        For Each kv As KeyValuePair(Of String, String) In otros
+            If kv.Value.Contains(archivo) Then
+                errores.Add(k & ": el MISMO archivo se usa en otra fase (" & kv.Key & "): las marcas se pisan. En la otra fase usa una copia (COPIAR_PIEZA).")
+                Exit For
+            End If
+        Next
+    Next
+End Sub
+
+' Espesores comerciales (mm). Se pueden cambiar en FORMATOS_PLANCHA.csv con una linea
+' PARAMETRO;ESPESORES;1.5 2 3 4.5 6 8 9.5 12.7 ...
+Function EspesoresComerciales() As Double()
+    Dim txt As String = "0.9 1.2 1.5 2 2.5 3 3.2 4 4.5 4.76 5 6 6.35 8 9.5 10 12 12.7 15 15.9 16 19 19.05 20 22 22.2 25 25.4 28.6 30 31.75 32 38 38.1 40 44.45 50 50.8 60 63.5 75 76.2"
+    Try
+        For Each rd As String In iLogicVb.Automation.FileOptions.ExternalRuleDirectories
+            If Not System.IO.Directory.Exists(rd) Then Continue For
+            For Each f As String In System.IO.Directory.GetFiles(rd, "FORMATOS_PLANCHA.csv", System.IO.SearchOption.AllDirectories)
+                For Each ln As String In System.IO.File.ReadAllLines(f)
+                    Dim c() As String = ln.Split(";"c)
+                    If c.Length >= 3 AndAlso c(0).Trim().ToUpper() = "PARAMETRO" AndAlso c(1).Trim().ToUpper() = "ESPESORES" Then txt = c(2)
+                Next
+            Next
+        Next
+    Catch
+    End Try
+    Dim l As New List(Of Double)
+    For Each t As String In txt.Split(New Char() {" "c, ","c}, StringSplitOptions.RemoveEmptyEntries)
+        Dim v As Double = Num(t)
+        If v > 0 Then l.Add(v)
+    Next
+    Return l.ToArray()
+End Function
+
+Function TieneParam(p As PartDocument, n As String) As Boolean
+    Try
+        Return p.ComponentDefinition.Parameters.Item(n).Value > 0
+    Catch
+        Return False
+    End Try
+End Function
+
+Function Num(s As String) As Double
+    Dim v As Double = 0
+    Double.TryParse(s.Replace(",", "."), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, v)
+    Return v
+End Function
 
 Sub Recorrer(occs As Object, conjPadre As String, prefPadre As String)
     For Each occ As ComponentOccurrence In occs

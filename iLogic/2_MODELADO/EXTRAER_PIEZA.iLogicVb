@@ -1,0 +1,1301 @@
+' =====================================================================
+'  EXTRAER_PIEZA  v1.6  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Convierte cuerpos de un STEP de referencia en PIEZAS REALES del conjunto, sin remodelar:
+'
+'     REFERENCIAS\EXISTENTE\PLCAY-REF-EXIST-PLANTA.ipt   (STEP traido SIMPLIFICADO, muchos cuerpos)
+'        ->  PLCAY-CP1-BS-001\Piezas\PLCAY-CP1-BS-001-PL-001.ipt   (un cuerpo = una pieza)
+'
+'  - Ejecutar en el CONJUNTO donde van las piezas (o editandolo en el sitio desde la fase).
+'  - Eliges en la pantalla una cara de cada cuerpo del STEP (Esc = terminar). Vale tambien
+'    seleccionar antes las caras / cuerpos y luego ejecutar.
+'  - Cada cuerpo sale como pieza derivada de ese UNICO cuerpo: misma forma exacta, en la
+'    MISMA POSICION (fija), con nombre en serie en <conjunto>\Piezas y propiedades COIMSER.
+'  - PLANCHA: si el cuerpo tiene dos caras planas grandes y paralelas con espesor constante,
+'    sale como CHAPA (Sheet Metal) con ese espesor y se genera el desarrollo (plasma, cut list).
+'    Si no, sale como pieza normal; el tipo (perfil PF, mecanizada MQ, otra PZ) se elige.
+'  - Vinculo: la pieza sigue al STEP (si reemplazas el STEP por una version nueva con los mismos
+'    cuerpos, se actualiza). Argumento vinculo=independiente para cortarlo.
+'  - Propiedades: ASOCIADA = SI, MODO_ASOCIACION = STEP, DEPENDE_DE (STEP), CUERPO_ORIGEN,
+'    GRADO, TIPO_PIEZA, NATURALEZA, ESPESOR. TEKLA_NUMERACION le pone la marca despues.
+'  - Un cuerpo ya extraido en este conjunto avisa (no se duplica sin querer).
+'  v1.1 - PERFIL (PF): pide la designacion (W18x50, C10x15.3...) y la guarda en PERFIL -> TEKLA lo
+'         marca como perfil con su largo (argumento perfil=).
+'  v1.6 - PIEZAS IDENTICAS: cuerpos iguales (cartelas, planchas, perfiles con los mismos agujeros) comparten
+'         UN solo ipt repetido en sus posiciones. Igualdad = rotacion rigida que lleva TODOS los vertices y
+'         centros/radios de agujeros y arcos a <= 1 mm (centros) y 0.5 mm (radios); volumen +-0.5 %.
+'         Izquierda/derecha (solo espejo) NO son iguales: cada una su pieza. Tambien reutiliza piezas ya
+'         extraidas del STEP en el conjunto. Resumen previo con opcion de no agrupar (argumento agrupar=NO).
+'         Solo el cuerpo maestro queda vinculado al STEP; las copias son el mismo ipt (CUERPOS_REPETIDOS).
+'  v1.5 - PERFIL RECONOCIDO POR SECCION: mide el area neta y las inercias principales del cuerpo
+'         (tensor de inercia, vale girado) y lo busca en PERFILES_CATALOGO.csv (CATALOGO_PERFILES).
+'         Uno coincide -> lo propone (Enter); varios -> lista; ninguno -> ALERTA y pide referenciarlo.
+'         Si escribes una designacion que no coincide con el cuerpo, avisa. PERFIL_VERIFICADO.
+'  v1.4 - Corregido: editando un conjunto en el sitio, el azul se ve y las piezas quedan en su
+'         lugar (antes tomaba el conjunto editado como si fuera el ensamble abierto).
+'  v1.3 - Al elegir en pantalla, cada cuerpo elegido se pinta de AZUL; otro clic lo quita.
+'  v1.2 - Desarrollo con la cara A en la cara mayor (antes algunas planchas salian "de canto").
+'  Argumentos (pruebas): silencioso, origen=<ocurrencia del STEP>, cuerpos=Solido1;Solido5, perfil=,
+'     tipo=PF|MQ|PZ (para lo que no es plancha), grado=, vinculo=mantener|independiente
+' =====================================================================
+Imports System.Collections.Generic
+
+Sub Main()
+    silencioso = RuleArguments.Exists("silencioso")
+    Dim top As AssemblyDocument = Nothing
+    Try
+        top = TryCast(ThisDoc.Document, AssemblyDocument)
+    Catch
+    End Try
+    If top Is Nothing Then top = TryCast(ThisApplication.ActiveDocument, AssemblyDocument)
+    ' editando un conjunto EN EL SITIO: iLogic entrega el conjunto editado; el de arriba es el abierto
+    Try
+        Dim act As AssemblyDocument = TryCast(ThisApplication.ActiveDocument, AssemblyDocument)
+        If act IsNot Nothing AndAlso top IsNot Nothing AndAlso Not (act Is top) AndAlso ThisApplication.ActiveEditDocument Is top Then top = act
+    Catch
+    End Try
+    If top Is Nothing Then
+        MessageBox.Show("Abre la fase o el conjunto donde estan el STEP y donde van las piezas.", "EXTRAER_PIEZA")
+        Exit Sub
+    End If
+    Dim destino As AssemblyDocument = top
+    Dim occDestino As ComponentOccurrence = Nothing
+    Try
+        If top Is ThisApplication.ActiveDocument AndAlso ThisApplication.ActiveEditDocument.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then destino = CType(ThisApplication.ActiveEditDocument, AssemblyDocument)
+    Catch
+    End Try
+    If Not (destino Is top) Then
+        Try
+            occDestino = top.ComponentDefinition.ActiveOccurrence
+        Catch
+        End Try
+    End If
+    If EsGeneral(destino) Then
+        MessageBox.Show("Las piezas no van en el GENERAL: abre la fase y entra a editar el conjunto (o crea uno con INICIAR_CONJUNTO).", "EXTRAER_PIEZA")
+        Exit Sub
+    End If
+    If destino.FullFileName = "" Then
+        MessageBox.Show("Guarda primero el ensamble.", "EXTRAER_PIEZA")
+        Exit Sub
+    End If
+    If UProp(destino, "TIPO_ENSAMBLE").ToUpper() = "PLANTA" AndAlso Not silencioso Then
+        If MessageBox.Show("Estas en la FASE " & NomSin(destino) & ": las piezas quedaran sueltas en la fase." & vbCrLf & "Lo normal es entrar a editar un CONJUNTO (doble clic) y ejecutar ahi." & vbCrLf & "(Luego puedes juntarlas con AGRUPAR_EN_CONJUNTO.)" & vbCrLf & vbCrLf & "Continuar en la fase?", "EXTRAER_PIEZA", MessageBoxButtons.YesNo, MessageBoxIcon.Question) <> DialogResult.Yes Then Exit Sub
+    End If
+
+    ' ---------- cuerpos elegidos ----------
+    Dim cuerpos As New List(Of SurfaceBody)        ' cuerpo nativo (en el STEP)
+    Dim occs As New List(Of ComponentOccurrence)   ' ocurrencia del STEP en el ensamble activo
+    Dim nomCuerpos As String = Arg("cuerpos")
+    If nomCuerpos <> "" Then
+        Dim oc As ComponentOccurrence = BuscarOcc(top.ComponentDefinition.Occurrences, Arg("origen").ToLower())
+        If oc Is Nothing OrElse oc.DefinitionDocumentType <> DocumentTypeEnum.kPartDocumentObject Then
+            MessageBox.Show("No encuentro la pieza STEP '" & Arg("origen") & "'.", "EXTRAER_PIEZA")
+            Exit Sub
+        End If
+        Dim pd As PartDocument = CType(oc.Definition.Document, PartDocument)
+        For Each nm As String In nomCuerpos.Split(";"c)
+            For Each b As SurfaceBody In pd.ComponentDefinition.SurfaceBodies
+                If b.Name.ToLower() = nm.Trim().ToLower() Then
+                    cuerpos.Add(b)
+                    occs.Add(oc)
+                End If
+            Next
+        Next
+    Else
+        Try
+            For Each o As Object In top.SelectSet
+                Agregar(o, cuerpos, occs)
+            Next
+        Catch
+        End Try
+        If cuerpos.Count = 0 AndAlso Not silencioso Then
+            ' v1.3: los cuerpos elegidos se pintan de AZUL; otro clic en el mismo cuerpo lo quita
+            Dim hs As HighlightSet = Nothing
+            Try
+                hs = top.CreateHighlightSet()
+                hs.Color = ThisApplication.TransientObjects.CreateColor(30, 144, 255)
+            Catch
+            End Try
+            Dim marcados As New List(Of Object)
+            Do
+                Dim o As Object = Nothing
+                Try
+                    o = ThisApplication.CommandManager.Pick(SelectionFilterEnum.kPartFaceFilter, "Clic en un cuerpo del STEP = elegir / quitar (" & cuerpos.Count & " elegidos, en azul). Esc = terminar")
+                Catch
+                End Try
+                If o Is Nothing Then Exit Do
+                Dim bp As SurfaceBodyProxy = Nothing
+                Try
+                    If TypeOf o Is FaceProxy Then bp = CType(CType(o, FaceProxy).Parent, SurfaceBodyProxy)
+                Catch
+                End Try
+                If bp Is Nothing Then Continue Do
+                Dim nb As SurfaceBody = CType(bp.NativeObject, SurfaceBody)
+                Dim oc As ComponentOccurrence = bp.ContainingOccurrence
+                Dim yaEsta As Integer = -1
+                For k As Integer = 0 To cuerpos.Count - 1
+                    If cuerpos(k).Name = nb.Name AndAlso occs(k).Name = oc.Name Then yaEsta = k
+                Next
+                If yaEsta >= 0 Then
+                    cuerpos.RemoveAt(yaEsta)
+                    occs.RemoveAt(yaEsta)
+                    marcados.RemoveAt(yaEsta)
+                Else
+                    If oc.DefinitionDocumentType <> DocumentTypeEnum.kPartDocumentObject Then Continue Do
+                    cuerpos.Add(nb)
+                    occs.Add(oc)
+                    marcados.Add(bp)
+                End If
+                If hs IsNot Nothing Then
+                    Try
+                        hs.Clear()
+                        For Each m As Object In marcados
+                            Try
+                                hs.AddItem(m)
+                            Catch
+                                For Each fc As Object In m.Faces
+                                    hs.AddItem(fc)
+                                Next
+                            End Try
+                        Next
+                    Catch
+                    End Try
+                End If
+            Loop
+            If hs IsNot Nothing Then
+                Try : hs.Clear() : hs.Delete() : Catch : End Try
+            End If
+        End If
+    End If
+    If cuerpos.Count = 0 Then Exit Sub
+    For Each oc As ComponentOccurrence In occs
+        If oc.Definition.Document Is destino Then
+            MessageBox.Show("El STEP no puede ser el mismo conjunto destino.", "EXTRAER_PIEZA")
+            Exit Sub
+        End If
+    Next
+
+    ' ---------- opciones ----------
+    Dim grados As New List(Of String)
+    grados.AddRange(New String() {"ASTM A36", "ASTM A572 Gr.50", "ASTM A588", "AISI 304", "AISI 1045", "Hardox 450"})
+    Dim grado As String = Arg("grado")
+    If grado = "" Then grado = If(silencioso, grados(0), InputListBox("Material / grado de las piezas:", grados, grados(0), "EXTRAER_PIEZA", "Material"))
+    If grado Is Nothing OrElse grado = "" Then Exit Sub
+    Dim tipoNoPlancha As String = Arg("tipo").ToUpper()
+    Dim vinculo As String = Arg("vinculo").ToLower()
+    If vinculo = "" Then vinculo = "mantener"
+
+    ' ---------- carpeta y serie ----------
+    Dim nomDest As String = NomSin(destino)
+    Dim carpeta As String = System.IO.Path.Combine(CarpetaHija(destino), "Piezas")
+    System.IO.Directory.CreateDirectory(carpeta)
+    Dim ya As Dictionary(Of String, String) = YaExtraidos(destino)
+
+    ' ---------- v1.6: cuerpos identicos -> una sola pieza repetida ----------
+    Dim maestro As New List(Of Integer)     ' -1 = pieza propia; k = copia del cuerpo k de esta tanda
+    Dim rts As New List(Of Double())        ' giro+traslacion (9+3) del maestro a la copia, en coordenadas del STEP
+    Dim extRuta As New List(Of String)      ' ipt de una pieza YA extraida a la que esta copia se parece
+    For k As Integer = 0 To cuerpos.Count - 1
+        maestro.Add(-1)
+        rts.Add(Nothing)
+        extRuta.Add("")
+    Next
+    If Arg("agrupar").ToUpper() <> "NO" Then
+        Dim resumen As String = Agrupar(destino, cuerpos, occs, ya, maestro, rts, extRuta)
+        If resumen <> "" AndAlso Not silencioso Then
+            If MessageBox.Show(resumen & vbCrLf & vbCrLf & "Si = agrupar (un ipt repetido)    No = una pieza por cuerpo", "EXTRAER_PIEZA", MessageBoxButtons.YesNo, MessageBoxIcon.Question) <> DialogResult.Yes Then
+                For k As Integer = 0 To cuerpos.Count - 1
+                    maestro(k) = -1
+                    rts(k) = Nothing
+                    extRuta(k) = ""
+                Next
+            End If
+        End If
+    End If
+    Dim rutaDe As New List(Of String)
+    For k As Integer = 0 To cuerpos.Count - 1
+        rutaDe.Add("")
+    Next
+
+    Dim hechas As New List(Of String)
+    Dim avisos As New List(Of String)
+    For i As Integer = 0 To cuerpos.Count - 1
+        Dim b As SurfaceBody = cuerpos(i)
+        Dim oc As ComponentOccurrence = occs(i)
+        Dim src As PartDocument = CType(oc.Definition.Document, PartDocument)
+        Dim clave As String = src.FullFileName.ToLower() & "|" & b.Name.ToLower()
+        If ya.ContainsKey(clave) AndAlso Not silencioso AndAlso maestro(i) < 0 AndAlso extRuta(i) = "" Then
+            If MessageBox.Show("El cuerpo " & b.Name & " ya se extrajo como " & ya(clave) & "." & vbCrLf & "Extraerlo otra vez?", "EXTRAER_PIEZA", MessageBoxButtons.YesNo, MessageBoxIcon.Question) <> DialogResult.Yes Then Continue For
+        End If
+        Try
+            Dim t As String = ""
+            If extRuta(i) <> "" Then
+                t = InsertarCopia(destino, occDestino, extRuta(i), oc, rts(i), b.Name)
+            ElseIf maestro(i) >= 0 AndAlso rutaDe(maestro(i)) <> "" Then
+                t = InsertarCopia(destino, occDestino, rutaDe(maestro(i)), oc, rts(i), b.Name)
+            Else
+                repetidosTxt = ""
+                For k As Integer = i + 1 To cuerpos.Count - 1
+                    If maestro(k) = i Then repetidosTxt &= If(repetidosTxt = "", "", ";") & cuerpos(k).Name
+                Next
+                ultimaRuta = ""
+                t = Extraer(destino, occDestino, oc, src, b, carpeta, nomDest, grado, tipoNoPlancha, vinculo)
+                rutaDe(i) = ultimaRuta
+            End If
+            If t <> "" Then hechas.Add(t)
+        Catch ex As Exception
+            avisos.Add(b.Name & ": " & ex.Message)
+        End Try
+    Next
+
+    Dim nRep As Integer = 0
+    For k As Integer = 0 To cuerpos.Count - 1
+        If maestro(k) >= 0 OrElse extRuta(k) <> "" Then nRep += 1
+    Next
+    Dim msg As String = hechas.Count & " cuerpos colocados en " & nomDest & If(nRep > 0, " (" & nRep & " son repeticiones de un ipt ya existente)", "") & ":" & vbCrLf & String.Join(vbCrLf, hechas.ToArray())
+    If avisos.Count > 0 Then msg &= vbCrLf & vbCrLf & "REVISAR:" & vbCrLf & String.Join(vbCrLf, avisos.ToArray())
+    msg &= vbCrLf & vbCrLf & "Quedan FIJAS en la posicion del STEP. Guarda y corre TEKLA_NUMERACION."
+    If Not silencioso Then MessageBox.Show(msg, "EXTRAER_PIEZA")
+End Sub
+
+Private silencioso As Boolean
+Private repetidosTxt As String = ""
+Private ultimaRuta As String = ""
+Private ultimoPerfil As String = ""
+
+' Cara / cuerpo seleccionado -> cuerpo nativo del STEP + su ocurrencia en el ensamble activo
+Sub Agregar(o As Object, cuerpos As List(Of SurfaceBody), occs As List(Of ComponentOccurrence))
+    Try
+        Dim bp As Object = Nothing
+        If TypeOf o Is FaceProxy Then
+            bp = CType(o, FaceProxy).Parent
+        ElseIf TypeOf o Is SurfaceBodyProxy Then
+            bp = o
+        End If
+        If bp Is Nothing Then Exit Sub
+        Dim sbp As SurfaceBodyProxy = CType(bp, SurfaceBodyProxy)
+        Dim oc As ComponentOccurrence = sbp.ContainingOccurrence
+        If oc.DefinitionDocumentType <> DocumentTypeEnum.kPartDocumentObject Then Exit Sub
+        Dim nb As SurfaceBody = CType(sbp.NativeObject, SurfaceBody)
+        For k As Integer = 0 To cuerpos.Count - 1
+            If cuerpos(k) Is nb AndAlso occs(k) Is oc Then Exit Sub
+        Next
+        cuerpos.Add(nb)
+        occs.Add(oc)
+    Catch
+    End Try
+End Sub
+
+Function Extraer(destino As AssemblyDocument, occDestino As ComponentOccurrence, oc As ComponentOccurrence, src As PartDocument, b As SurfaceBody, carpeta As String, nomDest As String, grado As String, tipoNoPlancha As String, vinculo As String) As String
+    ' ---------- plancha? ----------
+    Dim esp As Double = EspesorPlancha(b)   ' mm, 0 = no es plancha
+    Dim pref As String = ""
+    Dim naturaleza As String = ""
+    Dim tipoPieza As String = "ESTRUCTURAL"
+    Dim esChapa As Boolean = (esp > 0)
+
+    ' ---------- pieza derivada de ese unico cuerpo ----------
+    Dim p As PartDocument = CType(ThisApplication.Documents.Add(DocumentTypeEnum.kPartDocumentObject, BuscarPlantilla(If(esChapa, "Sheet Metal (mm).ipt", "Standard (mm).ipt")), False), PartDocument)
+    Dim cd As PartComponentDefinition = p.ComponentDefinition
+    Dim dps As DerivedPartComponents = cd.ReferenceComponents.DerivedPartComponents
+    Dim df As DerivedPartUniformScaleDef = dps.CreateDefinition(src.FullFileName)
+    Try : df.DeriveStyle = DerivedComponentStyleEnum.kDeriveAsSingleBodyNoSeams : Catch : End Try
+    Try : df.IncludeAllSurfaces = DerivedComponentOptionEnum.kDerivedExcludeAll : Catch : End Try
+    Try : df.IncludeAllSketches = DerivedComponentOptionEnum.kDerivedExcludeAll : Catch : End Try
+    Try : df.IncludeAllWorkFeatures = DerivedComponentOptionEnum.kDerivedExcludeAll : Catch : End Try
+    Try : df.IncludeAllParameters = DerivedComponentOptionEnum.kDerivedExcludeAll : Catch : End Try
+    Dim encontrado As Boolean = False
+    For Each pe As DerivedPartEntity In df.Solids
+        Dim nm As String = ""
+        Try
+            nm = CStr(pe.ReferencedEntity.Name)
+        Catch
+        End Try
+        pe.IncludeEntity = (nm = b.Name)
+        If nm = b.Name Then encontrado = True
+    Next
+    If Not encontrado Then
+        p.Close(True)
+        Throw New Exception("no encuentro el cuerpo en " & System.IO.Path.GetFileName(src.FullFileName))
+    End If
+    Dim dc As DerivedPartComponent = dps.Add(df)
+
+    ' ---------- seccion (area neta e inercias) y perfiles del catalogo que coinciden ----------
+    Dim secA As Double = 0, secI1 As Double = 0, secI2 As Double = 0, secL As Double = 0
+    Dim prismatico As Boolean = False
+    Dim cands As New List(Of String())
+    If Not esChapa Then
+        Try
+            prismatico = MedirSeccion(cd, secA, secI1, secI2, secL)
+            If secA > 0 Then cands = Candidatos(secA, secI1, secI2)
+        Catch
+        End Try
+    End If
+    Dim exacto As Boolean = cands.Count > 0 AndAlso CDbl(cands(0)(5)) <= 1
+    If esChapa Then
+        pref = "PL"
+        naturaleza = "ESTRUCTURAL - Plancha / cartela"
+    Else
+        Dim t As String = tipoNoPlancha
+        If t = "" Then
+            If silencioso Then
+                t = If(exacto, "PF", "PZ")
+            Else
+                Dim ls As New List(Of String)
+                ls.Add("PF - Perfil (viga, angulo, canal, tubo)")
+                ls.Add("PZ - Otra pieza estructural")
+                ls.Add("MQ - Pieza mecanizada")
+                Dim txt As String = "El cuerpo " & b.Name & " no es una plancha de espesor constante." & vbCrLf
+                If cands.Count > 0 Then txt &= "Por su area e inercias parece el perfil " & cands(0)(0) & If(exacto, "", " (aproximado)") & "." & vbCrLf
+                Dim r As String = InputListBox(txt & "Que es?", ls, If(cands.Count > 0 OrElse prismatico, ls(0), ls(1)), "EXTRAER_PIEZA", "Tipo")
+                If r Is Nothing OrElse r = "" Then
+                    p.Close(True)
+                    Return ""
+                End If
+                t = r.Substring(0, 2)
+            End If
+        End If
+        pref = t
+        Select Case t
+            Case "PF" : naturaleza = "ESTRUCTURAL - Perfil"
+            Case "MQ" : naturaleza = "MECANICA - Pieza mecanizada" : tipoPieza = "MECANICA"
+            Case Else : naturaleza = "ESTRUCTURAL - Pieza"
+        End Select
+    End If
+    Dim n As Integer = 1
+    Dim ruta As String
+    Do
+        ruta = System.IO.Path.Combine(carpeta, nomDest & "-" & pref & "-" & n.ToString("000") & ".ipt")
+        If Not System.IO.File.Exists(ruta) AndAlso Not Abierto(ruta) Then Exit Do
+        n += 1
+    Loop
+
+    Dim desarrollo As String = ""
+    If esChapa Then
+        Try
+            Dim sm As SheetMetalComponentDefinition = CType(cd, SheetMetalComponentDefinition)
+            Try : sm.UseSheetMetalStyleThickness = False : Catch : End Try
+            sm.Thickness.Expression = esp.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) & " mm"
+        Catch
+        End Try
+    End If
+    AsignarMaterial(p, If(grado.Contains("304"), "Stainless Steel", "Steel"))
+    EscribirProp(p, "GRADO", grado)
+    EscribirProp(p, "TIPO_PIEZA", tipoPieza)
+    EscribirProp(p, "NATURALEZA", naturaleza)
+    If pref = "MQ" Then EscribirProp(p, "CODIGO", "mq")
+    Dim notaPerfil As String = ""
+    If pref = "PF" Then
+        Dim estado As String = ""
+        Dim des As String = ElegirPerfil(b.Name, secA, secI1, secI2, prismatico, cands, estado)
+        If des <> "" Then
+            EscribirProp(p, "PERFIL", des.ToUpper().Replace(" ", ""))
+            EscribirProp(p, "PERFIL_VERIFICADO", estado)
+            ultimoPerfil = des
+            Try
+                p.PropertySets.Item("Design Tracking Properties").Item("Description").Value = des.ToUpper()
+            Catch
+            End Try
+            notaPerfil = "  " & des.ToUpper() & " (" & estado & ")"
+        Else
+            notaPerfil = "  PERFIL SIN DESIGNACION (revisala)"
+        End If
+    End If
+    If esChapa Then EscribirProp(p, "ESPESOR", esp.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))
+    EscribirProp(p, "ASOCIADA", If(vinculo = "independiente", "NO", "SI"))
+    EscribirProp(p, "MODO_ASOCIACION", "STEP")
+    EscribirProp(p, "DEPENDE_DE", RutaRel(src.FullFileName, destino.FullFileName))
+    EscribirProp(p, "CUERPO_ORIGEN", b.Name)
+    If repetidosTxt <> "" Then EscribirProp(p, "CUERPOS_REPETIDOS", repetidosTxt)
+    EscribirProp(p, "CONGELADA", "NO")
+    For Each pn As String In New String() {"PROYECTO", "PLANTA", "COD_PROYECTO"}
+        If UProp(destino, pn) <> "" Then EscribirProp(p, pn, UProp(destino, pn))
+    Next
+    Try
+        p.PropertySets.Item("Design Tracking Properties").Item("Part Number").Value = System.IO.Path.GetFileNameWithoutExtension(ruta)
+    Catch
+    End Try
+    ultimaRuta = ruta
+    p.SaveAs(ruta, False)
+    If esChapa Then
+        Try
+            Dim sm As SheetMetalComponentDefinition = CType(cd, SheetMetalComponentDefinition)
+            If Not DesarrolloBien(sm) Then Throw New Exception("sin desarrollo")
+            desarrollo = "PL" & esp.ToString("0.#") & "  desarrollo " & (sm.FlatPattern.Length * 10).ToString("0") & " x " & (sm.FlatPattern.Width * 10).ToString("0")
+        Catch
+            desarrollo = "PL" & esp.ToString("0.#") & "  SIN desarrollo (revisala)"
+        End Try
+    End If
+    If vinculo = "independiente" Then
+        Try
+            dc.BreakLinkToFile()
+        Catch
+        End Try
+    End If
+    p.Save2(False)
+
+    ' ---------- posicion: la del STEP, relativa al conjunto destino ----------
+    Dim m As Matrix = oc.Transformation.Copy()
+    If occDestino IsNot Nothing Then
+        Dim inv As Matrix = occDestino.Transformation.Copy()
+        inv.Invert()
+        inv.PostMultiplyBy(m)
+        m = inv
+    End If
+    Dim lugar As String = ""
+    Try
+        Dim nueva As ComponentOccurrence = destino.ComponentDefinition.Occurrences.Add(ruta, m)
+        Try : nueva.Grounded = True : Catch : End Try
+    Catch ex As Exception
+        lugar = "  (no se pudo insertar: " & ex.Message & ")"
+    End Try
+    Try
+        p.Close(True)
+    Catch
+    End Try
+    Try
+        System.IO.File.WriteAllText(System.IO.Path.Combine(carpeta, "_ultima_pieza.txt"), ruta)
+    Catch
+    End Try
+    Return "  " & b.Name & "  ->  " & System.IO.Path.GetFileName(ruta) & "   " & If(desarrollo <> "", desarrollo, naturaleza) & notaPerfil & lugar
+End Function
+
+' ===================== reconocimiento de perfil por area neta e inercias =====================
+Private catPerfiles As List(Of String()) = Nothing   ' {designacion, familia, A cm2, Imax cm4, Imin cm4}
+Private rutaCat As String = ""
+
+' Seccion del cuerpo (pieza de un solo cuerpo): area neta (cm2), inercias principales de la seccion
+' Imax / Imin (cm4) y largo (cm), con el tensor de inercia del solido (vale en cualquier orientacion).
+' Devuelve True si es claramente prismatico (un extremo plano con el area de la seccion).
+Function MedirSeccion(cd As PartComponentDefinition, ByRef A As Double, ByRef imax As Double, ByRef imin As Double, ByRef largo As Double) As Boolean
+    Dim mp As MassProperties = cd.MassProperties
+    Try
+        mp.Accuracy = MassPropertiesAccuracyEnum.k_VeryHigh
+    Catch
+    End Try
+    Dim V As Double = mp.Volume
+    Dim M As Double = mp.Mass
+    If V <= 0 Then Return False
+    Dim ixx As Double, iyy As Double, izz As Double, ixy As Double, iyz As Double, ixz As Double
+    mp.XYZMomentsOfInertia(ixx, iyy, izz, ixy, iyz, ixz)
+    Dim k As Double = If(M > 0, V / M, 1)
+    Dim tr As Double = (ixx + iyy + izz) / 2
+    ' S = integral(r r^T dV) respecto al centro de gravedad
+    Dim S(2, 2) As Double
+    S(0, 0) = (tr - ixx) * k : S(1, 1) = (tr - iyy) * k : S(2, 2) = (tr - izz) * k
+    S(0, 1) = -ixy * k : S(1, 0) = S(0, 1)
+    S(1, 2) = -iyz * k : S(2, 1) = S(1, 2)
+    S(0, 2) = -ixz * k : S(2, 0) = S(0, 2)
+    Dim ev(2) As Double
+    Dim vec(2, 2) As Double
+    Jacobi(S, ev, vec)
+    ' eje del perfil: el eje principal cuyo extremo plano tiene el area V / L
+    Dim mejor As Integer = -1
+    Dim err As Double = 1.0E+99
+    Dim mayor As Integer = 0
+    For c As Integer = 0 To 2
+        If ev(c) > ev(mayor) Then mayor = c
+        If ev(c) <= 0 Then Continue For
+        Dim L As Double = Math.Sqrt(12 * ev(c) / V)
+        Dim af As Double = AreaExtremo(cd, vec(0, c), vec(1, c), vec(2, c))
+        Dim e As Double = If(af > 0, Math.Abs(af / (V / L) - 1), 1)
+        If e < err Then
+            err = e
+            mejor = c
+        End If
+    Next
+    Dim ok As Boolean = (mejor >= 0 AndAlso err <= 0.15)
+    If Not ok Then mejor = mayor
+    largo = Math.Sqrt(12 * ev(mejor) / V)
+    Dim afin As Double = AreaExtremo(cd, vec(0, mejor), vec(1, mejor), vec(2, mejor))
+    A = If(afin > 0 AndAlso Math.Abs(afin / (V / largo) - 1) <= 0.15, afin, V / largo)
+    Dim lef As Double = V / A
+    Dim o1 As Integer = (mejor + 1) Mod 3, o2 As Integer = (mejor + 2) Mod 3
+    imax = Math.Max(ev(o1), ev(o2)) / lef
+    imin = Math.Min(ev(o1), ev(o2)) / lef
+    Return ok
+End Function
+
+' mayor cara plana perpendicular al eje (ux, uy, uz) = extremo del perfil (cm2)
+Function AreaExtremo(cd As PartComponentDefinition, ux As Double, uy As Double, uz As Double) As Double
+    Dim mx As Double = 0
+    Try
+        For Each bd As SurfaceBody In cd.SurfaceBodies
+            For Each f As Face In bd.Faces
+                If f.SurfaceType <> SurfaceTypeEnum.kPlaneSurface Then Continue For
+                Dim nv As UnitVector = CType(f.Geometry, Plane).Normal
+                If Math.Abs(nv.X * ux + nv.Y * uy + nv.Z * uz) < 0.9995 Then Continue For
+                Dim ar As Double = f.Evaluator.Area
+                If ar > mx Then mx = ar
+            Next
+        Next
+    Catch
+    End Try
+    Return mx
+End Function
+
+' valores y vectores propios de una matriz simetrica 3x3 (vectores en columnas)
+Sub Jacobi(a(,) As Double, d() As Double, v(,) As Double)
+    Dim m(2, 2) As Double
+    For i As Integer = 0 To 2
+        For j As Integer = 0 To 2
+            m(i, j) = a(i, j)
+            v(i, j) = If(i = j, 1, 0)
+        Next
+    Next
+    For it As Integer = 1 To 60
+        Dim p As Integer = 0, q As Integer = 1
+        Dim big As Double = Math.Abs(m(0, 1))
+        If Math.Abs(m(0, 2)) > big Then big = Math.Abs(m(0, 2)) : p = 0 : q = 2
+        If Math.Abs(m(1, 2)) > big Then big = Math.Abs(m(1, 2)) : p = 1 : q = 2
+        If big < 1.0E-12 * (Math.Abs(m(0, 0)) + Math.Abs(m(1, 1)) + Math.Abs(m(2, 2)) + 1.0E-30) Then Exit For
+        Dim th As Double = 0.5 * Math.Atan2(2 * m(p, q), m(q, q) - m(p, p))
+        Dim c As Double = Math.Cos(th), s As Double = Math.Sin(th)
+        For kk As Integer = 0 To 2
+            Dim mkp As Double = m(kk, p), mkq As Double = m(kk, q)
+            m(kk, p) = c * mkp - s * mkq
+            m(kk, q) = s * mkp + c * mkq
+        Next
+        For kk As Integer = 0 To 2
+            Dim mpk As Double = m(p, kk), mqk As Double = m(q, kk)
+            m(p, kk) = c * mpk - s * mqk
+            m(q, kk) = s * mpk + c * mqk
+        Next
+        For kk As Integer = 0 To 2
+            Dim vkp As Double = v(kk, p), vkq As Double = v(kk, q)
+            v(kk, p) = c * vkp - s * vkq
+            v(kk, q) = s * vkp + c * vkq
+        Next
+    Next
+    For i As Integer = 0 To 2
+        d(i) = m(i, i)
+    Next
+End Sub
+
+' perfiles del catalogo que coinciden: {des, familia, A, Imax, Imin, puntaje}; puntaje <= 1 = coincide bien
+Function Candidatos(A As Double, i1 As Double, i2 As Double) As List(Of String())
+    Dim res As New List(Of String())
+    Dim cat As List(Of String()) = Catalogo()
+    If cat Is Nothing Then Return res
+    Dim lista As New List(Of KeyValuePair(Of Double, String()))
+    For Each c() As String In cat
+        Dim ca As Double = Num(c(2)), c1 As Double = Num(c(3)), c2 As Double = Num(c(4))
+        If ca <= 0 OrElse c1 <= 0 OrElse c2 <= 0 Then Continue For
+        Dim eA As Double = Math.Abs(A / ca - 1), e1 As Double = Math.Abs(i1 / c1 - 1), e2 As Double = Math.Abs(i2 / c2 - 1)
+        If eA > 0.08 OrElse e1 > 0.08 OrElse e2 > 0.12 Then Continue For
+        Dim sc As Double = Math.Max(Math.Max(eA / 0.03, e1 / 0.03), e2 / 0.05)
+        lista.Add(New KeyValuePair(Of Double, String())(sc, c))
+    Next
+    lista.Sort(Function(x, y) x.Key.CompareTo(y.Key))
+    For Each kv As KeyValuePair(Of Double, String()) In lista
+        ' el mismo perfil en otra norma (mismas propiedades) no se repite
+        Dim igual As Boolean = False
+        For Each r() As String In res
+            If Math.Abs(Num(r(2)) / Num(kv.Value(2)) - 1) < 0.005 AndAlso Math.Abs(Num(r(3)) / Num(kv.Value(3)) - 1) < 0.005 AndAlso Math.Abs(Num(r(4)) / Num(kv.Value(4)) - 1) < 0.01 Then igual = True
+        Next
+        If igual Then Continue For
+        res.Add(New String() {kv.Value(0), kv.Value(1), kv.Value(2), kv.Value(3), kv.Value(4), kv.Key.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)})
+        If res.Count >= 6 Then Exit For
+    Next
+    Return res
+End Function
+
+Function Catalogo() As List(Of String())
+    If catPerfiles IsNot Nothing Then Return catPerfiles
+    Try
+        For Each rd As String In iLogicVb.Automation.FileOptions.ExternalRuleDirectories
+            If Not System.IO.Directory.Exists(rd) Then Continue For
+            For Each f As String In System.IO.Directory.GetFiles(rd, "PERFILES_CATALOGO.csv", System.IO.SearchOption.AllDirectories)
+                If rutaCat = "" Then rutaCat = f
+            Next
+        Next
+    Catch
+    End Try
+    If rutaCat = "" Then Return Nothing
+    catPerfiles = New List(Of String())
+    For Each ln As String In System.IO.File.ReadAllLines(rutaCat, System.Text.Encoding.UTF8)
+        Dim c() As String = ln.Split(";"c)
+        If c.Length >= 5 AndAlso c(0) <> "DESIGNACION" Then catPerfiles.Add(c)
+    Next
+    Return catPerfiles
+End Function
+
+Function BuscarEnCatalogo(des As String) As String()
+    Dim cat As List(Of String()) = Catalogo()
+    If cat Is Nothing Then Return Nothing
+    Dim k As String = ClavePerfil(des)
+    For Each c() As String In cat
+        If ClavePerfil(c(0)) = k Then Return c
+    Next
+    Return Nothing
+End Function
+
+Function Num(s As String) As Double
+    Dim v As Double = 0
+    Double.TryParse(s.Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, v)
+    Return v
+End Function
+
+Function ClavePerfil(s As String) As String
+    Return s.ToUpper().Replace(" ", "").Replace("*", "X").Replace("-", "")
+End Function
+
+Function TxtSec(A As Double, i1 As Double, i2 As Double) As String
+    Return "A " & A.ToString("0.0") & " cm2   Imax " & i1.ToString("0") & " cm4   Imin " & i2.ToString("0.0") & " cm4"
+End Function
+
+Function Dif(medido As Double, cat As Double) As String
+    If cat <= 0 Then Return "?"
+    Dim v As Double = Math.Round((medido / cat - 1) * 100, 1)
+    If v = 0 Then Return "0.0%"
+    Return v.ToString("+0.0;-0.0", System.Globalization.CultureInfo.InvariantCulture) & "%"
+End Function
+
+' Designacion del perfil: propone el del catalogo que coincide con el area neta e inercias del
+' cuerpo; si no hay ninguno avisa y pide referenciarlo; si lo escrito no coincide con el cuerpo, avisa.
+' estado = CATALOGO / ELEGIDO / MANUAL-NO EN CATALOGO / MANUAL-NO COINCIDE / SIN MEDIR
+Function ElegirPerfil(cuerpo As String, A As Double, i1 As Double, i2 As Double, prismatico As Boolean, cands As List(Of String()), ByRef estado As String) As String
+    Dim des As String = Arg("perfil")
+    Dim medido As String = TxtSec(A, i1, i2)
+    Dim exacto As Boolean = cands.Count > 0 AndAlso Num(cands(0)(5)) <= 1
+    If silencioso Then
+        If des = "" AndAlso exacto Then
+            estado = "CATALOGO"
+            Return cands(0)(0)
+        End If
+        estado = If(des = "", "", "MANUAL")
+        Return des
+    End If
+    If Catalogo() Is Nothing Then
+        MessageBox.Show("No hay catalogo de perfiles (PERFILES_CATALOGO.csv)." & vbCrLf & "Ejecuta una vez CATALOGO_PERFILES (menu 6) para reconocer los perfiles por area e inercias." & vbCrLf & vbCrLf & "Por ahora escribe la designacion a mano.", "EXTRAER_PIEZA")
+    End If
+    Do
+        If des = "" Then
+            If exacto AndAlso (cands.Count = 1 OrElse Num(cands(1)(5)) > 1) Then
+                ' uno solo coincide: confirmar
+                Dim c() As String = cands(0)
+                des = InputBox("Cuerpo " & cuerpo & ": RECONOCIDO por area neta e inercias" & vbCrLf & vbCrLf & _
+                    "   " & c(0) & "   (" & c(1) & ")" & vbCrLf & _
+                    "   cuerpo:   " & medido & vbCrLf & _
+                    "   catalogo: " & TxtSec(Num(c(2)), Num(c(3)), Num(c(4))) & vbCrLf & vbCrLf & _
+                    "Enter = aceptar, o escribe otra designacion:", "EXTRAER_PIEZA - perfil", c(0))
+                If des Is Nothing OrElse des.Trim() = "" Then
+                    estado = ""
+                    Return ""
+                End If
+                If ClavePerfil(des) = ClavePerfil(c(0)) Then
+                    estado = "CATALOGO"
+                    Return c(0)
+                End If
+            ElseIf cands.Count > 0 Then
+                ' varios parecidos o aproximado: elegir
+                Dim ls As New List(Of String)
+                For Each c() As String In cands
+                    ls.Add(c(0) & "   A " & Dif(A, Num(c(2))) & "  Imax " & Dif(i1, Num(c(3))) & "  Imin " & Dif(i2, Num(c(4))) & "   (" & c(1) & ")")
+                Next
+                ls.Add("OTRO - escribir la designacion")
+                Dim r As String = InputListBox("Cuerpo " & cuerpo & ": " & medido & vbCrLf & _
+                    If(exacto, "Varios perfiles coinciden.", "Ningun perfil coincide exacto; los mas parecidos (diferencia del cuerpo vs catalogo):") & vbCrLf & "Elige el correcto:", ls, ls(0), "EXTRAER_PIEZA - perfil", "Perfil")
+                If r Is Nothing OrElse r = "" Then
+                    estado = ""
+                    Return ""
+                End If
+                If Not r.StartsWith("OTRO") Then
+                    estado = If(exacto, "CATALOGO", "ELEGIDO")
+                    Return cands(ls.IndexOf(r))(0)
+                End If
+                des = InputBox("Cuerpo " & cuerpo & ": " & medido & vbCrLf & vbCrLf & "Designacion del perfil:", "EXTRAER_PIEZA - perfil", ultimoPerfil)
+            Else
+                ' ninguno: alerta y pedir referencia
+                Dim msg As String = If(prismatico, "No se encontro en el catalogo un perfil con esta seccion:", "El cuerpo no tiene seccion constante clara (cortes, destajes o no es un perfil):")
+                MessageBox.Show("Cuerpo " & cuerpo & vbCrLf & msg & vbCrLf & "   " & medido & vbCrLf & vbCrLf & _
+                    "Referencia tu el perfil (plano, lista de materiales del STEP) en el siguiente cuadro." & vbCrLf & _
+                    "Si es de una norma que no esta en el catalogo, agregala con CATALOGO_PERFILES.", "EXTRAER_PIEZA - perfil NO reconocido", MessageBoxButtons.OK, MessageBoxIcon.Warning)
+                des = InputBox("Cuerpo " & cuerpo & ": " & medido & vbCrLf & vbCrLf & "Designacion del perfil (W18x50, C10x15.3, L4x4x1/2, HSS6x6x1/4...):", "EXTRAER_PIEZA - perfil", ultimoPerfil)
+            End If
+            If des Is Nothing OrElse des.Trim() = "" Then
+                estado = ""
+                Return ""
+            End If
+        End If
+        des = des.Trim()
+        ' comprobar lo escrito contra el cuerpo
+        Dim cc() As String = BuscarEnCatalogo(des)
+        If cc Is Nothing Then
+            If MessageBox.Show("'" & des & "' no esta en el catalogo de perfiles, no puedo comprobar que corresponda al cuerpo." & vbCrLf & "   cuerpo: " & medido & vbCrLf & vbCrLf & "Guardar igual?", "EXTRAER_PIEZA - perfil", MessageBoxButtons.YesNo, MessageBoxIcon.Question) = DialogResult.Yes Then
+                estado = "MANUAL-NO EN CATALOGO"
+                Return des
+            End If
+        Else
+            Dim eA As Double = Math.Abs(A / Num(cc(2)) - 1), e1 As Double = Math.Abs(i1 / Num(cc(3)) - 1), e2 As Double = Math.Abs(i2 / Num(cc(4)) - 1)
+            If A <= 0 OrElse (eA <= 0.08 AndAlso e1 <= 0.08 AndAlso e2 <= 0.12) Then
+                estado = If(A <= 0, "SIN MEDIR", "CATALOGO")
+                Return cc(0)
+            End If
+            If MessageBox.Show("OJO: " & cc(0) & " NO coincide con el cuerpo " & cuerpo & ":" & vbCrLf & vbCrLf & _
+                "   cuerpo:   " & medido & vbCrLf & "   " & cc(0) & ": " & TxtSec(Num(cc(2)), Num(cc(3)), Num(cc(4))) & vbCrLf & _
+                "   diferencia: A " & Dif(A, Num(cc(2))) & "   Imax " & Dif(i1, Num(cc(3))) & "   Imin " & Dif(i2, Num(cc(4))) & vbCrLf & vbCrLf & _
+                "Guardar igual?  (No = volver a elegir)", "EXTRAER_PIEZA - perfil", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) = DialogResult.Yes Then
+                estado = "MANUAL-NO COINCIDE"
+                Return cc(0)
+            End If
+        End If
+        des = ""
+        exacto = False
+    Loop
+End Function
+
+' Espesor (mm) si el cuerpo es una plancha: las 2 caras planas mas grandes son paralelas y
+' opuestas, y volumen = area x espesor (5 %). Si no, 0.
+Function EspesorPlancha(b As SurfaceBody) As Double
+    Try
+        Dim f1 As Face = Nothing
+        Dim a1 As Double = 0
+        For Each f As Face In b.Faces
+            If f.SurfaceType = SurfaceTypeEnum.kPlaneSurface AndAlso f.Evaluator.Area > a1 Then
+                a1 = f.Evaluator.Area
+                f1 = f
+            End If
+        Next
+        If f1 Is Nothing Then Return 0
+        Dim p1 As Plane = CType(f1.Geometry, Plane)
+        Dim n1 As UnitVector = p1.Normal
+        Dim mejor As Double = 0
+        For Each f As Face In b.Faces
+            If f Is f1 OrElse f.SurfaceType <> SurfaceTypeEnum.kPlaneSurface Then Continue For
+            If f.Evaluator.Area < 0.8 * a1 Then Continue For
+            Dim p2 As Plane = CType(f.Geometry, Plane)
+            Dim dotv As Double = n1.X * p2.Normal.X + n1.Y * p2.Normal.Y + n1.Z * p2.Normal.Z
+            If Math.Abs(Math.Abs(dotv) - 1) > 0.0001 Then Continue For
+            Dim d As Double = Math.Abs((p2.RootPoint.X - p1.RootPoint.X) * n1.X + (p2.RootPoint.Y - p1.RootPoint.Y) * n1.Y + (p2.RootPoint.Z - p1.RootPoint.Z) * n1.Z)
+            If d > 0.00001 Then mejor = d
+        Next
+        If mejor = 0 Then Return 0
+        Dim v As Double = b.Volume(0.001)
+        If Math.Abs(v - a1 * mejor) > 0.05 * v Then Return 0
+        ' una plancha es delgada respecto a su cara (un bloque o un perfil macizo no)
+        If mejor > 0.25 * Math.Sqrt(a1) Then Return 0
+        Dim mm As Double = Math.Round(mejor * 10, 1)
+        If mm > 75 Then Return 0
+        Return mm
+    Catch
+        Return 0
+    End Try
+End Function
+
+' Cuerpos ya extraidos en este conjunto: <archivo STEP>|<cuerpo> -> pieza
+Function YaExtraidos(destino As AssemblyDocument) As Dictionary(Of String, String)
+    Dim r As New Dictionary(Of String, String)
+    For Each oc As ComponentOccurrence In destino.ComponentDefinition.Occurrences
+        Try
+            Dim d As Document = oc.Definition.Document
+            If UProp(d, "MODO_ASOCIACION") <> "STEP" Then Continue For
+            Dim pd As PartDocument = CType(d, PartDocument)
+            Dim f As String = pd.ComponentDefinition.ReferenceComponents.DerivedPartComponents.Item(1).ReferencedDocumentDescriptor.FullDocumentName
+            r(f.ToLower() & "|" & UProp(d, "CUERPO_ORIGEN").ToLower()) = System.IO.Path.GetFileName(d.FullFileName)
+        Catch
+        End Try
+    Next
+    Return r
+End Function
+
+Function RutaRel(f As String, base As String) As String
+    Dim obra As String = CarpetaObra(base)
+    If obra <> "" AndAlso f.ToLower().StartsWith(obra.ToLower() & "\") Then Return f.Substring(obra.Length + 1)
+    Return f
+End Function
+
+Sub AsignarMaterial(p As PartDocument, nombre As String)
+    Dim espanol As New Dictionary(Of String, String)
+    espanol("Steel") = "Acero"
+    espanol("Stainless Steel") = "Acero inoxidable"
+    Dim biblio As AssetLibrary = ThisApplication.ActiveMaterialLibrary
+    For Each nm As String In New String() {nombre, If(espanol.ContainsKey(nombre), espanol(nombre), nombre)}
+        Try
+            p.ActiveMaterial = biblio.MaterialAssets.Item(nm)
+            Exit Sub
+        Catch
+        End Try
+    Next
+End Sub
+
+Function BuscarPlantilla(nombre As String) As String
+    Dim raiz As String = ThisApplication.FileOptions.TemplatesPath
+    Try
+        Dim tp As String = ThisApplication.DesignProjectManager.ActiveDesignProject.TemplatesPath
+        If tp <> "" AndAlso System.IO.Directory.Exists(tp) AndAlso System.IO.Directory.GetFiles(tp, nombre, System.IO.SearchOption.AllDirectories).Length > 0 Then raiz = tp
+    Catch
+    End Try
+    Try
+        For Each f As String In System.IO.Directory.GetFiles(raiz, nombre, System.IO.SearchOption.AllDirectories)
+            Return f
+        Next
+        For Each f As String In System.IO.Directory.GetFiles(raiz, If(nombre.StartsWith("Sheet"), "Sheet Metal*.ipt", "Standard*.ipt"), System.IO.SearchOption.AllDirectories)
+            Return f
+        Next
+    Catch
+    End Try
+    Return ThisApplication.FileManager.GetTemplateFile(DocumentTypeEnum.kPartDocumentObject)
+End Function
+
+Function BuscarOcc(occs As Object, nom As String) As ComponentOccurrence
+    For Each o As ComponentOccurrence In occs
+        Dim f As String = ""
+        Try
+            f = System.IO.Path.GetFileName(o.Definition.Document.FullFileName).ToLower()
+        Catch
+        End Try
+        If o.Name.ToLower() = nom OrElse f = nom OrElse System.IO.Path.GetFileNameWithoutExtension(f) = nom Then Return o
+        If o.DefinitionDocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+            Dim r As ComponentOccurrence = BuscarOcc(o.SubOccurrences, nom)
+            If r IsNot Nothing Then Return r
+        End If
+    Next
+    Return Nothing
+End Function
+
+Function Abierto(ruta As String) As Boolean
+    For Each x As Document In ThisApplication.Documents
+        If x.FullFileName.ToLower() = ruta.ToLower() Then Return True
+    Next
+    Return False
+End Function
+
+Function EsGeneral(d As Document) As Boolean
+    If UProp(d, "TIPO_ENSAMBLE").ToUpper() = "GENERAL" Then Return True
+    Return NomSin(d).ToUpper().EndsWith("-GENERAL")
+End Function
+
+Function CarpetaObra(ruta As String) As String
+    Dim x As String = System.IO.Path.GetDirectoryName(ruta)
+    For i As Integer = 0 To 8
+        If x Is Nothing OrElse x = "" Then Exit For
+        If System.IO.File.Exists(System.IO.Path.Combine(x, "_OBRA.txt")) Then Return x
+        x = System.IO.Path.GetDirectoryName(x)
+    Next
+    Return ""
+End Function
+
+Function CarpetaHija(d As Document) As String
+    Dim dir As String = System.IO.Path.GetDirectoryName(d.FullFileName)
+    Dim nom As String = System.IO.Path.GetFileNameWithoutExtension(d.FullFileName)
+    If UProp(d, "TIPO_ENSAMBLE").ToUpper() = "PLANTA" AndAlso System.IO.Path.GetFileName(dir).ToUpper() = nom.ToUpper() Then Return dir
+    Return System.IO.Path.Combine(dir, nom)
+End Function
+
+Function NomSin(d As Document) As String
+    Return System.IO.Path.GetFileNameWithoutExtension(d.FullFileName)
+End Function
+
+Function Arg(n As String) As String
+    Try
+        If RuleArguments.Exists(n) Then Return CStr(RuleArguments.Value(n))
+    Catch
+    End Try
+    Return ""
+End Function
+
+Function UProp(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Inventor User Defined Properties").Item(n).Value).Trim()
+    Catch
+    End Try
+    Return ""
+End Function
+
+Sub EscribirProp(d As Document, n As String, v As String)
+    Dim ps As PropertySet = d.PropertySets.Item("Inventor User Defined Properties")
+    Try
+        ps.Item(n).Value = v
+    Catch
+        ps.Add(v, n)
+    End Try
+End Sub
+
+' Desarrollo de chapa con la cara A en la cara plana MAYOR. Una chapa hecha desde un solido
+' (STEP, derivada) a veces se desarrolla "de canto" (ancho = espesor): aqui se rehace.
+' Devuelve True si hay desarrollo valido.
+Function DesarrolloBien(sm As SheetMetalComponentDefinition) As Boolean
+    Try
+        Dim t As Double = sm.Thickness.Value
+        If sm.HasFlatPattern Then
+            Dim w As Double = Math.Min(sm.FlatPattern.Length, sm.FlatPattern.Width)
+            If w > 1.5 * t Then Return True
+            sm.FlatPattern.Delete()
+        End If
+        Dim big As Face = Nothing
+        Dim a As Double = 0
+        For Each f As Face In sm.SurfaceBodies.Item(1).Faces
+            If f.SurfaceType = SurfaceTypeEnum.kPlaneSurface AndAlso f.Evaluator.Area > a Then
+                a = f.Evaluator.Area
+                big = f
+            End If
+        Next
+        If big IsNot Nothing Then
+            For i As Integer = sm.ASideDefinitions.Count To 1 Step -1
+                Try : sm.ASideDefinitions.Item(i).Delete() : Catch : End Try
+            Next
+            Try : sm.ASideDefinitions.Add(big) : Catch : End Try
+        End If
+        sm.Unfold()
+        Try : sm.FlatPattern.ExitEdit() : Catch : End Try
+        Return sm.HasFlatPattern
+    Catch
+        Return False
+    End Try
+End Function
+
+' ===================== v1.6: reconocimiento de piezas identicas =====================
+Class Geo
+    Public Ok As Boolean
+    Public Vol As Double
+    Public NV As Integer
+    Public NC As Integer
+    Public P As New List(Of Double())      ' x, y, z, r  (r = 0 vertice; r > 0 centro de agujero/arco con ese radio)
+    Public C As Double()                   ' centroide de los puntos
+    Public I0 As Integer
+    Public I1 As Integer
+    Public D0 As Double
+    Public D1 As Double
+    Public D01 As Double
+    Public M As Double()()                 ' marco ortonormal derecho (e1, e2, e3)
+End Class
+
+Function K3(x As Double, y As Double, z As Double) As String
+    Dim ci As System.Globalization.CultureInfo = System.Globalization.CultureInfo.InvariantCulture
+    Return Math.Round(x, 3).ToString(ci) & "|" & Math.Round(y, 3).ToString(ci) & "|" & Math.Round(z, 3).ToString(ci)
+End Function
+
+' Puntos caracteristicos del cuerpo: vertices (sin la costura de los circulos) + centros de circulos/arcos con su radio.
+Function GeoDe(b As SurfaceBody) As Geo
+    Dim g As New Geo
+    g.Ok = False
+    Try
+        g.Vol = CDbl(b.Volume(0.001))
+        Dim cuenta As New Dictionary(Of String, Integer)
+        Dim circ As New Dictionary(Of String, Double())
+        Dim ed As New List(Of String())          ' {clave circulo, completo, vertice ini, vertice fin}
+        For Each e As Edge In b.Edges
+            Dim ct As CurveTypeEnum = e.GeometryType
+            If ct = CurveTypeEnum.kCircleCurve OrElse ct = CurveTypeEnum.kCircularArcCurve Then
+                Dim gm As Object = e.Geometry
+                Dim cx As Double = CDbl(gm.Center.X), cy As Double = CDbl(gm.Center.Y), cz As Double = CDbl(gm.Center.Z), rr As Double = CDbl(gm.Radius)
+                Dim key As String = K3(cx, cy, cz) & "|" & Math.Round(rr, 3).ToString(System.Globalization.CultureInfo.InvariantCulture)
+                If cuenta.ContainsKey(key) Then
+                    cuenta(key) += 1
+                Else
+                    cuenta(key) = 1
+                    circ(key) = New Double() {cx, cy, cz, rr}
+                End If
+                Dim k1 As String = "", k2 As String = ""
+                Try
+                    k1 = K3(e.StartVertex.Point.X, e.StartVertex.Point.Y, e.StartVertex.Point.Z)
+                    k2 = K3(e.StopVertex.Point.X, e.StopVertex.Point.Y, e.StopVertex.Point.Z)
+                Catch
+                End Try
+                ed.Add(New String() {key, If(ct = CurveTypeEnum.kCircleCurve, "1", "0"), k1, k2})
+            End If
+        Next
+        Dim excl As New HashSet(Of String)
+        For Each x As String() In ed
+            If x(1) = "1" OrElse cuenta(x(0)) >= 2 Then
+                If x(2) <> "" Then excl.Add(x(2))
+                If x(3) <> "" Then excl.Add(x(3))
+            End If
+        Next
+        For Each v As Vertex In b.Vertices
+            Dim pt As Object = v.Point
+            If Not excl.Contains(K3(CDbl(pt.X), CDbl(pt.Y), CDbl(pt.Z))) Then
+                g.P.Add(New Double() {CDbl(pt.X), CDbl(pt.Y), CDbl(pt.Z), 0})
+                g.NV += 1
+            End If
+        Next
+        For Each kv As KeyValuePair(Of String, Double()) In circ
+            g.P.Add(kv.Value)
+            g.NC += 1
+        Next
+        Dim n As Integer = g.P.Count
+        If n < 3 OrElse n > 300 Then Return g
+        Dim c(2) As Double
+        For Each q As Double() In g.P
+            c(0) += q(0) / n : c(1) += q(1) / n : c(2) += q(2) / n
+        Next
+        g.C = c
+        Dim d0 As Double = -1
+        For i As Integer = 0 To n - 1
+            Dim d As Double = Dst(g.P(i), c)
+            If d > d0 Then d0 = d : g.I0 = i
+        Next
+        g.D0 = d0
+        If d0 < 0.05 Then Return g
+        Dim e1() As Double = {(g.P(g.I0)(0) - c(0)) / d0, (g.P(g.I0)(1) - c(1)) / d0, (g.P(g.I0)(2) - c(2)) / d0}
+        Dim best As Double = -1
+        For i As Integer = 0 To n - 1
+            Dim w() As Double = {g.P(i)(0) - c(0), g.P(i)(1) - c(1), g.P(i)(2) - c(2)}
+            Dim dt As Double = w(0) * e1(0) + w(1) * e1(1) + w(2) * e1(2)
+            Dim perp As Double = Math.Sqrt(Math.Max(0, w(0) * w(0) + w(1) * w(1) + w(2) * w(2) - dt * dt))
+            If perp > best Then best = perp : g.I1 = i
+        Next
+        If best < 0.05 Then Return g
+        g.D1 = Dst(g.P(g.I1), c)
+        g.D01 = Dst(g.P(g.I1), g.P(g.I0))
+        g.M = Marco(c, g.P(g.I0), g.P(g.I1))
+        g.Ok = (g.M IsNot Nothing)
+    Catch
+        g.Ok = False
+    End Try
+    Return g
+End Function
+
+Function Dst(a As Double(), c As Double()) As Double
+    Return Math.Sqrt((a(0) - c(0)) ^ 2 + (a(1) - c(1)) ^ 2 + (a(2) - c(2)) ^ 2)
+End Function
+
+Function Marco(c As Double(), p0 As Double(), p1 As Double()) As Double()()
+    Dim e1() As Double = {p0(0) - c(0), p0(1) - c(1), p0(2) - c(2)}
+    Dim l1 As Double = Math.Sqrt(e1(0) ^ 2 + e1(1) ^ 2 + e1(2) ^ 2)
+    If l1 < 0.000000001 Then Return Nothing
+    e1(0) /= l1 : e1(1) /= l1 : e1(2) /= l1
+    Dim w() As Double = {p1(0) - c(0), p1(1) - c(1), p1(2) - c(2)}
+    Dim dt As Double = w(0) * e1(0) + w(1) * e1(1) + w(2) * e1(2)
+    w(0) -= dt * e1(0) : w(1) -= dt * e1(1) : w(2) -= dt * e1(2)
+    Dim l2 As Double = Math.Sqrt(w(0) ^ 2 + w(1) ^ 2 + w(2) ^ 2)
+    If l2 < 0.02 Then Return Nothing
+    w(0) /= l2 : w(1) /= l2 : w(2) /= l2
+    Dim e3() As Double = {e1(1) * w(2) - e1(2) * w(1), e1(2) * w(0) - e1(0) * w(2), e1(0) * w(1) - e1(1) * w(0)}
+    Return New Double()() {e1, w, e3}
+End Function
+
+' Si el cuerpo b es el cuerpo a girado y movido (NO reflejado): devuelve R (9, por filas) y t (3) con  xb = R xa + t,
+' con todos los puntos a <= 1 mm (0.1 cm) y radios a <= 0.5 mm. Si no, Nothing.
+Function Igualar(a As Geo, b As Geo) As Double()
+    If Not a.Ok OrElse Not b.Ok Then Return Nothing
+    If a.NV <> b.NV OrElse a.NC <> b.NC Then Return Nothing
+    If Math.Abs(a.Vol - b.Vol) > 0.005 * Math.Max(a.Vol, b.Vol) + 0.000001 Then Return Nothing
+    Dim p0() As Double = a.P(a.I0)
+    Dim p1() As Double = a.P(a.I1)
+    For j0 As Integer = 0 To b.P.Count - 1
+        Dim q0() As Double = b.P(j0)
+        If Math.Abs(q0(3) - p0(3)) > 0.05 Then Continue For
+        If Math.Abs(Dst(q0, b.C) - a.D0) > 0.05 Then Continue For
+        For j1 As Integer = 0 To b.P.Count - 1
+            If j1 = j0 Then Continue For
+            Dim q1() As Double = b.P(j1)
+            If Math.Abs(q1(3) - p1(3)) > 0.05 Then Continue For
+            If Math.Abs(Dst(q1, b.C) - a.D1) > 0.05 Then Continue For
+            If Math.Abs(Dst(q1, q0) - a.D01) > 0.05 Then Continue For
+            Dim fb As Double()() = Marco(b.C, q0, q1)
+            If fb Is Nothing Then Continue For
+            Dim r(8) As Double
+            For i As Integer = 0 To 2
+                For j As Integer = 0 To 2
+                    r(i * 3 + j) = fb(0)(i) * a.M(0)(j) + fb(1)(i) * a.M(1)(j) + fb(2)(i) * a.M(2)(j)
+                Next
+            Next
+            Dim res() As Double = Comprobar(a, b, r)
+            If res IsNot Nothing Then Return res
+        Next
+    Next
+    Return Nothing
+End Function
+
+' Comprueba todos los puntos; si pasa, afina el giro con todos los puntos emparejados (descomposicion polar)
+Function Comprobar(a As Geo, b As Geo, r As Double()) As Double()
+    Dim t() As Double = TrasladoDe(a, b, r)
+    Dim par As List(Of Integer) = Emparejar(a, b, r, t, 0.1)
+    If par Is Nothing Then Return Nothing
+    Try
+        Dim n As Integer = a.P.Count
+        Dim ma(2) As Double, mb(2) As Double
+        For i As Integer = 0 To n - 1
+            For k As Integer = 0 To 2
+                ma(k) += a.P(i)(k) / n
+                mb(k) += b.P(par(i))(k) / n
+            Next
+        Next
+        Dim h(2, 2) As Double
+        For i As Integer = 0 To n - 1
+            For r1 As Integer = 0 To 2
+                For c1 As Integer = 0 To 2
+                    h(r1, c1) += (b.P(par(i))(r1) - mb(r1)) * (a.P(i)(c1) - ma(c1))
+                Next
+            Next
+        Next
+        Dim x(2, 2) As Double
+        For i As Integer = 0 To 2
+            For j As Integer = 0 To 2
+                x(i, j) = h(i, j)
+            Next
+        Next
+        Dim ok As Boolean = True
+        For it As Integer = 1 To 30
+            Dim inv(2, 2) As Double
+            If Not Inv3(x, inv) Then ok = False : Exit For
+            For i As Integer = 0 To 2
+                For j As Integer = 0 To 2
+                    x(i, j) = 0.5 * (x(i, j) + inv(j, i))
+                Next
+            Next
+        Next
+        If ok Then
+            Dim r2(8) As Double
+            For i As Integer = 0 To 2
+                For j As Integer = 0 To 2
+                    r2(i * 3 + j) = x(i, j)
+                Next
+            Next
+            Dim t2() As Double = {mb(0) - (r2(0) * ma(0) + r2(1) * ma(1) + r2(2) * ma(2)), mb(1) - (r2(3) * ma(0) + r2(4) * ma(1) + r2(5) * ma(2)), mb(2) - (r2(6) * ma(0) + r2(7) * ma(1) + r2(8) * ma(2))}
+            If Emparejar(a, b, r2, t2, 0.1) IsNot Nothing Then
+                Return New Double() {r2(0), r2(1), r2(2), r2(3), r2(4), r2(5), r2(6), r2(7), r2(8), t2(0), t2(1), t2(2)}
+            End If
+        End If
+    Catch
+    End Try
+    Return New Double() {r(0), r(1), r(2), r(3), r(4), r(5), r(6), r(7), r(8), t(0), t(1), t(2)}
+End Function
+
+Function TrasladoDe(a As Geo, b As Geo, r As Double()) As Double()
+    Return New Double() {b.C(0) - (r(0) * a.C(0) + r(1) * a.C(1) + r(2) * a.C(2)), b.C(1) - (r(3) * a.C(0) + r(4) * a.C(1) + r(5) * a.C(2)), b.C(2) - (r(6) * a.C(0) + r(7) * a.C(1) + r(8) * a.C(2))}
+End Function
+
+' Cada punto de a (movido) debe caer sobre un punto distinto de b, del mismo tipo y radio. Devuelve los indices de b.
+Function Emparejar(a As Geo, b As Geo, r As Double(), t As Double(), tol As Double) As List(Of Integer)
+    Dim usado(b.P.Count - 1) As Boolean
+    Dim res As New List(Of Integer)
+    For i As Integer = 0 To a.P.Count - 1
+        Dim x As Double() = a.P(i)
+        Dim px As Double = r(0) * x(0) + r(1) * x(1) + r(2) * x(2) + t(0)
+        Dim py As Double = r(3) * x(0) + r(4) * x(1) + r(5) * x(2) + t(1)
+        Dim pz As Double = r(6) * x(0) + r(7) * x(1) + r(8) * x(2) + t(2)
+        Dim mejor As Integer = -1
+        Dim dm As Double = tol
+        For j As Integer = 0 To b.P.Count - 1
+            If usado(j) Then Continue For
+            If Math.Abs(b.P(j)(3) - x(3)) > 0.05 Then Continue For
+            Dim d As Double = Math.Sqrt((b.P(j)(0) - px) ^ 2 + (b.P(j)(1) - py) ^ 2 + (b.P(j)(2) - pz) ^ 2)
+            If d <= dm Then dm = d : mejor = j
+        Next
+        If mejor < 0 Then Return Nothing
+        usado(mejor) = True
+        res.Add(mejor)
+    Next
+    Return res
+End Function
+
+Function Inv3(m As Double(,), inv As Double(,)) As Boolean
+    Dim det As Double = m(0, 0) * (m(1, 1) * m(2, 2) - m(1, 2) * m(2, 1)) - m(0, 1) * (m(1, 0) * m(2, 2) - m(1, 2) * m(2, 0)) + m(0, 2) * (m(1, 0) * m(2, 1) - m(1, 1) * m(2, 0))
+    If Math.Abs(det) < 0.000000000001 Then Return False
+    inv(0, 0) = (m(1, 1) * m(2, 2) - m(1, 2) * m(2, 1)) / det
+    inv(0, 1) = (m(0, 2) * m(2, 1) - m(0, 1) * m(2, 2)) / det
+    inv(0, 2) = (m(0, 1) * m(1, 2) - m(0, 2) * m(1, 1)) / det
+    inv(1, 0) = (m(1, 2) * m(2, 0) - m(1, 0) * m(2, 2)) / det
+    inv(1, 1) = (m(0, 0) * m(2, 2) - m(0, 2) * m(2, 0)) / det
+    inv(1, 2) = (m(0, 2) * m(1, 0) - m(0, 0) * m(1, 2)) / det
+    inv(2, 0) = (m(1, 0) * m(2, 1) - m(1, 1) * m(2, 0)) / det
+    inv(2, 1) = (m(0, 1) * m(2, 0) - m(0, 0) * m(2, 1)) / det
+    inv(2, 2) = (m(0, 0) * m(1, 1) - m(0, 1) * m(1, 0)) / det
+    Return True
+End Function
+
+Function YaRutas(destino As AssemblyDocument) As Dictionary(Of String, String)
+    Dim r As New Dictionary(Of String, String)
+    For Each oc As ComponentOccurrence In destino.ComponentDefinition.Occurrences
+        Try
+            Dim d As Document = oc.Definition.Document
+            If UProp(d, "MODO_ASOCIACION") <> "STEP" Then Continue For
+            Dim pd As PartDocument = CType(d, PartDocument)
+            Dim f As String = pd.ComponentDefinition.ReferenceComponents.DerivedPartComponents.Item(1).ReferencedDocumentDescriptor.FullDocumentName
+            r(f.ToLower() & "|" & UProp(d, "CUERPO_ORIGEN").ToLower()) = d.FullFileName
+        Catch
+        End Try
+    Next
+    Return r
+End Function
+
+' Agrupa los cuerpos identicos. Llena maestro (indice del cuerpo maestro de la tanda), extRuta (ipt ya extraido) y rts.
+' Devuelve el resumen ("" si no hay repeticiones).
+Function Agrupar(destino As AssemblyDocument, cuerpos As List(Of SurfaceBody), occs As List(Of ComponentOccurrence), ya As Dictionary(Of String, String), maestro As List(Of Integer), rts As List(Of Double()), extRuta As List(Of String)) As String
+    Dim nc As Integer = cuerpos.Count
+    Dim geos As New List(Of Geo)
+    Dim clavesNuevas As New HashSet(Of String)
+    For i As Integer = 0 To nc - 1
+        geos.Add(GeoDe(cuerpos(i)))
+        clavesNuevas.Add(occs(i).Definition.Document.FullFileName.ToLower() & "|" & cuerpos(i).Name.ToLower())
+    Next
+    ' piezas ya extraidas de los mismos STEP
+    Dim exist As New List(Of Geo)
+    Dim existRuta As New List(Of String)
+    Try
+        Dim docs As New Dictionary(Of String, PartDocument)
+        For i As Integer = 0 To nc - 1
+            docs(occs(i).Definition.Document.FullFileName.ToLower()) = CType(occs(i).Definition.Document, PartDocument)
+        Next
+        For Each kv As KeyValuePair(Of String, String) In YaRutas(destino)
+            If clavesNuevas.Contains(kv.Key) Then Continue For
+            Dim bar As Integer = kv.Key.LastIndexOf("|"c)
+            Dim f As String = kv.Key.Substring(0, bar)
+            Dim bn As String = kv.Key.Substring(bar + 1)
+            If Not docs.ContainsKey(f) Then Continue For
+            For Each sb As SurfaceBody In docs(f).ComponentDefinition.SurfaceBodies
+                If sb.Name.ToLower() = bn Then
+                    Dim g As Geo = GeoDe(sb)
+                    If g.Ok Then
+                        exist.Add(g)
+                        existRuta.Add(kv.Value)
+                    End If
+                    Exit For
+                End If
+            Next
+        Next
+    Catch
+    End Try
+    Dim nProp As Integer = 0, nPrevias As Integer = 0
+    For i As Integer = 0 To nc - 1
+        If Not geos(i).Ok Then Continue For
+        Dim r() As Double = Nothing
+        For e As Integer = 0 To exist.Count - 1
+            r = Igualar(exist(e), geos(i))
+            If r IsNot Nothing Then
+                extRuta(i) = existRuta(e)
+                rts(i) = r
+                nPrevias += 1
+                Exit For
+            End If
+        Next
+        If r IsNot Nothing Then Continue For
+        For k As Integer = 0 To i - 1
+            If maestro(k) >= 0 OrElse extRuta(k) <> "" OrElse Not geos(k).Ok Then Continue For
+            r = Igualar(geos(k), geos(i))
+            If r IsNot Nothing Then
+                maestro(i) = k
+                rts(i) = r
+                nProp += 1
+                Exit For
+            End If
+        Next
+    Next
+    If nProp + nPrevias = 0 Then Return ""
+    Return nc & " cuerpos -> " & (nc - nProp - nPrevias) & " piezas nuevas distintas (" & nProp & " repeticiones dentro de la tanda, " & nPrevias & " iguales a piezas ya extraidas)."
+End Function
+
+' Coloca otra ocurrencia del ipt maestro en la posicion de este cuerpo del STEP
+Function InsertarCopia(destino As AssemblyDocument, occDestino As ComponentOccurrence, ruta As String, oc As ComponentOccurrence, rt As Double(), nombreCuerpo As String) As String
+    Dim tg As TransientGeometry = ThisApplication.TransientGeometry
+    Dim rm As Matrix = tg.CreateMatrix()
+    rm.SetCoordinateSystem(tg.CreatePoint(rt(9), rt(10), rt(11)), tg.CreateVector(rt(0), rt(3), rt(6)), tg.CreateVector(rt(1), rt(4), rt(7)), tg.CreateVector(rt(2), rt(5), rt(8)))
+    Dim m As Matrix = oc.Transformation.Copy()
+    m.PostMultiplyBy(rm)
+    If occDestino IsNot Nothing Then
+        Dim inv As Matrix = occDestino.Transformation.Copy()
+        inv.Invert()
+        inv.PostMultiplyBy(m)
+        m = inv
+    End If
+    Dim lugar As String = ""
+    Try
+        Dim nueva As ComponentOccurrence = destino.ComponentDefinition.Occurrences.Add(ruta, m)
+        Try : nueva.Grounded = True : Catch : End Try
+    Catch ex As Exception
+        lugar = "  (no se pudo insertar: " & ex.Message & ")"
+    End Try
+    Return "  " & nombreCuerpo & "  ->  " & System.IO.Path.GetFileName(ruta) & "   (repeticion, mismo ipt)" & lugar
+End Function

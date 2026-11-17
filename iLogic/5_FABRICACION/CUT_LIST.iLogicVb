@@ -1,5 +1,5 @@
 ' =====================================================================
-'  CUT_LIST  v1.2  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  CUT_LIST  v1.3  -  Regla externa iLogic (Inventor 2026) - COIMSER
 '  Lista de corte agrupada por material, tipo Tekla "Cut list / Material list",
 '  de un ensamble numerado con TEKLA_NUMERACION (cantidades = toda la planta):
 '
@@ -919,6 +919,8 @@ Function Naturaleza(p As PartDocument) As String
     If p Is Nothing Then Return "OTROS"
     If EsDA(p) Then Return "MECANICA"          ' Design Accelerator: polea, engranaje, eje (nunca plancha)
     If TieneParam(p, "G_L") OrElse TieneParam(p, "B_L") Then Return "PERFIL"
+    ' perfil sin parametros (STEP / a mano) con la propiedad PERFIL (TEKLA v3.9)
+    If UProp(p, "PERFIL") <> "" AndAlso p.SubType <> SM_SUBTYPE AndAlso UProp(p, "LONGITUD") <> "" Then Return "PERFIL"
     Dim cod As String = UProp(p, "CODIGO_PIEZA").ToLower()
     If cod = "" Then cod = UProp(p, "CODIGO").ToLower()
     If cod = "mq" Then Return "MECANICA"

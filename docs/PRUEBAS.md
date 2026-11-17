@@ -19,6 +19,14 @@ falta comprobar su comportamiento en Inventor.
 | EMITIR_PLANOS | 1.0 | nueva: escribe propiedades en planos, PDF | medio |
 | REORGANIZAR_OBRA | 1.0 | nueva: mueve archivos de fase | **alto** - copia de respaldo antes |
 | COPIAR_CONJUNTO | 1.0 | nueva: copia y re-enlaza archivos | **alto** - solo en obra de prueba |
+| LIMPIAR_VISTA | 1.0 | nueva - PROBADA en TST-GENERAL (archivos: 8 objetos ocultos; 3 referencias ocultas; mostrar las devuelve) | bajo |
+| CAMBIAR_NATURALEZA | 1.0 | nueva - PROBADA en TST (plancha->rolada r; mecanizada->pieza; solido 8 mm -> chapa plegada con desarrollo) | bajo |
+| PERFIL_A_OBRA | 1.2 | PROBADA en TST: estandar -> PF-001; personalizado suelto (piezas sueltas) -> PF-002 | bajo |
+| GENERAR_PLANOS | 2.6 | desarrollo de chapa en el habilitado - PROBADO en TST (plano nuevo y plano existente) | bajo |
+| EXTRAER_PIEZA | 1.0 | nueva - PROBADA en TST (plancha -> chapa 300x200, bloque -> MQ, posicion exacta) | bajo |
+| AGRUPAR_EN_CONJUNTO | 1.0 | nueva - PROBADA en TST (2 piezas -> TST-ALM-BS-001, movidas, _to_delete, registro) | medio - mueve archivos |
+| ESPEJO_PIEZA | 1.0 | nueva: derivada espejo + posicion reflejada | medio - probar en obra de prueba |
+| TEKLA_NUMERACION | 3.8 | espejo quiral -> marca propia | bajo |
 | RENOMBRAR_CONJUNTO | 1.0 | nueva: renombra archivos/carpeta, re-enlaza fase y planos | **alto** - solo en obra de prueba, nunca con check-in en Vault |
 
 ## Como probar una regla (a mano)

@@ -1,5 +1,5 @@
 ' =====================================================================
-'  COPIAR_PIEZA  v1.2  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  COPIAR_PIEZA  v1.3  -  Regla externa iLogic (Inventor 2026) - COIMSER
 '  Copia UNA pieza (.ipt) para modificarla sin tocar la original, dentro del orden de la obra:
 '
 '     MAJ-ALM-BA-001\Piezas\MAJ-ALM-BA-001-PL-002.ipt
@@ -287,7 +287,11 @@ End Function
 
 Function EsFG(d As Document) As Boolean
     Try
-        Return d.DocumentInterests.HasInterest("{AC211AE0-A7A5-4589-916D-81C529DA6D17}")
+        ' Solo el Frame (FrameDoc) y sus perfiles (FrameMemberDoc). Un conjunto que CONTIENE un
+        ' Frame tambien tiene el interes de Frame Generator (SolveAssemblyDoc): ese no cuenta.
+        For Each di As DocumentInterest In d.DocumentInterests
+            If di.ClientId = "{AC211AE0-A7A5-4589-916D-81C529DA6D17}" AndAlso (di.Name = "FrameDoc" OrElse di.Name = "FrameMemberDoc") Then Return True
+        Next
     Catch
     End Try
     Return False

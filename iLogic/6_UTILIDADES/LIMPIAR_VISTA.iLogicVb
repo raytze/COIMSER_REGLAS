@@ -1,0 +1,245 @@
+' =====================================================================
+'  LIMPIAR_VISTA  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Deja el modelo LIMPIO para verlo: oculta superficies, planos / ejes / puntos de trabajo
+'  y croquis de TODO el ensamble, desde cualquier nivel (GENERAL de la obra, fase o conjunto).
+'
+'  Modos:
+'   1. SOLO VISTA       - apaga en el ensamble abierto la visibilidad de objetos (superficies,
+'                         planos, ejes, puntos, croquis 2D y 3D) de todos sus niveles.
+'                         No cambia ningun archivo; se guarda con el ensamble. Rapido.
+'   2. VISTA + ARCHIVOS - ademas los oculta DENTRO de cada pieza y subensamble de la obra y los
+'                         guarda, para que cada conjunto / pieza tambien se vea limpio al abrirlo
+'                         solo. Salta biblioteca, archivos fuera de la obra y de solo lectura (Vault).
+'   Opcional: ocultar tambien las REFERENCIAS (skeleton, forma, STEP, equipos existentes).
+'   3. MOSTRAR TODO     - vuelve a encender la visibilidad de objetos y las referencias.
+'  Argumentos: silencioso, modo=vista|archivos|mostrar, referencias=SI|NO
+' =====================================================================
+Imports System.Collections.Generic
+
+Sub Main()
+    silencioso = RuleArguments.Exists("silencioso")
+    Dim top As Document = Nothing
+    Try
+        top = ThisDoc.Document
+    Catch
+    End Try
+    If top Is Nothing Then top = ThisApplication.ActiveDocument
+    If top Is Nothing OrElse (top.DocumentType <> DocumentTypeEnum.kAssemblyDocumentObject AndAlso top.DocumentType <> DocumentTypeEnum.kPartDocumentObject) Then
+        MessageBox.Show("Abre un ensamble (GENERAL, fase o conjunto) o una pieza.", "LIMPIAR_VISTA")
+        Exit Sub
+    End If
+
+    Dim modo As String = Arg("modo").ToLower()
+    If modo = "" Then
+        If silencioso Then
+            modo = "vista"
+        Else
+            Dim ls As New List(Of String)
+            ls.Add("1. SOLO VISTA - ocultar en este ensamble (no cambia archivos)")
+            ls.Add("2. VISTA + ARCHIVOS - ocultar tambien dentro de cada pieza y conjunto (los guarda)")
+            ls.Add("3. MOSTRAR TODO - volver a ver superficies, planos, croquis y referencias")
+            Dim r As String = InputListBox("Limpiar la vista de " & top.DisplayName & ":", ls, ls(0), "LIMPIAR_VISTA", "Modo")
+            If r Is Nothing OrElse r = "" Then Exit Sub
+            modo = If(r.StartsWith("1"), "vista", If(r.StartsWith("2"), "archivos", "mostrar"))
+        End If
+    End If
+    Dim mostrar As Boolean = (modo = "mostrar")
+    Dim refs As Boolean = False
+    If top.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+        If mostrar Then
+            refs = True
+        ElseIf Arg("referencias") <> "" Then
+            refs = (Arg("referencias").ToUpper() = "SI")
+        ElseIf Not silencioso Then
+            refs = (MessageBox.Show("Ocultar tambien las REFERENCIAS (skeleton, forma, STEP, equipos existentes)?", "LIMPIAR_VISTA", MessageBoxButtons.YesNo, MessageBoxIcon.Question) = DialogResult.Yes)
+        End If
+    End If
+
+    ' ---------- 1) visibilidad de objetos del documento abierto ----------
+    Visibilidad(top, mostrar)
+
+    ' ---------- 2) referencias (en el ensamble abierto) ----------
+    Dim nRef As Integer = 0
+    If refs AndAlso top.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+        Referencias(CType(top, AssemblyDocument).ComponentDefinition.Occurrences, mostrar, nRef)
+    End If
+
+    ' ---------- 3) dentro de cada archivo ----------
+    Dim nArch As Integer = 0
+    Dim nObj As Integer = 0
+    Dim saltados As Integer = 0
+    If modo = "archivos" OrElse (mostrar AndAlso Arg("modo").ToLower() = "mostrar_archivos") Then
+        Dim obra As String = CarpetaObra(top.FullFileName)
+        If obra = "" Then obra = System.IO.Path.GetDirectoryName(top.FullFileName)
+        Dim docs As New List(Of Document)
+        If top.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+            For Each d As Document In top.AllReferencedDocuments
+                docs.Add(d)
+            Next
+        End If
+        For Each d As Document In docs
+            If d.DocumentType <> DocumentTypeEnum.kPartDocumentObject AndAlso d.DocumentType <> DocumentTypeEnum.kAssemblyDocumentObject Then Continue For
+            If Not d.FullFileName.ToLower().StartsWith(obra.ToLower() & "\") Then Continue For
+            Try
+                If d.DocumentType = DocumentTypeEnum.kPartDocumentObject AndAlso CType(d, PartDocument).ComponentDefinition.IsContentMember Then Continue For
+            Catch
+            End Try
+            Dim n As Integer = OcultarEnArchivo(d, mostrar)
+            If n = 0 Then Continue For
+            If (System.IO.File.GetAttributes(d.FullFileName) And System.IO.FileAttributes.ReadOnly) = System.IO.FileAttributes.ReadOnly Then
+                saltados += 1
+                Continue For
+            End If
+            Try
+                d.Save2(False)
+                nArch += 1
+                nObj += n
+            Catch
+                saltados += 1
+            End Try
+        Next
+    End If
+    Try
+        top.Update()
+        ThisApplication.ActiveView.Update()
+    Catch
+    End Try
+
+    Dim t As String
+    If mostrar Then
+        t = "Visibilidad de objetos ENCENDIDA en " & top.DisplayName & "." & If(nRef > 0, vbCrLf & nRef & " referencias visibles otra vez.", "")
+    Else
+        t = top.DisplayName & " limpio: superficies, planos, ejes, puntos y croquis ocultos."
+        If refs Then t &= vbCrLf & nRef & " referencias ocultas."
+        If modo = "archivos" Then t &= vbCrLf & nObj & " objetos ocultos dentro de " & nArch & " archivos (guardados)." & If(saltados > 0, vbCrLf & saltados & " archivos de solo lectura (Vault) no se tocaron.", "")
+        t &= vbCrLf & vbCrLf & "Guarda " & top.DisplayName & " para que quede asi. Para volver: modo 3 MOSTRAR TODO."
+    End If
+    If Not silencioso Then MessageBox.Show(t, "LIMPIAR_VISTA")
+End Sub
+
+Private silencioso As Boolean
+
+' Visibilidad de objetos del documento (afecta a todos sus niveles en la pantalla)
+Sub Visibilidad(d As Document, ver As Boolean)
+    Dim ov As Object = Nothing
+    Try
+        ov = d.ObjectVisibility
+    Catch
+    End Try
+    If ov Is Nothing Then Exit Sub
+    For Each nm As String In New String() {"ConstructionSurfaces", "OriginWorkPlanes", "OriginWorkAxes", "OriginWorkPoints", "UserWorkPlanes", "UserWorkAxes", "UserWorkPoints", "Sketches", "Sketches3D", "SketchDimensions", "AllWorkFeatures"}
+        Try
+            CallByName(ov, nm, CallType.Let, ver)
+        Catch
+        End Try
+    Next
+End Sub
+
+' Oculta / muestra las ocurrencias de referencia (no entra dentro de ellas)
+Sub Referencias(occs As Object, ver As Boolean, ByRef n As Integer)
+    For Each o As ComponentOccurrence In occs
+        Try
+            If o.Suppressed Then Continue For
+            If EsRef(o) Then
+                If o.Visible <> ver Then
+                    o.Visible = ver
+                    n += 1
+                End If
+                Continue For
+            End If
+            If o.DefinitionDocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then Referencias(o.SubOccurrences, ver, n)
+        Catch
+        End Try
+    Next
+End Sub
+
+Function EsRef(o As ComponentOccurrence) As Boolean
+    Try
+        If o.BOMStructure = BOMStructureEnum.kReferenceBOMStructure Then Return True
+    Catch
+    End Try
+    Try
+        Dim d As Document = o.Definition.Document
+        If UProp(d, "REFERENCIA").ToUpper() = "SI" OrElse UProp(d, "TIPO_REFERENCIA") <> "" Then Return True
+    Catch
+    End Try
+    Return False
+End Function
+
+' Dentro de un archivo: superficies de trabajo, planos / ejes / puntos de usuario y croquis.
+' Devuelve cuantos objetos cambio.
+Function OcultarEnArchivo(d As Document, ver As Boolean) As Integer
+    Dim n As Integer = 0
+    Dim cd As Object = Nothing
+    Try
+        cd = d.ComponentDefinition
+    Catch
+        Return 0
+    End Try
+    If d.DocumentType = DocumentTypeEnum.kPartDocumentObject Then
+        Try
+            For Each w As WorkSurface In cd.WorkSurfaces
+                If w.Visible <> ver Then
+                    w.Visible = ver
+                    n += 1
+                End If
+            Next
+        Catch
+        End Try
+    End If
+    For Each col As String In New String() {"WorkPlanes", "WorkAxes", "WorkPoints"}
+        Try
+            For Each wf As Object In CallByName(cd, col, CallType.Get)
+                Try
+                    If wf.Visible <> ver Then
+                        wf.Visible = ver
+                        n += 1
+                    End If
+                Catch
+                End Try
+            Next
+        Catch
+        End Try
+    Next
+    For Each col As String In New String() {"Sketches", "Sketches3D"}
+        Try
+            For Each sk As Object In CallByName(cd, col, CallType.Get)
+                Try
+                    If sk.Visible <> ver Then
+                        sk.Visible = ver
+                        n += 1
+                    End If
+                Catch
+                End Try
+            Next
+        Catch
+        End Try
+    Next
+    Return n
+End Function
+
+Function CarpetaObra(ruta As String) As String
+    Dim x As String = System.IO.Path.GetDirectoryName(ruta)
+    For i As Integer = 0 To 8
+        If x Is Nothing OrElse x = "" Then Exit For
+        If System.IO.File.Exists(System.IO.Path.Combine(x, "_OBRA.txt")) Then Return x
+        x = System.IO.Path.GetDirectoryName(x)
+    Next
+    Return ""
+End Function
+
+Function Arg(n As String) As String
+    Try
+        If RuleArguments.Exists(n) Then Return CStr(RuleArguments.Value(n))
+    Catch
+    End Try
+    Return ""
+End Function
+
+Function UProp(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Inventor User Defined Properties").Item(n).Value).Trim()
+    Catch
+    End Try
+    Return ""
+End Function

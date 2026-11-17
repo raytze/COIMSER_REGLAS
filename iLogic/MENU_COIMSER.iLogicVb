@@ -1,10 +1,17 @@
 ' =====================================================================
-'  MENU_COIMSER  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
-'  Menu de inicio: mira DONDE estas (sin documento, GENERAL, FASE, CONJUNTO, PIEZA o PLANO),
-'  muestra el ESTADO (ultima numeracion, planos sin emitir...) y SOLO las reglas que tocan en
-'  ese nivel, en el orden del proceso. Eliges una, se ejecuta y el menu vuelve a aparecer
-'  (Cancelar para salir).
+'  MENU_COIMSER  v2.3  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Menu de inicio por ACTIVIDADES. Mira DONDE estas (sin documento, GENERAL, FASE, CONJUNTO,
+'  PIEZA o PLANO), muestra el ESTADO y primero las ACTIVIDADES que tocan en ese nivel:
+'
+'     1 OBRA Y CONJUNTOS   2 MODELADO   3 REVISAR Y NUMERAR   4 PLANOS
+'     5 FABRICACION Y REPORTES   6 UTILIDADES
+'
+'  Eliges la actividad y luego la regla (solo las de ese nivel). Al terminar el menu vuelve
+'  (Cancelar = salir; "< VOLVER" = otra actividad).
+'  v2.0 - Las reglas viven en subcarpetas por actividad (1_OBRA, 2_MODELADO...). El menu las
+'         busca en las carpetas de reglas externas de iLogic, esten donde esten.
 ' =====================================================================
+Imports System.Collections.Generic
 
 Sub Main()
     Do
@@ -14,19 +21,129 @@ Sub Main()
         Catch
         End Try
         Dim nivel As String = NivelDe(d)
-        Dim ops As List(Of String) = OpcionesDe(nivel)
+        Dim cod As String = CodNivel(nivel)
         Dim estado As String = EstadoDe(d, nivel)
-        Dim r As String = InputListBox("Estas en: " & nivel & If(d IsNot Nothing, "  (" & d.DisplayName & ")", "") & vbCrLf & estado & vbCrLf & "Elige el paso (Cancelar = salir):", ops, ops(0), "MENU COIMSER", "Reglas")
+        Dim cab As String = "Estas en: " & nivel & If(d IsNot Nothing, "  (" & d.DisplayName & ")", "") & If(estado <> "", vbCrLf & estado, "")
+
+        ' ---------- actividades con reglas para este nivel ----------
+        Dim cats As New List(Of String)
+        For Each e() As String In Catalogo()
+            If ("," & e(3) & ",").Contains("," & cod & ",") AndAlso Not cats.Contains(e(0)) Then cats.Add(e(0))
+        Next
+        If cats.Count = 0 Then
+            MessageBox.Show(cab & vbCrLf & vbCrLf & "No hay reglas para este nivel.", "MENU COIMSER")
+            Exit Sub
+        End If
+        Dim opsC As New List(Of String)
+        For Each c As String In cats
+            Dim n As Integer = 0
+            For Each e() As String In Catalogo()
+                If e(0) = c AndAlso ("," & e(3) & ",").Contains("," & cod & ",") Then n += 1
+            Next
+            opsC.Add(c & "   (" & n & ")")
+        Next
+        Dim cat As String
+        If opsC.Count = 1 Then
+            cat = cats(0)
+        Else
+            Dim rc As String = InputListBox(cab & vbCrLf & vbCrLf & "Actividad (Cancelar = salir):", opsC, opsC(0), "MENU COIMSER", "Actividad")
+            If rc Is Nothing OrElse rc = "" Then Exit Sub
+            cat = rc.Substring(0, rc.LastIndexOf("   ("))
+        End If
+
+        ' ---------- reglas de la actividad ----------
+        Dim ops As New List(Of String)
+        For Each e() As String In Catalogo()
+            If e(0) = cat AndAlso ("," & e(3) & ",").Contains("," & cod & ",") Then ops.Add(e(1) & " - " & e(2))
+        Next
+        If opsC.Count > 1 Then ops.Add("< VOLVER")
+        Dim r As String = InputListBox(cab & vbCrLf & vbCrLf & cat & ":", ops, ops(0), "MENU COIMSER", "Reglas")
         If r Is Nothing OrElse r = "" Then Exit Sub
-        Dim regla As String = r.Split(" "c)(1)
-        If regla = "SALIR" Then Exit Sub
+        If r = "< VOLVER" Then Continue Do
+        Dim regla As String = r.Split(" "c)(0)
+        Dim ruta As String = RutaRegla(regla)
+        If ruta = "" Then
+            MessageBox.Show("No encuentro " & regla & ".iLogicVb en las carpetas de reglas externas.", "MENU COIMSER")
+            Continue Do
+        End If
         Try
-            iLogicVb.RunExternalRule(regla)
+            iLogicVb.RunExternalRule(ruta)
         Catch ex As Exception
             MessageBox.Show("No pude ejecutar " & regla & ": " & ex.Message, "MENU COIMSER")
         End Try
     Loop
 End Sub
+
+' actividad | regla | que hace | niveles (S sin documento, P pieza, G general, F fase, C conjunto, D plano)
+Function Catalogo() As List(Of String())
+    Dim l As New List(Of String())
+    Dim A1 As String = "1 OBRA Y CONJUNTOS", A2 As String = "2 MODELADO", A3 As String = "3 REVISAR Y NUMERAR"
+    Dim A4 As String = "4 PLANOS", A5 As String = "5 FABRICACION Y REPORTES", A6 As String = "6 UTILIDADES"
+    l.Add(New String() {A1, "NUEVO_PROYECTO", "crear obra nueva (GENERAL + fases en carpetas)", "S,P,O"})
+    l.Add(New String() {A1, "INICIAR_CONJUNTO", "crear fase (en el GENERAL) o conjunto (en la fase)", "G,F,C"})
+    l.Add(New String() {A1, "AGRUPAR_EN_CONJUNTO", "juntar piezas sueltas en un conjunto nuevo", "F,C"})
+    l.Add(New String() {A1, "COPIAR_CONJUNTO", "copiar un conjunto a otra fase", "F,C"})
+    l.Add(New String() {A1, "RENOMBRAR_CONJUNTO", "cambiar el nombre de un conjunto", "F,C"})
+    l.Add(New String() {A1, "REORGANIZAR_OBRA", "pasar obra antigua a carpeta por fase", "G"})
+    l.Add(New String() {A2, "NUEVA_REFERENCIA", "skeleton, solido de forma, traer STEP, convertir en referencia", "G,F,C"})
+    l.Add(New String() {A2, "NUEVA_PIEZA", "plancha, chapa, mecanizada, soldado...", "F,C"})
+    l.Add(New String() {A2, "EXTRAER_PIEZA", "pieza real desde un cuerpo del STEP", "F,C"})
+    l.Add(New String() {A2, "PIEZA_ASOCIADA", "pieza que sigue al skeleton / forma (o congelar esta pieza)", "F,C,P"})
+    l.Add(New String() {A2, "PERFIL_A_OBRA", "perfil de Content Center -> pieza de la obra", "F,C"})
+    l.Add(New String() {A2, "COPIAR_PIEZA", "copiar pieza con nombre en serie", "F,C"})
+    l.Add(New String() {A2, "ESPEJO_PIEZA", "simetria de piezas", "F,C"})
+    l.Add(New String() {A2, "CAMBIAR_NATURALEZA", "cambiar la naturaleza de piezas", "F,C,P"})
+    l.Add(New String() {A2, "INSERTAR_EQUIPO", "motor, reductor, equipo comprado", "F,C"})
+    l.Add(New String() {A3, "REVISAR_JERARQUIA", "revisar antes de numerar", "F,C"})
+    l.Add(New String() {A3, "REVISAR_PERFILES", "comprobar PERFIL de los perfiles con su area e inercias (y corregir)", "F,C,P"})
+    l.Add(New String() {A3, "TEKLA_NUMERACION", "marcas", "F,C"})
+    l.Add(New String() {A3, "TAG_EQUIPOS", "TAG de fajas y equipos", "F,C"})
+    l.Add(New String() {A4, "GENERAR_PLANOS", "planos de conjuntos y habilitados (con desarrollo)", "F,C"})
+    l.Add(New String() {A4, "REHACER_PLANOS", "redibujar TODO el plano (vistas nuevas; se pierde lo agregado a mano)", "F,C"})
+    l.Add(New String() {A4, "TITULO_PLANO", "titulo y marcas en globos", "D"})
+    l.Add(New String() {A4, "ESTILO_PLANO", "estilo COIMSER", "D"})
+    l.Add(New String() {A4, "EMITIR_PLANOS", "revision, PDF, transmittal", "F,C,D"})
+    l.Add(New String() {A5, "CUT_LIST", "lista de corte y requerimiento de material", "F,C"})
+    l.Add(New String() {A5, "EXPORTAR_PLASMA", "DXF de corte", "F,C"})
+    l.Add(New String() {A5, "REPORTE_PERNERIA", "compra de perneria", "F,C"})
+    l.Add(New String() {A5, "REPORTE_ENSAMBLES", "pesos y areas por conjunto", "F,C"})
+    l.Add(New String() {A5, "CAMBIOS_MATERIAL", "que cambio desde la ultima emision", "F,C"})
+    l.Add(New String() {A5, "REPORTE_COSTO", "costo estimado: kg x tarifa, perneria, pintura (TARIFAS.csv)", "F,C"})
+    l.Add(New String() {A6, "EJECUTAR_FASES", "numerar / reportes / planos en todas las fases", "G"})
+    l.Add(New String() {A6, "LIMPIAR_VISTA", "ocultar superficies, planos y croquis", "G,F,C,P"})
+    l.Add(New String() {A6, "OCULTAR_SUPERFICIES", "ocultar superficies de referencia", "F,C,P"})
+    l.Add(New String() {A6, "LIMPIAR_OBSOLETOS", "mover piezas que ya no se usan a _OBSOLETO", "F"})
+    l.Add(New String() {A6, "CATALOGO_PERFILES", "catalogo de perfiles (area e inercias) para reconocerlos en EXTRAER", "S,G,F,C,P,D,O"})
+    l.Add(New String() {A6, "VERIFICAR_INSTALACION", "revisar reglas, versiones, carpetas y Git", "S,G,F,C,P,D,O"})
+    Return l
+End Function
+
+Function CodNivel(nivel As String) As String
+    Select Case nivel
+        Case "SIN DOCUMENTO" : Return "S"
+        Case "PIEZA" : Return "P"
+        Case "GENERAL" : Return "G"
+        Case "FASE" : Return "F"
+        Case "CONJUNTO" : Return "C"
+        Case "PLANO" : Return "D"
+    End Select
+    Return "O"
+End Function
+
+' Ruta completa de una regla externa, en cualquier subcarpeta de las carpetas de reglas de iLogic
+Function RutaRegla(nombre As String) As String
+    Try
+        For Each raiz As String In iLogicVb.Automation.FileOptions.ExternalRuleDirectories
+            If Not System.IO.Directory.Exists(raiz) Then Continue For
+            For Each f As String In System.IO.Directory.GetFiles(raiz, nombre & ".iLogicVb", System.IO.SearchOption.AllDirectories)
+                If f.ToLower().Contains("\_to_delete") OrElse f.ToLower().Contains("\oldversions") Then Continue For
+                Return f
+            Next
+        Next
+    Catch
+    End Try
+    Return ""
+End Function
 
 Function NivelDe(d As Document) As String
     If d Is Nothing Then Return "SIN DOCUMENTO"
@@ -38,44 +155,6 @@ Function NivelDe(d As Document) As String
         Return "CONJUNTO"
     End If
     Return "OTRO"
-End Function
-
-Function OpcionesDe(nivel As String) As List(Of String)
-    Dim l As New List(Of String)
-    Select Case nivel
-        Case "SIN DOCUMENTO", "PIEZA", "OTRO"
-            l.Add("1. NUEVO_PROYECTO - crear obra nueva (GENERAL + fases en carpetas)")
-            If nivel = "PIEZA" Then l.Add("2. PIEZA_ASOCIADA - congelar / descongelar esta pieza")
-        Case "GENERAL"
-            l.Add("1. INICIAR_CONJUNTO - crear o abrir una FASE")
-            l.Add("2. NUEVA_REFERENCIA - referencia comun de la obra (equipo, existente, STEP)")
-            l.Add("3. EJECUTAR_FASES - numerar / reportes / planos / plasma en todas las fases o una")
-            l.Add("4. REORGANIZAR_OBRA - pasar obra antigua a carpeta por fase")
-        Case "FASE", "CONJUNTO"
-            l.Add("1. INICIAR_CONJUNTO - crear subconjunto (o definir este)")
-            l.Add("2. NUEVA_REFERENCIA - skeleton / traer STEP / convertir en referencia")
-            l.Add("3. NUEVA_PIEZA - plancha, chapa, mecanizada, soldado...")
-            l.Add("4. PIEZA_ASOCIADA - pieza que sigue al skeleton u otra pieza")
-            l.Add("5. INSERTAR_EQUIPO - motor, reductor, equipo comprado")
-            l.Add("6. COPIAR_CONJUNTO - copiar un conjunto a otra fase")
-            l.Add("7. RENOMBRAR_CONJUNTO - cambiar el nombre de un conjunto")
-            l.Add("8. REVISAR_JERARQUIA - revisar antes de numerar")
-            l.Add("9. TEKLA_NUMERACION - marcas")
-            l.Add("10. TAG_EQUIPOS - TAG de fajas y equipos")
-            l.Add("11. GENERAR_PLANOS - planos de conjuntos y piezas")
-            l.Add("12. CUT_LIST - lista de corte y requerimiento")
-            l.Add("13. CAMBIOS_MATERIAL - que cambio desde la ultima emision")
-            l.Add("14. REPORTE_PERNERIA - compra de perneria")
-            l.Add("15. REPORTE_ENSAMBLES - pesos y areas por conjunto")
-            l.Add("16. EXPORTAR_PLASMA - DXF de corte")
-            l.Add("17. EMITIR_PLANOS - revision, PDF, transmittal")
-        Case "PLANO"
-            l.Add("1. TITULO_PLANO - titulo y marcas en globos")
-            l.Add("2. ESTILO_PLANO - estilo COIMSER")
-            l.Add("3. EMITIR_PLANOS - emitir este plano (revision + PDF)")
-    End Select
-    l.Add("0. SALIR")
-    Return l
 End Function
 
 Function EstadoDe(d As Document, nivel As String) As String

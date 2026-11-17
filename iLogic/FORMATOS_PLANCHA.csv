@@ -6,3 +6,4 @@ PARAMETRO;SEPARACION_GRUESO;10;;;;mm entre piezas en planchas mas gruesas
 PARAMETRO;ESPESOR_GRUESO;12;;;;mm
 PARAMETRO;BORDE;10;;;;mm libres en el borde de cada plancha
 PARAMETRO;RETAZO_MINIMO;300;;;;mm: lado menor para guardar un sobrante como retazo
+PARAMETRO;ESPESORES;0.9 1.2 1.5 2 2.5 3 3.2 4 4.5 4.76 5 6 6.35 8 9.5 10 12 12.7 15 15.9 16 19 19.05 20 22 22.2 25 25.4 28.6 30 31.75 32 38 38.1 40 44.45 50 50.8 60 63.5 75 76.2;;;;mm espesores comerciales (REVISAR_JERARQUIA avisa si no coincide)

@@ -1,0 +1,887 @@
+'=====================================================================
+'  ESPEJO_PIEZA  v2.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Simetria (mirror) de piezas como el Reflejar de Inventor, pero con la jerarquia y la
+'  numeracion COIMSER:
+'
+'     1. Clic en las PIEZAS (se pintan de AZUL; otro clic la quita; Esc = terminar).
+'        Vale tambien seleccionarlas antes (y el plano) y luego ejecutar.
+'     2. PLANO de simetria: clic en un plano de trabajo o cara plana (tambien los planos de
+'        origen en el navegador), o uno de los planos de origen del ensamble de una lista.
+'     3. Modo (como Inventor "Reflejar / Reutilizar"):
+'          AUTOMATICO: la pieza SIMETRICA (su espejo es ella misma, p.ej. una plancha plana o un
+'                      perfil recto) se REUTILIZA: otra instancia del mismo archivo, MISMA MARCA.
+'                      La de IZQUIERDA / DERECHA sale como PIEZA NUEVA (marca nueva en TEKLA).
+'          TODAS NUEVAS: cada pieza reflejada es un archivo nuevo.
+'        La simetria se comprueba con la geometria (vertices y centros de agujeros reflejados).
+'     4. NUMERACION: cada pieza nueva va a la carpeta Piezas de SU conjunto con la serie de ese
+'        conjunto y su mismo prefijo (PL / CH / PF / MQ ...), a continuacion del ultimo numero y
+'        en el ORDEN de las originales:  CH-002-PL-002, -PL-005  ->  CH-002-PL-009, -PL-010.
+'        Antes de crear se muestra la lista y puedes cambiar el numero inicial de cada serie.
+'  - Varias instancias de la misma pieza usan UN solo archivo espejo.
+'  - Perfil de Frame Generator: la espejo es pieza normal en el CONJUNTO que contiene el Frame.
+'  - Content Center: se reutiliza si es simetrica; si no, no se refleja. Referencias: no.
+'  - La espejo es derivada de la original (si la original cambia, cambia). vinculo=independiente
+'    la deja fija. Se inserta LIBRE en su posicion reflejada. Propiedades: las de la original
+'    sin MARCA, con ESPEJO_DE y QUIRAL.
+'  v2.0 - simetria real (antes fallaba y todo salia como izq/der); eleccion en pantalla en azul, plano en pantalla, reutilizar simetricas, numeracion en
+'         orden con vista previa, un archivo por original.
+'  Argumentos (pruebas): silencioso, objeto=<ocurrencia o archivo>, plano=YZ|XZ|XY,
+'     modo=auto|nuevas, vinculo=mantener|independiente, inicio=<numero inicial>
+' =====================================================================
+Imports System.Collections.Generic
+
+Sub Main()
+    silencioso = RuleArguments.Exists("silencioso")
+    Dim top As AssemblyDocument = Nothing
+    Try
+        top = TryCast(ThisDoc.Document, AssemblyDocument)
+    Catch
+    End Try
+    If top Is Nothing Then top = TryCast(ThisApplication.ActiveDocument, AssemblyDocument)
+    ' editando un conjunto EN EL SITIO: iLogic entrega el conjunto editado; el de arriba es el abierto
+    Try
+        Dim act As AssemblyDocument = TryCast(ThisApplication.ActiveDocument, AssemblyDocument)
+        If act IsNot Nothing AndAlso top IsNot Nothing AndAlso Not (act Is top) AndAlso ThisApplication.ActiveEditDocument Is top Then top = act
+    Catch
+    End Try
+    If top Is Nothing Then
+        MessageBox.Show("Abre el ensamble (fase o conjunto) donde estan las piezas a reflejar.", "ESPEJO_PIEZA")
+        Exit Sub
+    End If
+    Dim tg As TransientGeometry = ThisApplication.TransientGeometry
+
+    ' ---------- piezas (y plano) ----------
+    Dim occs As New List(Of ComponentOccurrence)
+    Dim planoP As Point = Nothing
+    Dim planoN As UnitVector = Nothing
+    Dim planoNom As String = ""
+    Dim nomO As String = Arg("objeto")
+    If nomO <> "" Then
+        For Each nm As String In nomO.Split(";"c)
+            Dim oc0 As ComponentOccurrence = BuscarOcc(top.ComponentDefinition.Occurrences, nm.Trim().ToLower())
+            If oc0 IsNot Nothing Then occs.Add(oc0)
+        Next
+    Else
+        Try
+            For Each o As Object In top.SelectSet
+                Dim oc As ComponentOccurrence = TryCast(o, ComponentOccurrence)
+                If oc IsNot Nothing Then
+                    If oc.DefinitionDocumentType = DocumentTypeEnum.kPartDocumentObject Then occs.Add(oc)
+                    Continue For
+                End If
+                If planoP Is Nothing Then LeerPlano(o, planoP, planoN, planoNom)
+            Next
+        Catch
+        End Try
+        If occs.Count = 0 AndAlso Not silencioso Then occs = ElegirPiezas(top)
+    End If
+    If occs.Count = 0 Then Exit Sub
+
+    ' ---------- plano de simetria ----------
+    If planoP Is Nothing Then
+        Dim pl As String = Arg("plano").ToUpper()
+        If pl = "" Then
+            If silencioso Then
+                pl = "YZ"
+            Else
+                Dim ls As New List(Of String)
+                ls.Add("PANTALLA - clic en un plano de trabajo o cara plana")
+                ls.Add("YZ - plano de origen (refleja en X)")
+                ls.Add("XZ - plano de origen (refleja en Y)")
+                ls.Add("XY - plano de origen (refleja en Z)")
+                Dim r As String = InputListBox(occs.Count & " pieza(s) elegida(s)." & vbCrLf & "Plano de simetria (planos de origen de " & top.DisplayName & "):", ls, ls(0), "ESPEJO_PIEZA", "Plano")
+                If r Is Nothing OrElse r = "" Then Exit Sub
+                pl = r.Substring(0, 2)
+                If pl = "PA" Then
+                    Dim hs As HighlightSet = Pintar(top, occs)
+                    Try
+                        Dim o As Object = ThisApplication.CommandManager.Pick(SelectionFilterEnum.kAllPlanarEntities, "Clic en el PLANO de simetria (plano de trabajo o cara plana; tambien en el navegador). Esc = cancelar")
+                        If o IsNot Nothing Then LeerPlano(o, planoP, planoN, planoNom)
+                    Catch
+                    End Try
+                    Borrar(hs)
+                    If planoP Is Nothing Then Exit Sub
+                End If
+            End If
+        End If
+        If planoP Is Nothing Then
+            planoP = tg.CreatePoint(0, 0, 0)
+            Select Case pl
+                Case "XZ" : planoN = tg.CreateUnitVector(0, 1, 0)
+                Case "XY" : planoN = tg.CreateUnitVector(0, 0, 1)
+                Case Else : planoN = tg.CreateUnitVector(1, 0, 0) : pl = "YZ"
+            End Select
+            planoNom = "plano " & pl & " de " & top.DisplayName
+        End If
+    End If
+    Dim mRef As Matrix = Reflexion(planoP, planoN)
+
+    ' ---------- modo ----------
+    Dim modo As String = Arg("modo").ToLower()
+    If modo = "" Then
+        If silencioso Then
+            modo = "auto"
+        Else
+            Dim lm As New List(Of String)
+            lm.Add("AUTOMATICO - simetricas se reutilizan (misma marca); izquierda/derecha = pieza nueva")
+            lm.Add("TODAS NUEVAS - cada pieza reflejada es un archivo nuevo")
+            Dim r As String = InputListBox("Como reflejar?", lm, lm(0), "ESPEJO_PIEZA", "Modo")
+            If r Is Nothing OrElse r = "" Then Exit Sub
+            modo = If(r.StartsWith("TODAS"), "nuevas", "auto")
+        End If
+    End If
+    Dim vinculo As String = Arg("vinculo").ToLower()
+    If vinculo = "" Then vinculo = "mantener"
+
+    ' ---------- plan: donde va cada una, simetria, archivo espejo por original ----------
+    Dim insts As New List(Of Inst)
+    Dim grupos As New Dictionary(Of String, Grupo)
+    Dim ordenG As New List(Of String)
+    For Each occ As ComponentOccurrence In occs
+        Try
+            Dim it As Inst = Ubicar(top, occ)
+            If it Is Nothing Then Continue For
+            If Not grupos.ContainsKey(it.clave) Then
+                Dim g As New Grupo
+                g.src = it.src : g.padre = it.padre : g.esFrame = it.esFrame
+                g.nomPadre = NomSin(it.padre)
+                g.carpeta = System.IO.Path.Combine(CarpetaHija(it.padre), "Piezas")
+                g.pref = If(it.esFrame, "PF", Prefijo(it.src))
+                Dim sq As Matrix = Nothing
+                Dim simetrica As Boolean = Simetria(it.src.ComponentDefinition, sq)
+                g.quiral = Not simetrica
+                g.reusa = simetrica AndAlso modo = "auto" AndAlso Not it.esFrame
+                g.Sq = sq
+                If it.src.ComponentDefinition.IsContentMember AndAlso Not g.reusa Then
+                    bitacora.AppendLine(NomSin(it.src) & ": es de biblioteca (Content Center) y no es simetrica: no se refleja.")
+                    Continue For
+                End If
+                grupos(it.clave) = g
+                ordenG.Add(it.clave)
+            End If
+            insts.Add(it)
+        Catch ex As Exception
+            bitacora.AppendLine(occ.Name & ": " & ex.Message)
+        End Try
+    Next
+    If insts.Count = 0 Then
+        If Not silencioso Then MessageBox.Show("Nada que reflejar." & vbCrLf & bitacora.ToString(), "ESPEJO_PIEZA")
+        Exit Sub
+    End If
+
+    ' ---------- numeracion en orden: serie = carpeta + conjunto + prefijo ----------
+    Dim series As New SortedDictionary(Of String, List(Of Grupo))
+    For Each k As String In ordenG
+        Dim g As Grupo = grupos(k)
+        If g.reusa Then Continue For
+        Dim sk As String = g.carpeta.ToLower() & "|" & g.nomPadre & "|" & g.pref
+        If Not series.ContainsKey(sk) Then series(sk) = New List(Of Grupo)
+        series(sk).Add(g)
+    Next
+    Dim inicio As New Dictionary(Of String, Integer)
+    For Each kv As KeyValuePair(Of String, List(Of Grupo)) In series
+        kv.Value.Sort(Function(x, y) String.Compare(NomSin(x.src), NomSin(y.src), StringComparison.OrdinalIgnoreCase))
+        inicio(kv.Key) = UltimoNumero(kv.Value(0).carpeta, kv.Value(0).nomPadre, kv.Value(0).pref) + 1
+        If Arg("inicio") <> "" Then inicio(kv.Key) = CInt(Arg("inicio"))
+    Next
+    Do
+        Numerar(series, inicio)
+        If silencioso Then Exit Do
+        Dim prev As New System.Text.StringBuilder()
+        prev.AppendLine("Espejo respecto a " & planoNom & "   (" & insts.Count & " instancia(s))")
+        prev.AppendLine()
+        Dim lineas As Integer = 0
+        For Each k As String In ordenG
+            Dim g As Grupo = grupos(k)
+            If lineas < 40 Then
+                If g.reusa Then
+                    prev.AppendLine("  " & NomSin(g.src) & "  ->  la misma pieza (simetrica: misma marca)")
+                Else
+                    prev.AppendLine("  " & NomSin(g.src) & "  ->  " & System.IO.Path.GetFileName(g.ruta) & If(g.quiral, "   (izq/der: marca nueva)", "   (simetrica, archivo nuevo)") & "   en " & g.nomPadre & "\Piezas")
+                End If
+            End If
+            lineas += 1
+        Next
+        If lineas > 40 Then prev.AppendLine("  ... y " & (lineas - 40) & " mas")
+        prev.AppendLine()
+        prev.AppendLine("Si = crear    No = cambiar el numero inicial    Cancelar = salir")
+        Dim rr As DialogResult = MessageBox.Show(prev.ToString(), "ESPEJO_PIEZA - vista previa", If(series.Count > 0, MessageBoxButtons.YesNoCancel, MessageBoxButtons.OKCancel), MessageBoxIcon.Question)
+        If rr = DialogResult.Cancel Then Exit Sub
+        If rr = DialogResult.Yes OrElse rr = DialogResult.OK Then Exit Do
+        For Each kv As KeyValuePair(Of String, List(Of Grupo)) In series
+            Dim g0 As Grupo = kv.Value(0)
+            Dim sig As Integer = UltimoNumero(g0.carpeta, g0.nomPadre, g0.pref) + 1
+            Dim r As String = InputBox("Serie " & g0.nomPadre & "-" & g0.pref & "-###   (" & kv.Value.Count & " pieza(s) nueva(s))" & vbCrLf & "Siguiente numero libre: " & sig.ToString("000") & vbCrLf & vbCrLf & "Primer numero para las espejo:", "ESPEJO_PIEZA", inicio(kv.Key).ToString("000"))
+            Dim v As Integer
+            If r IsNot Nothing AndAlso Integer.TryParse(r.Trim(), v) AndAlso v > 0 Then inicio(kv.Key) = v
+        Next
+    Loop
+
+    ' ---------- crear archivos espejo ----------
+    For Each k As String In ordenG
+        Dim g As Grupo = grupos(k)
+        If g.reusa Then
+            g.ruta = g.src.FullFileName
+            g.listo = True
+            Continue For
+        End If
+        Try
+            CrearEspejo(g, vinculo)
+            g.listo = True
+        Catch ex As Exception
+            bitacora.AppendLine(NomSin(g.src) & ": no se pudo crear la espejo: " & ex.Message)
+        End Try
+    Next
+
+    ' ---------- insertar cada instancia en su posicion reflejada ----------
+    Dim SYZ As Matrix = tg.CreateMatrix()
+    SYZ.Cell(1, 1) = -1
+    Dim hechas As New List(Of String)
+    For Each it As Inst In insts
+        If Not grupos.ContainsKey(it.clave) Then Continue For
+        Dim g As Grupo = grupos(it.clave)
+        If Not g.listo Then Continue For
+        Try
+            Dim m As Matrix = mRef.Copy()
+            m.PostMultiplyBy(it.occ.Transformation)
+            m.PostMultiplyBy(If(g.reusa, g.Sq, SYZ))
+            If it.occPadre IsNot Nothing Then
+                Dim inv As Matrix = it.occPadre.Transformation.Copy()
+                inv.Invert()
+                inv.PostMultiplyBy(m)
+                m = inv
+            End If
+            Dim nueva As ComponentOccurrence = it.padre.ComponentDefinition.Occurrences.Add(g.ruta, m)
+            Try : nueva.Grounded = False : Catch : End Try
+            hechas.Add("  " & it.occ.Name & "  ->  " & nueva.Name & If(g.reusa, "   (reutilizada)", "") & "   en " & g.nomPadre)
+        Catch ex As Exception
+            bitacora.AppendLine(it.occ.Name & ": no se pudo insertar en " & g.nomPadre & ": " & ex.Message)
+        End Try
+    Next
+
+    Dim msg As String = "Espejo respecto a " & planoNom & ":" & vbCrLf & String.Join(vbCrLf, hechas.ToArray())
+    For Each k As String In ordenG
+        If grupos(k).nota <> "" Then msg &= vbCrLf & "  " & grupos(k).nota
+    Next
+    If bitacora.Length > 0 Then msg &= vbCrLf & vbCrLf & bitacora.ToString()
+    msg &= vbCrLf & vbCrLf & "Las espejo estan LIBRES en su posicion reflejada. Guarda el ensamble y corre TEKLA_NUMERACION."
+    If Not silencioso Then MessageBox.Show(msg, "ESPEJO_PIEZA")
+End Sub
+
+Private silencioso As Boolean
+Private bitacora As New System.Text.StringBuilder
+
+Class Inst
+    Public occ As ComponentOccurrence
+    Public src As PartDocument
+    Public padre As AssemblyDocument
+    Public occPadre As ComponentOccurrence
+    Public esFrame As Boolean
+    Public clave As String
+End Class
+
+Class Grupo
+    Public src As PartDocument
+    Public padre As AssemblyDocument
+    Public esFrame As Boolean
+    Public nomPadre As String
+    Public carpeta As String
+    Public pref As String
+    Public reusa As Boolean
+    Public quiral As Boolean
+    Public Sq As Matrix
+    Public ruta As String = ""
+    Public listo As Boolean
+    Public nota As String = ""
+End Class
+
+' ---------- eleccion en pantalla: azul, otro clic quita, Esc termina ----------
+Function ElegirPiezas(top As AssemblyDocument) As List(Of ComponentOccurrence)
+    Dim l As New List(Of ComponentOccurrence)
+    Dim hs As HighlightSet = Nothing
+    Try
+        hs = top.CreateHighlightSet()
+        hs.Color = ThisApplication.TransientObjects.CreateColor(30, 144, 255)
+    Catch
+    End Try
+    Do
+        Dim o As Object = Nothing
+        Try
+            o = ThisApplication.CommandManager.Pick(SelectionFilterEnum.kAssemblyLeafOccurrenceFilter, "Clic en una pieza = elegir / quitar (" & l.Count & " elegidas, en azul). Esc = terminar")
+        Catch
+        End Try
+        If o Is Nothing Then Exit Do
+        Dim oc As ComponentOccurrence = TryCast(o, ComponentOccurrence)
+        If oc Is Nothing OrElse oc.DefinitionDocumentType <> DocumentTypeEnum.kPartDocumentObject Then Continue Do
+        Dim yaEsta As Integer = -1
+        For k As Integer = 0 To l.Count - 1
+            If Ruta(l(k)) = Ruta(oc) Then yaEsta = k
+        Next
+        If yaEsta >= 0 Then
+            l.RemoveAt(yaEsta)
+        Else
+            l.Add(oc)
+        End If
+        If hs IsNot Nothing Then
+            Try
+                hs.Clear()
+                For Each x As ComponentOccurrence In l
+                    hs.AddItem(x)
+                Next
+            Catch
+            End Try
+        End If
+    Loop
+    Borrar(hs)
+    Return l
+End Function
+
+' camino de la instancia (para reconocer la misma instancia en un segundo clic)
+Function Ruta(oc As ComponentOccurrence) As String
+    Dim s As String = ""
+    Try
+        For Each o As ComponentOccurrence In oc.OccurrencePath
+            s &= "/" & o.Name
+        Next
+    Catch
+        s = oc.Name
+    End Try
+    Return s
+End Function
+
+Function Pintar(top As AssemblyDocument, l As List(Of ComponentOccurrence)) As HighlightSet
+    Try
+        Dim hs As HighlightSet = top.CreateHighlightSet()
+        hs.Color = ThisApplication.TransientObjects.CreateColor(30, 144, 255)
+        For Each x As ComponentOccurrence In l
+            hs.AddItem(x)
+        Next
+        Return hs
+    Catch
+        Return Nothing
+    End Try
+End Function
+
+Sub Borrar(hs As HighlightSet)
+    If hs Is Nothing Then Exit Sub
+    Try
+        hs.Clear()
+        hs.Delete()
+    Catch
+    End Try
+End Sub
+
+' ---------- donde va la espejo de una instancia (su conjunto; fuera del Frame si es perfil FG) ----------
+Function Ubicar(top As AssemblyDocument, occ As ComponentOccurrence) As Inst
+    Dim src As PartDocument = CType(occ.Definition.Document, PartDocument)
+    Dim nomSrc As String = NomSin(src)
+    If UProp(src, "REFERENCIA").ToUpper() = "SI" OrElse UProp(src, "TIPO_REFERENCIA") <> "" Then
+        bitacora.AppendLine(nomSrc & ": es una REFERENCIA, no se refleja.")
+        Return Nothing
+    End If
+    If src.FullFileName = "" Then
+        bitacora.AppendLine(nomSrc & ": guarda primero la pieza.")
+        Return Nothing
+    End If
+    Dim nat As ComponentOccurrence = occ
+    Try
+        If TypeOf occ Is ComponentOccurrenceProxy Then nat = CType(occ, ComponentOccurrenceProxy).NativeObject
+    Catch
+    End Try
+    Dim padre As AssemblyDocument = top
+    Try
+        padre = CType(nat.Parent.Document, AssemblyDocument)
+    Catch
+    End Try
+    Dim occPadre As ComponentOccurrence = Nothing
+    Dim ruta0 As New List(Of ComponentOccurrence)
+    Try
+        For Each o As ComponentOccurrence In occ.OccurrencePath
+            ruta0.Add(o)
+        Next
+    Catch
+    End Try
+    If ruta0.Count >= 2 Then occPadre = ruta0(ruta0.Count - 2)
+    Dim esFrame As Boolean = EsFG(src)
+    If esFrame AndAlso EsFG(padre) Then
+        Dim nuevoPadre As AssemblyDocument = Nothing
+        occPadre = Nothing
+        For k As Integer = ruta0.Count - 2 To 0 Step -1
+            Dim dk As Document = ruta0(k).Definition.Document
+            If Not EsFG(dk) Then
+                nuevoPadre = CType(dk, AssemblyDocument)
+                occPadre = ruta0(k)
+                Exit For
+            End If
+        Next
+        If nuevoPadre Is Nothing AndAlso Not EsFG(top) Then nuevoPadre = top
+        If nuevoPadre Is Nothing Then
+            bitacora.AppendLine(nomSrc & ": es perfil de Frame Generator y tienes abierto el Frame. Abre el CONJUNTO y vuelve a correr.")
+            Return Nothing
+        End If
+        padre = nuevoPadre
+    End If
+    If padre Is top Then occPadre = Nothing
+    If padre.FullFileName = "" Then
+        bitacora.AppendLine(nomSrc & ": guarda primero el ensamble " & padre.DisplayName & ".")
+        Return Nothing
+    End If
+    Dim it As New Inst
+    it.occ = occ : it.src = src : it.padre = padre : it.occPadre = occPadre : it.esFrame = esFrame
+    it.clave = src.FullFileName.ToLower() & "|" & padre.FullFileName.ToLower()
+    Return it
+End Function
+
+' mayor numero usado en la serie <conjunto>-<pref>-### (archivos de la carpeta y documentos abiertos)
+Function UltimoNumero(carpeta As String, nomPadre As String, pref As String) As Integer
+    Dim rx As New System.Text.RegularExpressions.Regex("^" & System.Text.RegularExpressions.Regex.Escape(nomPadre & "-" & pref & "-") & "(\d{2,4})\.ipt$", System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+    Dim mx As Integer = 0
+    Dim nombres As New List(Of String)
+    Try
+        If System.IO.Directory.Exists(carpeta) Then
+            For Each f As String In System.IO.Directory.GetFiles(carpeta, "*.ipt")
+                nombres.Add(System.IO.Path.GetFileName(f))
+            Next
+        End If
+    Catch
+    End Try
+    For Each d As Document In ThisApplication.Documents
+        Try
+            If System.IO.Path.GetDirectoryName(d.FullFileName).ToLower() = carpeta.ToLower() Then nombres.Add(System.IO.Path.GetFileName(d.FullFileName))
+        Catch
+        End Try
+    Next
+    For Each nm As String In nombres
+        Dim m As System.Text.RegularExpressions.Match = rx.Match(nm)
+        If m.Success Then mx = Math.Max(mx, CInt(m.Groups(1).Value))
+    Next
+    Return mx
+End Function
+
+' asigna rutas en orden desde el numero inicial de cada serie (saltando las que ya existen)
+Sub Numerar(series As SortedDictionary(Of String, List(Of Grupo)), inicio As Dictionary(Of String, Integer))
+    For Each kv As KeyValuePair(Of String, List(Of Grupo)) In series
+        Dim n As Integer = inicio(kv.Key)
+        For Each g As Grupo In kv.Value
+            Do
+                g.ruta = System.IO.Path.Combine(g.carpeta, g.nomPadre & "-" & g.pref & "-" & n.ToString("000") & ".ipt")
+                n += 1
+                If Not System.IO.File.Exists(g.ruta) AndAlso Not Abierto(g.ruta) Then Exit Do
+            Loop
+        Next
+    Next
+End Sub
+
+' ---------- simetria: un plano principal por el centro de gravedad que refleja la pieza en si
+' misma (vertices y centros de arcos/agujeros caen sobre otros). Devuelve la reflexion (pieza).
+Function Simetria(cd As PartComponentDefinition, ByRef sq As Matrix) As Boolean
+    Try
+        Dim tg As TransientGeometry = ThisApplication.TransientGeometry
+        Dim mp As MassProperties = cd.MassProperties
+        Dim c As Point = mp.CenterOfMass
+        Dim mm(2) As Double
+        Dim ax(2) As Vector
+        EjesPrincipales(mp, mm, ax)
+        Dim pts As List(Of Double()) = PuntosClave(cd)
+        If pts.Count = 0 Then Return False
+        Dim rb As Box = cd.RangeBox
+        Dim diag As Double = rb.MinPoint.DistanceTo(rb.MaxPoint)
+        Dim tol As Double = Math.Max(0.01, 0.0002 * diag)
+        ' ejes principales y, por si la inercia es degenerada, tambien X / Y / Z de la pieza
+        Dim ejes As New List(Of Double())
+        For Each e As Vector In ax
+            Dim L As Double = Math.Sqrt(e.X * e.X + e.Y * e.Y + e.Z * e.Z)
+            If L > 0 Then ejes.Add(New Double() {e.X / L, e.Y / L, e.Z / L})
+        Next
+        ejes.Add(New Double() {1, 0, 0}) : ejes.Add(New Double() {0, 1, 0}) : ejes.Add(New Double() {0, 0, 1})
+        For Each e() As Double In ejes
+            Dim ok As Boolean = True
+            For Each p() As Double In pts
+                Dim dd As Double = 2 * ((p(0) - c.X) * e(0) + (p(1) - c.Y) * e(1) + (p(2) - c.Z) * e(2))
+                Dim qx As Double = p(0) - dd * e(0), qy As Double = p(1) - dd * e(1), qz As Double = p(2) - dd * e(2)
+                Dim hay As Boolean = False
+                For Each r() As Double In pts
+                    If Math.Abs(r(0) - qx) <= tol AndAlso Math.Abs(r(1) - qy) <= tol AndAlso Math.Abs(r(2) - qz) <= tol Then
+                        hay = True
+                        Exit For
+                    End If
+                Next
+                If Not hay Then
+                    ok = False
+                    Exit For
+                End If
+            Next
+            If ok Then
+                sq = Reflexion(c, tg.CreateUnitVector(e(0), e(1), e(2)))
+                Return True
+            End If
+        Next
+    Catch
+    End Try
+    Return False
+End Function
+
+' vertices reales (no los de costura de un circulo cerrado) + centros de circulos / arcos
+Function PuntosClave(cd As PartComponentDefinition) As List(Of Double())
+    Dim l As New List(Of Double())
+    For Each b As SurfaceBody In cd.SurfaceBodies
+        For Each vx As Vertex In b.Vertices
+            Dim real As Boolean = False
+            For Each ed As Edge In vx.Edges
+                If Not Cerrada(ed) Then
+                    real = True
+                    Exit For
+                End If
+            Next
+            If real Then l.Add(New Double() {vx.Point.X, vx.Point.Y, vx.Point.Z})
+            If l.Count > 4000 Then Return New List(Of Double())
+        Next
+        For Each ed As Edge In b.Edges
+            Try
+                If ed.GeometryType = CurveTypeEnum.kCircleCurve OrElse ed.GeometryType = CurveTypeEnum.kCircularArcCurve Then
+                    Dim cc As Point = ed.Geometry.Center
+                    l.Add(New Double() {cc.X, cc.Y, cc.Z})
+                End If
+            Catch
+            End Try
+        Next
+    Next
+    Return l
+End Function
+
+Function Cerrada(ed As Edge) As Boolean
+    Try
+        Dim a As Point = ed.StartVertex.Point, b As Point = ed.StopVertex.Point
+        Return a.DistanceTo(b) < 0.000001
+    Catch
+        Return True
+    End Try
+End Function
+
+' ---------- archivo espejo de una original (derivada simetrica en su plano YZ) ----------
+Sub CrearEspejo(g As Grupo, vinculo As String)
+    Dim src As PartDocument = g.src
+    Dim cdSrc As PartComponentDefinition = src.ComponentDefinition
+    Dim nomSrc As String = NomSin(src)
+    Dim padre As AssemblyDocument = g.padre
+    Dim ruta As String = g.ruta
+    Dim carpeta As String = g.carpeta
+    System.IO.Directory.CreateDirectory(carpeta)
+    ' ---------- pieza espejo: derivada simetrica respecto a su plano YZ ----------
+    Dim esChapa As Boolean = (src.SubType = "{9C464203-9BAE-11D3-8BAD-0060B0CE6BB4}")
+    Dim p As PartDocument = CType(ThisApplication.Documents.Add(DocumentTypeEnum.kPartDocumentObject, BuscarPlantilla(If(esChapa, "Sheet Metal (mm).ipt", "Standard (mm).ipt")), False), PartDocument)
+    Dim cd As PartComponentDefinition = p.ComponentDefinition
+    Dim dps As DerivedPartComponents = cd.ReferenceComponents.DerivedPartComponents
+    Dim df As DerivedPartUniformScaleDef = dps.CreateDefinition(src.FullFileName)
+    Try : df.DeriveStyle = DerivedComponentStyleEnum.kDeriveAsSingleBodyNoSeams : Catch : End Try
+    Try : df.IncludeAllSolids = DerivedComponentOptionEnum.kDerivedIncludeAll : Catch : End Try
+    Try : df.IncludeAllSurfaces = DerivedComponentOptionEnum.kDerivedExcludeAll : Catch : End Try
+    Try : df.IncludeAllSketches = DerivedComponentOptionEnum.kDerivedExcludeAll : Catch : End Try
+    Try : df.IncludeAllWorkFeatures = DerivedComponentOptionEnum.kDerivedExcludeAll : Catch : End Try
+    df.MirrorPlane = DerivedPartMirrorPlaneEnum.kDerivedPartMirrorPlaneYZ
+    Dim dc As DerivedPartComponent = dps.Add(df)
+
+    ' chapa: mismo espesor y desarrollo
+    Dim desarrollo As String = ""
+    If esChapa Then
+        Try
+            Dim smS As SheetMetalComponentDefinition = CType(cdSrc, SheetMetalComponentDefinition)
+            Dim sm As SheetMetalComponentDefinition = CType(cd, SheetMetalComponentDefinition)
+            Try : sm.UseSheetMetalStyleThickness = False : Catch : End Try
+            sm.Thickness.Value = smS.Thickness.Value
+        Catch
+        End Try
+    End If
+
+    ' material y propiedades
+    Try
+        p.ActiveMaterial = src.ActiveMaterial
+    Catch
+        Try
+            p.ActiveMaterial = ThisApplication.ActiveMaterialLibrary.MaterialAssets.Item(src.ActiveMaterial.DisplayName)
+        Catch
+        End Try
+    End Try
+    CopiarProps(src, p)
+    For Each pn As String In New String() {"MARCA", "MARCA_ANTERIOR", "CONJUNTO", "ENSAMBLE", "PADRE", "RUTA", "NIVEL", "PERTENECE_A", "BLOQUEADO", "TAG", "TAG_LOCAL", "TAGS", "CONGELADA_EN", "COPIA_DE", "ESPEJO_DE", "QUIRAL"}
+        If UProp(p, pn) <> "" Then EscribirProp(p, pn, "")
+    Next
+    EscribirProp(p, "ESPEJO_DE", nomSrc)
+    EscribirProp(p, "QUIRAL", If(g.quiral, "SI", "NO"))
+    Dim plPadre As String = UProp(padre, "PLANTA")
+    If plPadre <> "" Then EscribirProp(p, "PLANTA", plPadre)
+    Try
+        p.PropertySets.Item("Design Tracking Properties").Item("Part Number").Value = System.IO.Path.GetFileNameWithoutExtension(ruta)
+    Catch
+    End Try
+    Try
+        p.PropertySets.Item("Design Tracking Properties").Item("Description").Value = CStr(src.PropertySets.Item("Design Tracking Properties").Item("Description").Value)
+    Catch
+    End Try
+    p.SaveAs(ruta, False)
+
+    If esChapa Then
+        Try
+            Dim sm As SheetMetalComponentDefinition = CType(cd, SheetMetalComponentDefinition)
+            If Not DesarrolloBien(sm) Then Throw New Exception("sin desarrollo")
+            desarrollo = "desarrollo " & (sm.FlatPattern.Length * 10).ToString("0") & " x " & (sm.FlatPattern.Width * 10).ToString("0") & " mm"
+            Try : sm.FlatPattern.ExitEdit() : Catch : End Try
+        Catch
+            desarrollo = "SIN desarrollo (revisa el espesor o conviertela a chapa)"
+        End Try
+    End If
+    If vinculo = "independiente" Then
+        Try
+            dc.BreakLinkToFile()
+        Catch
+        End Try
+    End If
+    p.Save2(False)
+
+    Try
+        p.Close(True)
+    Catch
+    End Try
+    Try
+        System.IO.File.WriteAllText(System.IO.Path.Combine(carpeta, "_ultima_pieza.txt"), ruta)
+    Catch
+    End Try
+    If desarrollo <> "" Then g.nota = System.IO.Path.GetFileName(ruta) & ": " & desarrollo
+End Sub
+
+' Plano de un objeto seleccionado (plano de trabajo o cara plana), en coordenadas del ensamble activo
+Sub LeerPlano(o As Object, ByRef p As Point, ByRef n As UnitVector, ByRef nom As String)
+    Try
+        Dim g As Object = Nothing
+        If TypeOf o Is WorkPlane OrElse TypeOf o Is WorkPlaneProxy Then
+            g = o.Plane
+            nom = "plano " & o.Name
+        ElseIf TypeOf o Is Face OrElse TypeOf o Is FaceProxy Then
+            If o.SurfaceType = SurfaceTypeEnum.kPlaneSurface Then
+                g = o.Geometry
+                nom = "cara plana seleccionada"
+            End If
+        End If
+        If g IsNot Nothing Then
+            p = g.RootPoint
+            n = g.Normal
+        End If
+    Catch
+    End Try
+End Sub
+
+' Matriz de reflexion respecto al plano (punto p, normal n)
+Function Reflexion(p As Point, n As UnitVector) As Matrix
+    Dim tg As TransientGeometry = ThisApplication.TransientGeometry
+    Dim m As Matrix = tg.CreateMatrix()
+    Dim v() As Double = {n.X, n.Y, n.Z}
+    Dim d As Double = p.X * n.X + p.Y * n.Y + p.Z * n.Z
+    For i As Integer = 0 To 2
+        For j As Integer = 0 To 2
+            m.Cell(i + 1, j + 1) = If(i = j, 1.0, 0.0) - 2 * v(i) * v(j)
+        Next
+        m.Cell(i + 1, 4) = 2 * d * v(i)
+    Next
+    Return m
+End Function
+
+Sub CopiarProps(src As Document, dst As Document)
+    Try
+        For Each pr As Object In src.PropertySets.Item("Inventor User Defined Properties")
+            Try
+                EscribirProp(dst, CStr(pr.Name), CStr(pr.Value))
+            Catch
+            End Try
+        Next
+    Catch
+    End Try
+End Sub
+
+' Prefijo de la serie: el de la original (...-PL-002 -> PL); si no tiene, segun su tipo
+Function Prefijo(p As PartDocument) As String
+    Dim m As System.Text.RegularExpressions.Match = System.Text.RegularExpressions.Regex.Match(NomSin(p).ToUpper(), "-([A-Z]{1,4})-\d{2,4}$")
+    If m.Success Then Return m.Groups(1).Value
+    If p.SubType = "{9C464203-9BAE-11D3-8BAD-0060B0CE6BB4}" Then Return "CH"
+    Dim nat As String = UProp(p, "NATURALEZA").ToUpper()
+    If nat.Contains("MECANIZ") OrElse UProp(p, "CODIGO").ToLower() = "mq" Then Return "MQ"
+    If nat.Contains("PLANCHA") Then Return "PL"
+    If UProp(p, "PERFIL") <> "" Then Return "PF"
+    Return "PZ"
+End Function
+
+Function BuscarPlantilla(nombre As String) As String
+    Dim raiz As String = ThisApplication.FileOptions.TemplatesPath
+    Try
+        Dim tp As String = ThisApplication.DesignProjectManager.ActiveDesignProject.TemplatesPath
+        If tp <> "" AndAlso System.IO.Directory.Exists(tp) AndAlso System.IO.Directory.GetFiles(tp, nombre, System.IO.SearchOption.AllDirectories).Length > 0 Then raiz = tp
+    Catch
+    End Try
+    Try
+        For Each f As String In System.IO.Directory.GetFiles(raiz, nombre, System.IO.SearchOption.AllDirectories)
+            Return f
+        Next
+        For Each f As String In System.IO.Directory.GetFiles(raiz, If(nombre.StartsWith("Sheet"), "Sheet Metal*.ipt", "Standard*.ipt"), System.IO.SearchOption.AllDirectories)
+            Return f
+        Next
+    Catch
+    End Try
+    Return ThisApplication.FileManager.GetTemplateFile(DocumentTypeEnum.kPartDocumentObject)
+End Function
+
+Function EsFG(d As Document) As Boolean
+    Try
+        ' Solo el Frame (FrameDoc) y sus perfiles (FrameMemberDoc). Un conjunto que CONTIENE un
+        ' Frame tambien tiene el interes de Frame Generator (SolveAssemblyDoc): ese no cuenta.
+        For Each di As DocumentInterest In d.DocumentInterests
+            If di.ClientId = "{AC211AE0-A7A5-4589-916D-81C529DA6D17}" AndAlso (di.Name = "FrameDoc" OrElse di.Name = "FrameMemberDoc") Then Return True
+        Next
+    Catch
+    End Try
+    Return False
+End Function
+
+Function Abierto(ruta As String) As Boolean
+    For Each x As Document In ThisApplication.Documents
+        If x.FullFileName.ToLower() = ruta.ToLower() Then Return True
+    Next
+    Return False
+End Function
+
+Function BuscarOcc(occs As Object, nom As String) As ComponentOccurrence
+    For Each o As ComponentOccurrence In occs
+        Dim f As String = ""
+        Try
+            f = System.IO.Path.GetFileName(o.Definition.Document.FullFileName).ToLower()
+        Catch
+        End Try
+        If o.Name.ToLower() = nom OrElse f = nom OrElse System.IO.Path.GetFileNameWithoutExtension(f) = nom Then Return o
+        If o.DefinitionDocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+            Dim r As ComponentOccurrence = BuscarOcc(o.SubOccurrences, nom)
+            If r IsNot Nothing Then Return r
+        End If
+    Next
+    Return Nothing
+End Function
+
+Function NomSin(d As Document) As String
+    Return System.IO.Path.GetFileNameWithoutExtension(d.FullFileName)
+End Function
+
+Function Arg(n As String) As String
+    Try
+        If RuleArguments.Exists(n) Then Return CStr(RuleArguments.Value(n))
+    Catch
+    End Try
+    Return ""
+End Function
+
+Function UProp(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Inventor User Defined Properties").Item(n).Value).Trim()
+    Catch
+    End Try
+    Return ""
+End Function
+
+Sub EscribirProp(d As Document, n As String, v As String)
+    Dim ps As PropertySet = d.PropertySets.Item("Inventor User Defined Properties")
+    Try
+        ps.Item(n).Value = v
+    Catch
+        ps.Add(v, n)
+    End Try
+End Sub
+
+' Carpeta para los hijos de un ensamble: <carpeta>\<NOMBRE>\ ; una FASE que ya vive en su propia
+' carpeta usa esa misma carpeta.
+Function CarpetaHija(d As Document) As String
+    Dim dir As String = System.IO.Path.GetDirectoryName(d.FullFileName)
+    Dim nom As String = System.IO.Path.GetFileNameWithoutExtension(d.FullFileName)
+    If UProp(d, "TIPO_ENSAMBLE").ToUpper() = "PLANTA" AndAlso System.IO.Path.GetFileName(dir).ToUpper() = nom.ToUpper() Then Return dir
+    Return System.IO.Path.Combine(dir, nom)
+End Function
+
+' Devuelve True si hay desarrollo valido.
+Function DesarrolloBien(sm As SheetMetalComponentDefinition) As Boolean
+    Try
+        Dim t As Double = sm.Thickness.Value
+        If sm.HasFlatPattern Then
+            Dim w As Double = Math.Min(sm.FlatPattern.Length, sm.FlatPattern.Width)
+            If w > 1.5 * t Then Return True
+            sm.FlatPattern.Delete()
+        End If
+        Dim big As Face = Nothing
+        Dim a As Double = 0
+        For Each f As Face In sm.SurfaceBodies.Item(1).Faces
+            If f.SurfaceType = SurfaceTypeEnum.kPlaneSurface AndAlso f.Evaluator.Area > a Then
+                a = f.Evaluator.Area
+                big = f
+            End If
+        Next
+        If big IsNot Nothing Then
+            For i As Integer = sm.ASideDefinitions.Count To 1 Step -1
+                Try : sm.ASideDefinitions.Item(i).Delete() : Catch : End Try
+            Next
+            Try : sm.ASideDefinitions.Add(big) : Catch : End Try
+        End If
+        sm.Unfold()
+        Try : sm.FlatPattern.ExitEdit() : Catch : End Try
+        Return sm.HasFlatPattern
+    Catch
+        Return False
+    End Try
+End Function
+
+' Ejes principales de inercia (del tensor XYZMomentsOfInertia; MassProperties no trae los ejes):
+' momentos m(0..2) y ejes ax(0..2) como vectores unitarios.
+Sub EjesPrincipales(mp As MassProperties, m() As Double, ax() As Vector)
+    Dim ixx As Double, iyy As Double, izz As Double, ixy As Double, iyz As Double, ixz As Double
+    mp.XYZMomentsOfInertia(ixx, iyy, izz, ixy, iyz, ixz)
+    Dim t(2, 2) As Double
+    t(0, 0) = ixx : t(1, 1) = iyy : t(2, 2) = izz
+    t(0, 1) = ixy : t(1, 0) = ixy : t(1, 2) = iyz : t(2, 1) = iyz : t(0, 2) = ixz : t(2, 0) = ixz
+    Dim v(2, 2) As Double
+    Jacobi(t, m, v)
+    Dim tg As TransientGeometry = ThisApplication.TransientGeometry
+    For k As Integer = 0 To 2
+        ax(k) = tg.CreateVector(v(0, k), v(1, k), v(2, k))
+    Next
+End Sub
+
+' valores y vectores propios de una matriz simetrica 3x3 (vectores en columnas)
+Sub Jacobi(a(,) As Double, d() As Double, v(,) As Double)
+    Dim m(2, 2) As Double
+    For i As Integer = 0 To 2
+        For j As Integer = 0 To 2
+            m(i, j) = a(i, j)
+            v(i, j) = If(i = j, 1, 0)
+        Next
+    Next
+    For it As Integer = 1 To 60
+        Dim p As Integer = 0, q As Integer = 1
+        Dim big As Double = Math.Abs(m(0, 1))
+        If Math.Abs(m(0, 2)) > big Then big = Math.Abs(m(0, 2)) : p = 0 : q = 2
+        If Math.Abs(m(1, 2)) > big Then big = Math.Abs(m(1, 2)) : p = 1 : q = 2
+        If big < 1.0E-12 * (Math.Abs(m(0, 0)) + Math.Abs(m(1, 1)) + Math.Abs(m(2, 2)) + 1.0E-30) Then Exit For
+        Dim th As Double = 0.5 * Math.Atan2(2 * m(p, q), m(q, q) - m(p, p))
+        Dim c As Double = Math.Cos(th), s As Double = Math.Sin(th)
+        For kk As Integer = 0 To 2
+            Dim mkp As Double = m(kk, p), mkq As Double = m(kk, q)
+            m(kk, p) = c * mkp - s * mkq
+            m(kk, q) = s * mkp + c * mkq
+        Next
+        For kk As Integer = 0 To 2
+            Dim mpk As Double = m(p, kk), mqk As Double = m(q, kk)
+            m(p, kk) = c * mpk - s * mqk
+            m(q, kk) = s * mpk + c * mqk
+        Next
+        For kk As Integer = 0 To 2
+            Dim vkp As Double = v(kk, p), vkq As Double = v(kk, q)
+            v(kk, p) = c * vkp - s * vkq
+            v(kk, q) = s * vkp + c * vkq
+        Next
+    Next
+    For i As Integer = 0 To 2
+        d(i) = m(i, i)
+    Next
+End Sub

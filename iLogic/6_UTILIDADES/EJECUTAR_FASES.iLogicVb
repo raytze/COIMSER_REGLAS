@@ -1,5 +1,5 @@
 ' =====================================================================
-'  EJECUTAR_FASES  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  EJECUTAR_FASES  v1.2  -  Regla externa iLogic (Inventor 2026) - COIMSER
 '  Desde el ensamble GENERAL de la obra ejecuta una regla en TODAS las fases o en UNA,
 '  sin tener que abrir cada fase a mano. Cada fase se abre, se activa y se corre la regla
 '  como si la hubieras lanzado tu ahi (cada una deja sus planos / reportes en su carpeta).
@@ -10,7 +10,10 @@
 '     (<obra>\REPORTES_OBRA\<COD>-RESUMEN_OBRA.xlsx). Es INFORMATIVO: para comprar y cortar
 '     se usa siempre el reporte de cada fase.
 '  Si una regla pregunta algo (ej. configuracion de TEKLA), te lo preguntara en cada fase.
-'  Argumentos: regla=<NOMBRE>, fase=<FASE>|TODAS, silencioso
+'  v1.2 - GENERAR_PLANOS: ademas del plano de la fase (<COD>-FAB.idw) genera UN PLANO POR CONJUNTO /
+'         SUBCONJUNTO (<fase>\PLANOS\<COD>-CH-001-FAB.idw ...), como si corrieras la regla dentro de cada
+'         uno. Argumento conjuntos=NO para generar solo el plano de la fase.
+'  Argumentos: regla=<NOMBRE>, fase=<FASE>|TODAS, silencioso, conjuntos=NO
 ' =====================================================================
 
 Sub Main()
@@ -58,14 +61,20 @@ Sub Main()
     End If
 
     Dim auto As Object = iLogicVb.Automation
+    Dim rutaR As String = RutaRegla(regla)
+    If rutaR = "" Then
+        MessageBox.Show("No encuentro " & regla & ".iLogicVb en las carpetas de reglas externas.", "EJECUTAR_FASES")
+        Exit Sub
+    End If
     For Each k As String In elegidas
         Dim ruta As String = fases(k)
         Try
             Dim d As Document = ThisApplication.Documents.Open(ruta, True)
             d.Activate()
             Dim t0 As DateTime = DateTime.Now
-            auto.RunExternalRule(d, regla)
+            auto.RunExternalRuleWithArguments(d, rutaR, ThisApplication.TransientObjects.CreateNameValueMap())
             resumen.AppendLine("OK    " & k & "  (" & CInt((DateTime.Now - t0).TotalSeconds) & " s)")
+            If regla = "GENERAR_PLANOS" AndAlso Arg("conjuntos").ToUpper() <> "NO" Then PlanosPorConjunto(CType(d, AssemblyDocument), k, auto, rutaR)
         Catch ex As Exception
             resumen.AppendLine("ERROR " & k & ": " & ex.Message)
         End Try
@@ -81,6 +90,38 @@ Private silencioso As Boolean
 Private resumen As New System.Text.StringBuilder
 Private xl As Object
 Private rutaSalida As String = ""
+
+' Un plano por conjunto / subconjunto de la fase (cada uno se abre, se activa y se corre GENERAR_PLANOS)
+Sub PlanosPorConjunto(fase As AssemblyDocument, nomFase As String, auto As Object, rutaR As String)
+    Dim lista As New List(Of Document)
+    Try
+        For Each x As Document In fase.AllReferencedDocuments
+            Try
+                If x.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject AndAlso UProp(x, "PREFIJO") <> "" AndAlso UProp(x, "EQUIPO").ToUpper() <> "SI" AndAlso x.FullFileName <> fase.FullFileName Then lista.Add(x)
+            Catch
+            End Try
+        Next
+    Catch
+    End Try
+    lista.Sort(Function(a As Document, b As Document) String.Compare(a.FullFileName, b.FullFileName, True))
+    For Each cj As Document In lista
+        Dim nom As String = System.IO.Path.GetFileNameWithoutExtension(cj.FullFileName)
+        Try
+            Dim d As Document = ThisApplication.Documents.Open(cj.FullFileName, True)
+            d.Activate()
+            Dim t0 As DateTime = DateTime.Now
+            auto.RunExternalRuleWithArguments(d, rutaR, ThisApplication.TransientObjects.CreateNameValueMap())
+            resumen.AppendLine("   plano del conjunto " & nom & "  OK (" & CInt((DateTime.Now - t0).TotalSeconds) & " s)")
+        Catch ex As Exception
+            resumen.AppendLine("   plano del conjunto " & nom & "  ERROR: " & ex.Message)
+        End Try
+        Try
+            fase.Activate()
+        Catch
+        End Try
+    Next
+    If lista.Count = 0 Then resumen.AppendLine("   (la fase " & nomFase & " no tiene conjuntos con PREFIJO)")
+End Sub
 
 Sub ResumenObra(g As AssemblyDocument, fases As Dictionary(Of String, String), elegidas As List(Of String))
     Dim filas As New List(Of Object())
@@ -281,3 +322,20 @@ Sub GuardarCsv(ruta As String, filas As List(Of Object()))
     System.IO.File.WriteAllText(ruta, sb.ToString(), System.Text.Encoding.UTF8)
     rutaSalida = ruta
 End Sub
+
+' Ruta completa de un archivo de reglas (o dato) en las carpetas de reglas externas de iLogic,
+' incluidas sus subcarpetas (1_OBRA, 2_MODELADO...).
+Function RutaRegla(archivo As String) As String
+    If Not archivo.Contains(".") Then archivo &= ".iLogicVb"
+    Try
+        For Each raiz As String In iLogicVb.Automation.FileOptions.ExternalRuleDirectories
+            If Not System.IO.Directory.Exists(raiz) Then Continue For
+            For Each f As String In System.IO.Directory.GetFiles(raiz, archivo, System.IO.SearchOption.AllDirectories)
+                If f.ToLower().Contains("\_to_delete\") OrElse f.ToLower().Contains("\oldversions\") Then Continue For
+                Return f
+            Next
+        Next
+    Catch
+    End Try
+    Return ""
+End Function

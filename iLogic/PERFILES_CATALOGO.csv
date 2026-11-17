@@ -1,0 +1,2451 @@
+﻿DESIGNACION;FAMILIA;A_cm2;Imax_cm4;Imin_cm4;FUENTE
+L 2.5 x 1.5 x 3/16;ANSI L (Ángulos desiguales);4.62563;21.3528;3.19266;geometria
+L 2.5 x 1.5 x 1/4;ANSI L (Ángulos desiguales);6.04744;27.1994;4.09448;geometria
+L 2.5 x 2 x 3/16;ANSI L (Ángulos desiguales);5.21331;27.1276;6.14019;geometria
+L 2.5 x 2 x 1/4;ANSI L (Ángulos desiguales);6.86262;34.7846;7.95988;geometria
+L 2.5 x 2 x 5/16;ANSI L (Ángulos desiguales);8.53088;42.1102;9.78729;geometria
+L 2.5 x 2 x 3/8;ANSI L (Ángulos desiguales);10.0475;48.331;11.4573;geometria
+L 3 x 2 x 3/16;ANSI L (Ángulos desiguales);5.81995;40.5497;7.22657;geometria
+L 3 x 2 x 1/4;ANSI L (Ángulos desiguales);7.77258;52.9757;9.48191;geometria
+L 3 x 2 x 5/16;ANSI L (Ángulos desiguales);9.47875;63.1902;11.404;geometria
+L 3 x 2 x 3/8;ANSI L (Ángulos desiguales);11.1849;72.9763;13.3296;geometria
+L 3 x 2 x 7/16;ANSI L (Ángulos desiguales);12.8911;82.3263;15.2815;geometria
+L 3 x 2 x 1/2;ANSI L (Ángulos desiguales);14.5973;91.2776;17.2861;geometria
+L 3 x 2.5 x 3/16;ANSI L (Ángulos desiguales);6.42659;50.0792;11.7147;geometria
+L 3 x 2.5 x 1/4;ANSI L (Ángulos desiguales);8.53088;65.0409;15.3278;geometria
+L 3 x 2.5 x 5/16;ANSI L (Ángulos desiguales);10.6162;79.1708;18.8532;geometria
+L 3 x 2.5 x 3/8;ANSI L (Ángulos desiguales);12.512;91.3111;22.0324;geometria
+L 3 x 2.5 x 7/16;ANSI L (Ángulos desiguales);14.4077;102.873;25.2321;geometria
+L 3 x 2.5 x 1/2;ANSI L (Ángulos desiguales);16.1139;112.624;28.1559;geometria
+L 3.5 x 2.5 x 1/4;ANSI L (Ángulos desiguales);9.28918;89.7187;17.7232;geometria
+L 3.5 x 2.5 x 5/16;ANSI L (Ángulos desiguales);11.5641;109.572;21.7716;geometria
+L 3.5 x 2.5 x 3/8;ANSI L (Ángulos desiguales);13.6494;126.933;25.4312;geometria
+L 3.5 x 2.5 x 7/16;ANSI L (Ángulos desiguales);15.7347;143.614;29.0905;geometria
+L 3.5 x 2.5 x 1/2;ANSI L (Ángulos desiguales);17.8201;159.661;32.7839;geometria
+L 3.5 x 3 x 1/4;ANSI L (Ángulos desiguales);10.2371;109.706;26.2957;geometria
+L 3.5 x 3 x 5/16;ANSI L (Ángulos desiguales);12.512;131.574;31.7739;geometria
+L 3.5 x 3 x 3/8;ANSI L (Ángulos desiguales);14.9764;154.597;37.6861;geometria
+L 3.5 x 3 x 7/16;ANSI L (Ángulos desiguales);17.2513;174.77;43.1031;geometria
+L 3.5 x 3 x 1/2;ANSI L (Ángulos desiguales);19.3367;192.327;48.0816;geometria
+L 4 x 3 x 1/4;ANSI L (Ángulos desiguales);10.9954;143.287;30.0885;geometria
+L 4 x 3 x 5/16;ANSI L (Ángulos desiguales);13.6494;174.909;36.8921;geometria
+L 4 x 3 x 3/8;ANSI L (Ángulos desiguales);16.1139;203.118;43.107;geometria
+L 4 x 3 x 7/16;ANSI L (Ángulos desiguales);18.5784;230.349;49.2819;geometria
+L 4 x 3 x 1/2;ANSI L (Ángulos desiguales);21.0428;256.661;55.4598;geometria
+L 4 x 3 x 5/8;ANSI L (Ángulos desiguales);25.7822;304.424;67.4842;geometria
+L 4 x 3.5 x 1/4;ANSI L (Ángulos desiguales);11.7537;168.62;40.8481;geometria
+L 4 x 3.5 x 5/16;ANSI L (Ángulos desiguales);14.5973;205.991;50.1823;geometria
+L 4 x 3.5 x 3/8;ANSI L (Ángulos desiguales);17.2513;239.533;58.7657;geometria
+L 4 x 3.5 x 7/16;ANSI L (Ángulos desiguales);20.095;274.512;67.931;geometria
+L 4 x 3.5 x 1/2;ANSI L (Ángulos desiguales);22.5594;303.218;75.8044;geometria
+L 4 x 3.5 x 5/8;ANSI L (Ángulos desiguales);27.8675;362.667;92.98;geometria
+L 5 x 3 x 1/4;ANSI L (Ángulos desiguales);12.512;237.312;35.4721;geometria
+L 5 x 3 x 5/16;ANSI L (Ángulos desiguales);15.5452;290.901;43.4537;geometria
+L 5 x 3 x 3/8;ANSI L (Ángulos desiguales);18.5784;343.117;51.3014;geometria
+L 5 x 3 x 7/16;ANSI L (Ángulos desiguales);21.422;390.42;58.5254;geometria
+L 5 x 3 x 1/2;ANSI L (Ángulos desiguales);24.2656;436.554;65.717;geometria
+L 5 x 3 x 5/8;ANSI L (Ángulos desiguales);29.7633;521.842;79.6296;geometria
+L 5 x 3.5 x 1/4;ANSI L (Ángulos desiguales);13.2703;265.343;50.7849;geometria
+L 5 x 3.5 x 5/16;ANSI L (Ángulos desiguales);16.493;325.355;62.3621;geometria
+L 5 x 3.5 x 3/8;ANSI L (Ángulos desiguales);19.7158;383.813;73.7635;geometria
+L 5 x 3.5 x 7/16;ANSI L (Ángulos desiguales);22.749;437.015;84.321;geometria
+L 5 x 3.5 x 1/2;ANSI L (Ángulos desiguales);25.7822;488.78;94.8053;geometria
+L 5 x 3.5 x 5/8;ANSI L (Ángulos desiguales);31.8486;588.176;115.745;geometria
+L 5 x 3.5 x 3/4;ANSI L (Ángulos desiguales);37.5359;675.53;135.589;geometria
+L 6 x 3.5 x 5/16;ANSI L (Ángulos desiguales);18.5784;502.377;71.3677;geometria
+L 6 x 3.5 x 3/8;ANSI L (Ángulos desiguales);22.1803;593.203;84.2066;geometria
+L 6 x 3.5 x 1/2;ANSI L (Ángulos desiguales);29.005;758.837;107.931;geometria
+L 6 x 4 x 5/16;ANSI L (Ángulos desiguales);19.5262;550.344;98.0023;geometria
+L 6 x 4 x 3/8;ANSI L (Ángulos desiguales);23.3177;649.968;115.832;geometria
+L 6 x 4 x 7/16;ANSI L (Ángulos desiguales);27.1092;747.234;133.394;geometria
+L 6 x 4 x 1/2;ANSI L (Ángulos desiguales);30.7112;837.275;149.86;geometria
+L 6 x 4 x 9/16;ANSI L (Ángulos desiguales);34.3131;925.15;166.192;geometria
+L 6 x 4 x 5/8;ANSI L (Ángulos desiguales);37.915;1011.22;182.481;geometria
+L 6 x 4 x 3/4;ANSI L (Ángulos desiguales);44.7397;1167.62;213.274;geometria
+L 6 x 4 x 7/8;ANSI L (Ángulos desiguales);51.5644;1317.22;244.505;geometria
+L 7 x 4 x 3/8;ANSI L (Ángulos desiguales);25.7822;942.494;128.879;geometria
+L 7 x 4 x 7/16;ANSI L (Ángulos desiguales);29.7633;1077.65;147.242;geometria
+L 7 x 4 x 1/2;ANSI L (Ángulos desiguales);33.9339;1217.18;166.323;geometria
+L 7 x 4 x 5/8;ANSI L (Ángulos desiguales);41.8961;1474.86;202.124;geometria
+L 7 x 4 x 3/4;ANSI L (Ángulos desiguales);49.6687;1716.41;236.802;geometria
+L 8 x 4 x 7/16;ANSI L (Ángulos desiguales);32.6069;1509.72;158.924;geometria
+L 8 x 4 x 1/2;ANSI L (Ángulos desiguales);37.1567;1706.3;179.309;geometria
+L 8 x 4 x 9/16;ANSI L (Ángulos desiguales);41.5169;1890.77;198.527;geometria
+L 8 x 4 x 5/8;ANSI L (Ángulos desiguales);45.8772;2072.45;217.619;geometria
+L 8 x 4 x 3/4;ANSI L (Ángulos desiguales);54.408;2418.32;254.688;geometria
+L 8 x 4 x 7/8;ANSI L (Ángulos desiguales);62.7493;2744.88;291.044;geometria
+L 8 x 4 x 1;ANSI L (Ángulos desiguales);70.9011;3053.1;327.188;geometria
+L 8 x 6 x 7/16;ANSI L (Ángulos desiguales);38.2942;2012.77;422.014;geometria
+L 8 x 6 x 1/2;ANSI L (Ángulos desiguales);43.6023;2272.83;477.267;geometria
+L 8 x 6 x 9/16;ANSI L (Ángulos desiguales);48.7208;2518.36;529.88;geometria
+L 8 x 6 x 5/8;ANSI L (Ángulos desiguales);54.0289;2769.76;584.178;geometria
+L 8 x 6 x 3/4;ANSI L (Ángulos desiguales);64.0764;3230.77;685.655;geometria
+L 8 x 6 x 7/8;ANSI L (Ángulos desiguales);74.1238;3676.19;786.499;geometria
+L 8 x 6 x 1;ANSI L (Ángulos desiguales);83.7922;4088.08;883.359;geometria
+L 9 x 4 x 1/2;ANSI L (Ángulos desiguales);37.1567;2129.86;174.92;geometria
+L 9 x 4 x 9/16;ANSI L (Ángulos desiguales);45.1189;2567.3;210.389;geometria
+L 9 x 4 x 5/8;ANSI L (Ángulos desiguales);49.8582;2816.29;230.509;geometria
+L 1 x 1 x 1/8;ANSI L (Ángulos iguales);1.5166;1.43965;0.374223;geometria
+L 1.13 x 1.13 x 1/8;ANSI L (Ángulos iguales);1.70618;2.09779;0.540553;geometria
+L 1.25 x 1.25 x 3/16;ANSI L (Ángulos iguales);2.80571;4.05983;1.07449;geometria
+L 1.25 x 1.25 x 1/4;ANSI L (Ángulos iguales);3.63984;5.01456;1.39067;geometria
+L 1.5 x 1.5 x 3/16;ANSI L (Ángulos iguales);3.41235;7.28821;1.8945;geometria
+L 1.5 x 1.5 x 1/4;ANSI L (Ángulos iguales);4.43606;9.0927;2.44041;geometria
+L 1.75 x 1.75 x 3/16;ANSI L (Ángulos iguales);4.01899;11.8925;3.0585;geometria
+L 1.75 x 1.75 x 1/4;ANSI L (Ángulos iguales);5.25123;14.9984;3.94773;geometria
+L 2 x 2 x 1/8;ANSI L (Ángulos iguales);3.12799;12.6391;3.18933;geometria
+L 2 x 2 x 3/16;ANSI L (Ángulos iguales);4.62563;18.1129;4.62703;geometria
+L 2 x 2 x 1/4;ANSI L (Ángulos iguales);6.04744;22.9624;5.96886;geometria
+L 2 x 2 x 5/16;ANSI L (Ángulos iguales);7.43134;27.352;7.27728;geometria
+L 2 x 2 x 3/8;ANSI L (Ángulos iguales);8.91003;31.8108;8.70783;geometria
+L 2.5 x 2.5 x 3/16;ANSI L (Ángulos iguales);5.81995;36.2818;9.19481;geometria
+L 2.5 x 2.5 x 1/4;ANSI L (Ángulos iguales);7.77258;47.2726;12.1117;geometria
+L 2.5 x 2.5 x 5/16;ANSI L (Ángulos iguales);9.47875;56.225;14.6171;geometria
+L 2.5 x 2.5 x 3/8;ANSI L (Ángulos iguales);11.1849;64.7379;17.1337;geometria
+L 2.5 x 2.5 x 1/2;ANSI L (Ángulos iguales);14.5973;80.4418;22.3086;geometria
+L 3 x 3 x 3/16;ANSI L (Ángulos iguales);7.03323;63.9318;16.1332;geometria
+L 3 x 3 x 1/4;ANSI L (Ángulos iguales);9.28918;82.716;21.0299;geometria
+L 3 x 3 x 5/16;ANSI L (Ángulos iguales);11.5641;100.843;25.8954;geometria
+L 3 x 3 x 3/8;ANSI L (Ángulos iguales);13.6494;116.611;30.3121;geometria
+L 3 x 3 x 7/16;ANSI L (Ángulos iguales);15.7347;131.663;34.7376;geometria
+L 3 x 3 x 1/2;ANSI L (Ángulos iguales);17.8201;146.105;39.2134;geometria
+L 3.5 x 3.5 x 1/4;ANSI L (Ángulos iguales);10.9954;134.855;34.1293;geometria
+L 3.5 x 3.5 x 5/16;ANSI L (Ángulos iguales);13.6494;164.431;41.9159;geometria
+L 3.5 x 3.5 x 3/8;ANSI L (Ángulos iguales);16.1139;190.729;49.0514;geometria
+L 3.5 x 3.5 x 7/16;ANSI L (Ángulos iguales);18.5784;216.006;56.1541;geometria
+L 3.5 x 3.5 x 1/2;ANSI L (Ángulos iguales);21.0428;240.408;63.2776;geometria
+L 4 x 4 x 1/4;ANSI L (Ángulos iguales);12.512;202.226;51.0292;geometria
+L 4 x 4 x 5/16;ANSI L (Ángulos iguales);15.5452;247.334;62.7542;geometria
+L 4 x 4 x 3/8;ANSI L (Ángulos iguales);18.5784;291.067;74.3455;geometria
+L 4 x 4 x 7/16;ANSI L (Ángulos iguales);21.422;330.403;85.0836;geometria
+L 4 x 4 x 1/2;ANSI L (Ángulos iguales);24.2656;368.549;95.8011;geometria
+L 4 x 4 x 5/8;ANSI L (Ángulos iguales);29.7633;438.297;116.59;geometria
+L 4 x 4 x 3/4;ANSI L (Ángulos iguales);35.0714;500.85;137.102;geometria
+L 5 x 5 x 5/16;ANSI L (Ángulos iguales);19.5262;493.067;124.423;geometria
+L 5 x 5 x 3/8;ANSI L (Ángulos iguales);23.3177;581.571;147.375;geometria
+L 5 x 5 x 7/16;ANSI L (Ángulos iguales);27.1092;667.7;170.068;geometria
+L 5 x 5 x 1/2;ANSI L (Ángulos iguales);30.7112;747.138;191.424;geometria
+L 5 x 5 x 5/8;ANSI L (Ángulos iguales);37.915;899.779;233.889;geometria
+L 5 x 5 x 3/4;ANSI L (Ángulos iguales);44.7397;1035.81;274.14;geometria
+L 5 x 5 x 7/8;ANSI L (Ángulos iguales);51.5644;1164.79;315.002;geometria
+L 6 x 6 x 5/16;ANSI L (Ángulos iguales);23.5073;863.727;217.324;geometria
+L 6 x 6 x 3/8;ANSI L (Ángulos iguales);28.2467;1027.21;259.205;geometria
+L 6 x 6 x 7/16;ANSI L (Ángulos iguales);32.6069;1173.42;297.137;geometria
+L 6 x 6 x 1/2;ANSI L (Ángulos iguales);37.1567;1323.46;336.479;geometria
+L 6 x 6 x 9/16;ANSI L (Ángulos iguales);41.5169;1463.38;373.798;geometria
+L 6 x 6 x 5/8;ANSI L (Ángulos iguales);45.8772;1600.53;410.961;geometria
+L 6 x 6 x 3/4;ANSI L (Ángulos iguales);54.408;1859.3;483.309;geometria
+L 6 x 6 x 7/8;ANSI L (Ángulos iguales);62.7493;2100.6;554.148;geometria
+L 6 x 6 x 1;ANSI L (Ángulos iguales);70.9011;2325.25;624.077;geometria
+L 8 x 8 x 1/2;ANSI L (Ángulos iguales);50.0478;3235.61;816.468;geometria
+L 8 x 8 x 9/16;ANSI L (Ángulos iguales);56.1142;3599.42;910.607;geometria
+L 8 x 8 x 5/8;ANSI L (Ángulos iguales);61.991;3945.78;1001.08;geometria
+L 8 x 8 x 3/4;ANSI L (Ángulos iguales);73.7447;4621.42;1180.43;geometria
+L 8 x 8 x 7/8;ANSI L (Ángulos iguales);85.3088;5263.71;1355.39;geometria
+L 8 x 8 x 1;ANSI L (Ángulos iguales);96.6833;5873.76;1526.83;geometria
+L 8 x 8 x 1 1/8;ANSI L (Ángulos iguales);107.868;6448.7;1695.32;geometria
+BARRA 1/4x3/16;ANSI AISC (Rectangular);0.302419;0.0101619;0.00571607;tabla
+BARRA 1/4x5/16;ANSI AISC (Rectangular);0.504031;0.0264633;0.0169365;tabla
+BARRA 1/4x3/8;ANSI AISC (Rectangular);0.604838;0.0457286;0.0203238;tabla
+BARRA 1/4x7/16;ANSI AISC (Rectangular);0.705644;0.0726152;0.0237111;tabla
+BARRA 1/4x1/2;ANSI AISC (Rectangular);0.80645;0.108394;0.0270984;tabla
+BARRA 1/4x9/16;ANSI AISC (Rectangular);0.907256;0.154334;0.0304857;tabla
+BARRA 1/4x5/8;ANSI AISC (Rectangular);1.00806;0.211706;0.033873;tabla
+BARRA 1/4x11/16;ANSI AISC (Rectangular);1.10887;0.281781;0.0372603;tabla
+BARRA 1/4x3/4;ANSI AISC (Rectangular);1.20968;0.365828;0.0406476;tabla
+BARRA 1/4x13/16;ANSI AISC (Rectangular);1.31048;0.465119;0.0440349;tabla
+BARRA 1/4x7/8;ANSI AISC (Rectangular);1.41129;0.580922;0.0474222;tabla
+BARRA 1/4x15/16;ANSI AISC (Rectangular);1.51209;0.714509;0.0508095;tabla
+BARRA 1/4x1;ANSI AISC (Rectangular);1.6129;0.867149;0.0541968;tabla
+BARRA 1/2x3/16;ANSI AISC (Rectangular);0.604838;0.0812952;0.0114321;tabla
+BARRA 1/2x1/4;ANSI AISC (Rectangular);0.80645;0.108394;0.0270984;tabla
+BARRA 1/2x5/16;ANSI AISC (Rectangular);1.00806;0.135492;0.0529266;tabla
+BARRA 1/2x3/8;ANSI AISC (Rectangular);1.20968;0.16259;0.0914571;tabla
+BARRA 1/2x7/16;ANSI AISC (Rectangular);1.41129;0.189689;0.14523;tabla
+BARRA 1/2x9/16;ANSI AISC (Rectangular);1.81451;0.308668;0.243886;tabla
+BARRA 1/2x5/8;ANSI AISC (Rectangular);2.01613;0.423413;0.270984;tabla
+BARRA 1/2x11/16;ANSI AISC (Rectangular);2.21774;0.563562;0.298082;tabla
+BARRA 1/2x3/4;ANSI AISC (Rectangular);2.41935;0.731657;0.325181;tabla
+BARRA 1/2x13/16;ANSI AISC (Rectangular);2.62096;0.930237;0.352279;tabla
+BARRA 1/2x7/8;ANSI AISC (Rectangular);2.82258;1.16184;0.379378;tabla
+BARRA 1/2x15/16;ANSI AISC (Rectangular);3.02419;1.42902;0.406476;tabla
+BARRA 1/2x1;ANSI AISC (Rectangular);3.2258;1.7343;0.433574;tabla
+BARRA 3/4x3/16;ANSI AISC (Rectangular);0.907256;0.274371;0.0171482;tabla
+BARRA 3/4x1/4;ANSI AISC (Rectangular);1.20968;0.365828;0.0406476;tabla
+BARRA 3/4x5/16;ANSI AISC (Rectangular);1.51209;0.457286;0.0793898;tabla
+BARRA 3/4x3/8;ANSI AISC (Rectangular);1.81451;0.548743;0.137186;tabla
+BARRA 3/4x7/16;ANSI AISC (Rectangular);2.11693;0.6402;0.217846;tabla
+BARRA 3/4x1/2;ANSI AISC (Rectangular);2.41935;0.731657;0.325181;tabla
+BARRA 3/4x9/16;ANSI AISC (Rectangular);2.72177;0.823114;0.463002;tabla
+BARRA 3/4x5/8;ANSI AISC (Rectangular);3.02419;0.914571;0.635119;tabla
+BARRA 3/4x11/16;ANSI AISC (Rectangular);3.32661;1.00603;0.845343;tabla
+BARRA 3/4x13/16;ANSI AISC (Rectangular);3.93144;1.39536;1.18894;tabla
+BARRA 3/4x7/8;ANSI AISC (Rectangular);4.23386;1.74277;1.2804;tabla
+BARRA 3/4x15/16;ANSI AISC (Rectangular);4.53628;2.14353;1.37186;tabla
+BARRA 3/4x1;ANSI AISC (Rectangular);4.8387;2.60145;1.46331;tabla
+BARRA 1x3/16;ANSI AISC (Rectangular);1.20968;0.650362;0.0228643;tabla
+BARRA 1x1/4;ANSI AISC (Rectangular);1.6129;0.867149;0.0541968;tabla
+BARRA 1x5/16;ANSI AISC (Rectangular);2.01613;1.08394;0.105853;tabla
+BARRA 1x3/8;ANSI AISC (Rectangular);2.41935;1.30072;0.182914;tabla
+BARRA 1x7/16;ANSI AISC (Rectangular);2.82258;1.51751;0.290461;tabla
+BARRA 1x1/2;ANSI AISC (Rectangular);3.2258;1.7343;0.433574;tabla
+BARRA 1x9/16;ANSI AISC (Rectangular);3.62903;1.95108;0.617335;tabla
+BARRA 1x5/8;ANSI AISC (Rectangular);4.03225;2.16787;0.846825;tabla
+BARRA 1x11/16;ANSI AISC (Rectangular);4.43548;2.38466;1.12712;tabla
+BARRA 1x3/4;ANSI AISC (Rectangular);4.8387;2.60145;1.46331;tabla
+BARRA 1x13/16;ANSI AISC (Rectangular);5.24193;2.81823;1.86047;tabla
+BARRA 1x7/8;ANSI AISC (Rectangular);5.64515;3.03502;2.32369;tabla
+BARRA 1x15/16;ANSI AISC (Rectangular);6.04838;3.25181;2.85803;tabla
+BARRA 1 1/4x3/16;ANSI AISC (Rectangular);1.51209;1.27024;0.0285803;tabla
+BARRA 1 1/4x1/4;ANSI AISC (Rectangular);2.01613;1.69365;0.067746;tabla
+BARRA 1 1/4x5/16;ANSI AISC (Rectangular);2.52016;2.11706;0.132316;tabla
+BARRA 1 1/4x3/8;ANSI AISC (Rectangular);3.02419;2.54048;0.228643;tabla
+BARRA 1 1/4x7/16;ANSI AISC (Rectangular);3.52822;2.96389;0.363076;tabla
+BARRA 1 1/4x1/2;ANSI AISC (Rectangular);4.03225;3.3873;0.541968;tabla
+BARRA 1 1/4x9/16;ANSI AISC (Rectangular);4.53628;3.81071;0.771669;tabla
+BARRA 1 1/4x5/8;ANSI AISC (Rectangular);5.04031;4.23413;1.05853;tabla
+BARRA 1 1/4x11/16;ANSI AISC (Rectangular);5.54434;4.65754;1.40891;tabla
+BARRA 1 1/4x3/4;ANSI AISC (Rectangular);6.04838;5.08095;1.82914;tabla
+BARRA 1 1/4x13/16;ANSI AISC (Rectangular);6.55241;5.50436;2.32559;tabla
+BARRA 1 1/4x7/8;ANSI AISC (Rectangular);7.05644;5.92778;2.90461;tabla
+BARRA 1 1/4x15/16;ANSI AISC (Rectangular);7.56047;6.35119;3.57254;tabla
+BARRA 1 1/4x1;ANSI AISC (Rectangular);8.0645;6.7746;4.33574;tabla
+BARRA 1 1/2x3/16;ANSI AISC (Rectangular);1.81451;2.19497;0.0342964;tabla
+BARRA 1 1/2x1/4;ANSI AISC (Rectangular);2.41935;2.92663;0.0812952;tabla
+BARRA 1 1/2x5/16;ANSI AISC (Rectangular);3.02419;3.65828;0.15878;tabla
+BARRA 1 1/2x3/8;ANSI AISC (Rectangular);3.62903;4.38994;0.274371;tabla
+BARRA 1 1/2x7/16;ANSI AISC (Rectangular);4.23386;5.1216;0.435691;tabla
+BARRA 1 1/2x1/2;ANSI AISC (Rectangular);4.8387;5.85325;0.650362;tabla
+BARRA 1 1/2x9/16;ANSI AISC (Rectangular);5.44354;6.58491;0.926003;tabla
+BARRA 1 1/2x5/8;ANSI AISC (Rectangular);6.04838;7.31657;1.27024;tabla
+BARRA 1 1/2x11/16;ANSI AISC (Rectangular);6.65321;8.04822;1.69069;tabla
+BARRA 1 1/2x3/4;ANSI AISC (Rectangular);7.25805;8.77988;2.19497;tabla
+BARRA 1 1/2x13/16;ANSI AISC (Rectangular);7.86289;9.51154;2.79071;tabla
+BARRA 1 1/2x7/8;ANSI AISC (Rectangular);8.46773;10.2432;3.48553;tabla
+BARRA 1 1/2x15/16;ANSI AISC (Rectangular);9.07256;10.9749;4.28705;tabla
+BARRA 1 1/2x1;ANSI AISC (Rectangular);9.6774;11.7065;5.20289;tabla
+BARRA 1 3/4x3/16;ANSI AISC (Rectangular);2.11693;3.48553;0.0400125;tabla
+BARRA 1 3/4x1/4;ANSI AISC (Rectangular);2.82258;4.64738;0.0948444;tabla
+BARRA 1 3/4x5/16;ANSI AISC (Rectangular);3.52822;5.80922;0.185243;tabla
+BARRA 1 3/4x3/8;ANSI AISC (Rectangular);4.23386;6.97106;0.3201;tabla
+BARRA 1 3/4x7/16;ANSI AISC (Rectangular);4.93951;8.13291;0.508307;tabla
+BARRA 1 3/4x1/2;ANSI AISC (Rectangular);5.64515;9.29475;0.758755;tabla
+BARRA 1 3/4x9/16;ANSI AISC (Rectangular);6.35079;10.4566;1.08034;tabla
+BARRA 1 3/4x5/8;ANSI AISC (Rectangular);7.05644;11.6184;1.48194;tabla
+BARRA 1 3/4x11/16;ANSI AISC (Rectangular);7.76208;12.7803;1.97247;tabla
+BARRA 1 3/4x3/4;ANSI AISC (Rectangular);8.46773;13.9421;2.5608;tabla
+BARRA 1 3/4x13/16;ANSI AISC (Rectangular);9.17337;15.104;3.25583;tabla
+BARRA 1 3/4x7/8;ANSI AISC (Rectangular);9.87901;16.2658;4.06645;tabla
+BARRA 1 3/4x15/16;ANSI AISC (Rectangular);10.5847;17.4277;5.00156;tabla
+BARRA 1 3/4x1;ANSI AISC (Rectangular);11.2903;18.5895;6.07004;tabla
+BARRA 2x3/16;ANSI AISC (Rectangular);2.41935;5.20289;0.0457286;tabla
+BARRA 2x1/4;ANSI AISC (Rectangular);3.2258;6.93719;0.108394;tabla
+BARRA 2x5/16;ANSI AISC (Rectangular);4.03225;8.67149;0.211706;tabla
+BARRA 2x3/8;ANSI AISC (Rectangular);4.8387;10.4058;0.365828;tabla
+BARRA 2x7/16;ANSI AISC (Rectangular);5.64515;12.1401;0.580922;tabla
+BARRA 2x1/2;ANSI AISC (Rectangular);6.4516;13.8744;0.867149;tabla
+BARRA 2x9/16;ANSI AISC (Rectangular);7.25805;15.6087;1.23467;tabla
+BARRA 2x5/8;ANSI AISC (Rectangular);8.0645;17.343;1.69365;tabla
+BARRA 2x11/16;ANSI AISC (Rectangular);8.87095;19.0773;2.25425;tabla
+BARRA 2x3/4;ANSI AISC (Rectangular);9.6774;20.8116;2.92663;tabla
+BARRA 2x13/16;ANSI AISC (Rectangular);10.4839;22.5459;3.72095;tabla
+BARRA 2x7/8;ANSI AISC (Rectangular);11.2903;24.2802;4.64738;tabla
+BARRA 2x15/16;ANSI AISC (Rectangular);12.0968;26.0145;5.71607;tabla
+BARRA 2x1;ANSI AISC (Rectangular);12.9032;27.7488;6.93719;tabla
+BARRA 2 1/4x3/16;ANSI AISC (Rectangular);2.72177;7.40803;0.0514446;tabla
+BARRA 2 1/4x1/4;ANSI AISC (Rectangular);3.62903;9.87737;0.121943;tabla
+BARRA 2 1/4x5/16;ANSI AISC (Rectangular);4.53628;12.3467;0.23817;tabla
+BARRA 2 1/4x3/8;ANSI AISC (Rectangular);5.44354;14.8161;0.411557;tabla
+BARRA 2 1/4x7/16;ANSI AISC (Rectangular);6.35079;17.2854;0.653537;tabla
+BARRA 2 1/4x1/2;ANSI AISC (Rectangular);7.25805;19.7547;0.975542;tabla
+BARRA 2 1/4x9/16;ANSI AISC (Rectangular);8.16531;22.2241;1.389;tabla
+BARRA 2 1/4x5/8;ANSI AISC (Rectangular);9.07256;24.6934;1.90536;tabla
+BARRA 2 1/4x11/16;ANSI AISC (Rectangular);9.97982;27.1628;2.53603;tabla
+BARRA 2 1/4x3/4;ANSI AISC (Rectangular);10.8871;29.6321;3.29246;tabla
+BARRA 2 1/4x13/16;ANSI AISC (Rectangular);11.7943;32.1014;4.18607;tabla
+BARRA 2 1/4x7/8;ANSI AISC (Rectangular);12.7016;34.5708;5.2283;tabla
+BARRA 2 1/4x15/16;ANSI AISC (Rectangular);13.6088;37.0401;6.43058;tabla
+BARRA 2 1/4x1;ANSI AISC (Rectangular);14.5161;39.5095;7.80434;tabla
+BARRA 2 1/2x3/16;ANSI AISC (Rectangular);3.02419;10.1619;0.0571607;tabla
+BARRA 2 1/2x1/4;ANSI AISC (Rectangular);4.03225;13.5492;0.135492;tabla
+BARRA 2 1/2x5/16;ANSI AISC (Rectangular);5.04031;16.9365;0.264633;tabla
+BARRA 2 1/2x3/8;ANSI AISC (Rectangular);6.04838;20.3238;0.457286;tabla
+BARRA 2 1/2x7/16;ANSI AISC (Rectangular);7.05644;23.7111;0.726152;tabla
+BARRA 2 1/2x1/2;ANSI AISC (Rectangular);8.0645;27.0984;1.08394;tabla
+BARRA 2 1/2x9/16;ANSI AISC (Rectangular);9.07256;30.4857;1.54334;tabla
+BARRA 2 1/2x5/8;ANSI AISC (Rectangular);10.0806;33.873;2.11706;tabla
+BARRA 2 1/2x11/16;ANSI AISC (Rectangular);11.0887;37.2603;2.81781;tabla
+BARRA 2 1/2x3/4;ANSI AISC (Rectangular);12.0968;40.6476;3.65828;tabla
+BARRA 2 1/2x13/16;ANSI AISC (Rectangular);13.1048;44.0349;4.65119;tabla
+BARRA 2 1/2x7/8;ANSI AISC (Rectangular);14.1129;47.4222;5.80922;tabla
+BARRA 2 1/2x15/16;ANSI AISC (Rectangular);15.1209;50.8095;7.14509;tabla
+BARRA 2 1/2x1;ANSI AISC (Rectangular);16.129;54.1968;8.67149;tabla
+BARRA 2 3/4x3/16;ANSI AISC (Rectangular);3.32661;13.5255;0.0628768;tabla
+BARRA 2 3/4x1/4;ANSI AISC (Rectangular);4.43548;18.034;0.149041;tabla
+BARRA 2 3/4x5/16;ANSI AISC (Rectangular);5.54434;22.5425;0.291096;tabla
+BARRA 2 3/4x3/8;ANSI AISC (Rectangular);6.65321;27.051;0.503014;tabla
+BARRA 2 3/4x7/16;ANSI AISC (Rectangular);7.76208;31.5595;0.798768;tabla
+BARRA 2 3/4x1/2;ANSI AISC (Rectangular);8.87095;36.068;1.19233;tabla
+BARRA 2 3/4x9/16;ANSI AISC (Rectangular);9.97982;40.5765;1.69767;tabla
+BARRA 2 3/4x5/8;ANSI AISC (Rectangular);11.0887;45.085;2.32877;tabla
+BARRA 2 3/4x11/16;ANSI AISC (Rectangular);12.1976;49.5935;3.09959;tabla
+BARRA 2 3/4x3/4;ANSI AISC (Rectangular);13.3064;54.102;4.02411;tabla
+BARRA 2 3/4x13/16;ANSI AISC (Rectangular);14.4153;58.6105;5.11631;tabla
+BARRA 2 3/4x7/8;ANSI AISC (Rectangular);15.5242;63.119;6.39014;tabla
+BARRA 2 3/4x15/16;ANSI AISC (Rectangular);16.633;67.6274;7.85959;tabla
+BARRA 2 3/4x1;ANSI AISC (Rectangular);17.7419;72.1359;9.53864;tabla
+BARRA 3x3/16;ANSI AISC (Rectangular);3.62903;17.5598;0.0685928;tabla
+BARRA 3x1/4;ANSI AISC (Rectangular);4.8387;23.413;0.16259;tabla
+BARRA 3x5/16;ANSI AISC (Rectangular);6.04838;29.2663;0.317559;tabla
+BARRA 3x3/8;ANSI AISC (Rectangular);7.25805;35.1195;0.548743;tabla
+BARRA 3x7/16;ANSI AISC (Rectangular);8.46773;40.9728;0.871383;tabla
+BARRA 3x1/2;ANSI AISC (Rectangular);9.6774;46.826;1.30072;tabla
+BARRA 3x9/16;ANSI AISC (Rectangular);10.8871;52.6793;1.85201;tabla
+BARRA 3x5/8;ANSI AISC (Rectangular);12.0968;58.5325;2.54048;tabla
+BARRA 3x11/16;ANSI AISC (Rectangular);13.3064;64.3858;3.38137;tabla
+BARRA 3x3/4;ANSI AISC (Rectangular);14.5161;70.2391;4.38994;tabla
+BARRA 3x13/16;ANSI AISC (Rectangular);15.7258;76.0923;5.58142;tabla
+BARRA 3x7/8;ANSI AISC (Rectangular);16.9355;81.9456;6.97106;tabla
+BARRA 3x15/16;ANSI AISC (Rectangular);18.1451;87.7988;8.5741;tabla
+BARRA 3x1;ANSI AISC (Rectangular);19.3548;93.6521;10.4058;tabla
+BARRA 3 1/4x3/16;ANSI AISC (Rectangular);3.93144;22.3257;0.0743089;tabla
+BARRA 3 1/4x1/4;ANSI AISC (Rectangular);5.24193;29.7676;0.17614;tabla
+BARRA 3 1/4x5/16;ANSI AISC (Rectangular);6.55241;37.2095;0.344023;tabla
+BARRA 3 1/4x3/8;ANSI AISC (Rectangular);7.86289;44.6514;0.594471;tabla
+BARRA 3 1/4x7/16;ANSI AISC (Rectangular);9.17337;52.0933;0.943998;tabla
+BARRA 3 1/4x1/2;ANSI AISC (Rectangular);10.4839;59.5352;1.40912;tabla
+BARRA 3 1/4x9/16;ANSI AISC (Rectangular);11.7943;66.9771;2.00634;tabla
+BARRA 3 1/4x5/8;ANSI AISC (Rectangular);13.1048;74.419;2.75218;tabla
+BARRA 3 1/4x11/16;ANSI AISC (Rectangular);14.4153;81.8609;3.66315;tabla
+BARRA 3 1/4x3/4;ANSI AISC (Rectangular);15.7258;89.3028;4.75577;tabla
+BARRA 3 1/4x13/16;ANSI AISC (Rectangular);17.0363;96.7447;6.04654;tabla
+BARRA 3 1/4x7/8;ANSI AISC (Rectangular);18.3467;104.187;7.55199;tabla
+BARRA 3 1/4x15/16;ANSI AISC (Rectangular);19.6572;111.628;9.28861;tabla
+BARRA 3 1/4x1;ANSI AISC (Rectangular);20.9677;119.07;11.2729;tabla
+BARRA 3 1/2x3/16;ANSI AISC (Rectangular);4.23386;27.8843;0.080025;tabla
+BARRA 3 1/2x1/4;ANSI AISC (Rectangular);5.64515;37.179;0.189689;tabla
+BARRA 3 1/2x5/16;ANSI AISC (Rectangular);7.05644;46.4738;0.370486;tabla
+BARRA 3 1/2x3/8;ANSI AISC (Rectangular);8.46773;55.7685;0.6402;tabla
+BARRA 3 1/2x7/16;ANSI AISC (Rectangular);9.87901;65.0633;1.01661;tabla
+BARRA 3 1/2x1/2;ANSI AISC (Rectangular);11.2903;74.358;1.51751;tabla
+BARRA 3 1/2x9/16;ANSI AISC (Rectangular);12.7016;83.6528;2.16067;tabla
+BARRA 3 1/2x5/8;ANSI AISC (Rectangular);14.1129;92.9475;2.96389;tabla
+BARRA 3 1/2x11/16;ANSI AISC (Rectangular);15.5242;102.242;3.94493;tabla
+BARRA 3 1/2x3/4;ANSI AISC (Rectangular);16.9355;111.537;5.1216;tabla
+BARRA 3 1/2x13/16;ANSI AISC (Rectangular);18.3467;120.832;6.51166;tabla
+BARRA 3 1/2x7/8;ANSI AISC (Rectangular);19.758;130.127;8.13291;tabla
+BARRA 3 1/2x15/16;ANSI AISC (Rectangular);21.1693;139.421;10.0031;tabla
+BARRA 3 1/2x1;ANSI AISC (Rectangular);22.5806;148.716;12.1401;tabla
+BARRA 3 3/4x3/16;ANSI AISC (Rectangular);4.53628;34.2964;0.085741;tabla
+BARRA 3 3/4x1/4;ANSI AISC (Rectangular);6.04838;45.7286;0.203238;tabla
+BARRA 3 3/4x5/16;ANSI AISC (Rectangular);7.56047;57.1607;0.396949;tabla
+BARRA 3 3/4x3/8;ANSI AISC (Rectangular);9.07256;68.5928;0.685928;tabla
+BARRA 3 3/4x7/16;ANSI AISC (Rectangular);10.5847;80.025;1.08923;tabla
+BARRA 3 3/4x1/2;ANSI AISC (Rectangular);12.0968;91.4571;1.6259;tabla
+BARRA 3 3/4x9/16;ANSI AISC (Rectangular);13.6088;102.889;2.31501;tabla
+BARRA 3 3/4x5/8;ANSI AISC (Rectangular);15.1209;114.321;3.17559;tabla
+BARRA 3 3/4x11/16;ANSI AISC (Rectangular);16.633;125.754;4.22672;tabla
+BARRA 3 3/4x3/4;ANSI AISC (Rectangular);18.1451;137.186;5.48743;tabla
+BARRA 3 3/4x13/16;ANSI AISC (Rectangular);19.6572;148.618;6.97678;tabla
+BARRA 3 3/4x7/8;ANSI AISC (Rectangular);21.1693;160.05;8.71383;tabla
+BARRA 3 3/4x15/16;ANSI AISC (Rectangular);22.6814;171.482;10.7176;tabla
+BARRA 3 3/4x1;ANSI AISC (Rectangular);24.1935;182.914;13.0072;tabla
+BARRA 4x3/16;ANSI AISC (Rectangular);4.8387;41.6231;0.0914571;tabla
+BARRA 4x1/4;ANSI AISC (Rectangular);6.4516;55.4975;0.216787;tabla
+BARRA 4x5/16;ANSI AISC (Rectangular);8.0645;69.3719;0.423412;tabla
+BARRA 4x3/8;ANSI AISC (Rectangular);9.6774;83.2463;0.731657;tabla
+BARRA 4x7/16;ANSI AISC (Rectangular);11.2903;97.1207;1.16184;tabla
+BARRA 4x1/2;ANSI AISC (Rectangular);12.9032;110.995;1.7343;tabla
+BARRA 4x9/16;ANSI AISC (Rectangular);14.5161;124.869;2.46934;tabla
+BARRA 4x5/8;ANSI AISC (Rectangular);16.129;138.744;3.3873;tabla
+BARRA 4x11/16;ANSI AISC (Rectangular);17.7419;152.618;4.5085;tabla
+BARRA 4x3/4;ANSI AISC (Rectangular);19.3548;166.493;5.85325;tabla
+BARRA 4x13/16;ANSI AISC (Rectangular);20.9677;180.367;7.4419;tabla
+BARRA 4x7/8;ANSI AISC (Rectangular);22.5806;194.241;9.29475;tabla
+BARRA 4x15/16;ANSI AISC (Rectangular);24.1935;208.116;11.4321;tabla
+BARRA 4x1;ANSI AISC (Rectangular);25.8064;221.99;13.8744;tabla
+BARRA 4 1/4x3/16;ANSI AISC (Rectangular);5.14112;49.9254;0.0971732;tabla
+BARRA 4 1/4x1/4;ANSI AISC (Rectangular);6.85483;66.5672;0.230336;tabla
+BARRA 4 1/4x5/16;ANSI AISC (Rectangular);8.56853;83.209;0.449876;tabla
+BARRA 4 1/4x3/8;ANSI AISC (Rectangular);10.2822;99.8508;0.777385;tabla
+BARRA 4 1/4x7/16;ANSI AISC (Rectangular);11.9959;116.493;1.23446;tabla
+BARRA 4 1/4x1/2;ANSI AISC (Rectangular);13.7097;133.134;1.84269;tabla
+BARRA 4 1/4x9/16;ANSI AISC (Rectangular);15.4234;149.776;2.62368;tabla
+BARRA 4 1/4x5/8;ANSI AISC (Rectangular);17.1371;166.418;3.59901;tabla
+BARRA 4 1/4x11/16;ANSI AISC (Rectangular);18.8508;183.06;4.79028;tabla
+BARRA 4 1/4x3/4;ANSI AISC (Rectangular);20.5645;199.702;6.21908;tabla
+BARRA 4 1/4x13/16;ANSI AISC (Rectangular);22.2782;216.343;7.90702;tabla
+BARRA 4 1/4x7/8;ANSI AISC (Rectangular);23.9919;232.985;9.87567;tabla
+BARRA 4 1/4x15/16;ANSI AISC (Rectangular);25.7056;249.627;12.1466;tabla
+BARRA 4 1/4x1;ANSI AISC (Rectangular);27.4193;266.269;14.7415;tabla
+BARRA 4 1/2x3/16;ANSI AISC (Rectangular);5.44354;59.2642;0.102889;tabla
+BARRA 4 1/2x1/4;ANSI AISC (Rectangular);7.25805;79.0189;0.243886;tabla
+BARRA 4 1/2x5/16;ANSI AISC (Rectangular);9.07256;98.7737;0.476339;tabla
+BARRA 4 1/2x3/8;ANSI AISC (Rectangular);10.8871;118.528;0.823114;tabla
+BARRA 4 1/2x7/16;ANSI AISC (Rectangular);12.7016;138.283;1.30707;tabla
+BARRA 4 1/2x1/2;ANSI AISC (Rectangular);14.5161;158.038;1.95108;tabla
+BARRA 4 1/2x9/16;ANSI AISC (Rectangular);16.3306;177.793;2.77801;tabla
+BARRA 4 1/2x5/8;ANSI AISC (Rectangular);18.1451;197.547;3.81071;tabla
+BARRA 4 1/2x11/16;ANSI AISC (Rectangular);19.9596;217.302;5.07206;tabla
+BARRA 4 1/2x3/4;ANSI AISC (Rectangular);21.7742;237.057;6.58491;tabla
+BARRA 4 1/2x13/16;ANSI AISC (Rectangular);23.5887;256.812;8.37214;tabla
+BARRA 4 1/2x7/8;ANSI AISC (Rectangular);25.4032;276.566;10.4566;tabla
+BARRA 4 1/2x15/16;ANSI AISC (Rectangular);27.2177;296.321;12.8612;tabla
+BARRA 4 1/2x1;ANSI AISC (Rectangular);29.0322;316.076;15.6087;tabla
+BARRA 4 3/4x3/16;ANSI AISC (Rectangular);5.74596;69.7005;0.108605;tabla
+BARRA 4 3/4x1/4;ANSI AISC (Rectangular);7.66128;92.934;0.257435;tabla
+BARRA 4 3/4x5/16;ANSI AISC (Rectangular);9.57659;116.167;0.502802;tabla
+BARRA 4 3/4x3/8;ANSI AISC (Rectangular);11.4919;139.401;0.868842;tabla
+BARRA 4 3/4x7/16;ANSI AISC (Rectangular);13.4072;162.634;1.37969;tabla
+BARRA 4 3/4x1/2;ANSI AISC (Rectangular);15.3226;185.868;2.05948;tabla
+BARRA 4 3/4x9/16;ANSI AISC (Rectangular);17.2379;209.101;2.93234;tabla
+BARRA 4 3/4x5/8;ANSI AISC (Rectangular);19.1532;232.335;4.02242;tabla
+BARRA 4 3/4x11/16;ANSI AISC (Rectangular);21.0685;255.568;5.35384;tabla
+BARRA 4 3/4x3/4;ANSI AISC (Rectangular);22.9838;278.802;6.95074;tabla
+BARRA 4 3/4x13/16;ANSI AISC (Rectangular);24.8991;302.035;8.83725;tabla
+BARRA 4 3/4x7/8;ANSI AISC (Rectangular);26.8145;325.269;11.0375;tabla
+BARRA 4 3/4x15/16;ANSI AISC (Rectangular);28.7298;348.502;13.5757;tabla
+BARRA 4 3/4x1;ANSI AISC (Rectangular);30.6451;371.736;16.4758;tabla
+BARRA 5x3/16;ANSI AISC (Rectangular);6.04838;81.2952;0.114321;tabla
+BARRA 5x1/4;ANSI AISC (Rectangular);8.0645;108.394;0.270984;tabla
+BARRA 5x5/16;ANSI AISC (Rectangular);10.0806;135.492;0.529266;tabla
+BARRA 5x3/8;ANSI AISC (Rectangular);12.0968;162.59;0.914571;tabla
+BARRA 5x7/16;ANSI AISC (Rectangular);14.1129;189.689;1.4523;tabla
+BARRA 5x1/2;ANSI AISC (Rectangular);16.129;216.787;2.16787;tabla
+BARRA 5x9/16;ANSI AISC (Rectangular);18.1451;243.886;3.08668;tabla
+BARRA 5x5/8;ANSI AISC (Rectangular);20.1613;270.984;4.23413;tabla
+BARRA 5x11/16;ANSI AISC (Rectangular);22.1774;298.082;5.63562;tabla
+BARRA 5x3/4;ANSI AISC (Rectangular);24.1935;325.181;7.31657;tabla
+BARRA 5x13/16;ANSI AISC (Rectangular);26.2096;352.279;9.30237;tabla
+BARRA 5x7/8;ANSI AISC (Rectangular);28.2258;379.378;11.6184;tabla
+BARRA 5x15/16;ANSI AISC (Rectangular);30.2419;406.476;14.2902;tabla
+BARRA 5x1;ANSI AISC (Rectangular);32.258;433.574;17.343;tabla
+BARRA 5 1/4x3/16;ANSI AISC (Rectangular);6.35079;94.1094;0.120037;tabla
+BARRA 5 1/4x1/4;ANSI AISC (Rectangular);8.46773;125.479;0.284533;tabla
+BARRA 5 1/4x5/16;ANSI AISC (Rectangular);10.5847;156.849;0.555729;tabla
+BARRA 5 1/4x3/8;ANSI AISC (Rectangular);12.7016;188.219;0.9603;tabla
+BARRA 5 1/4x7/16;ANSI AISC (Rectangular);14.8185;219.589;1.52492;tabla
+BARRA 5 1/4x1/2;ANSI AISC (Rectangular);16.9355;250.958;2.27627;tabla
+BARRA 5 1/4x9/16;ANSI AISC (Rectangular);19.0524;282.328;3.24101;tabla
+BARRA 5 1/4x5/8;ANSI AISC (Rectangular);21.1693;313.698;4.44583;tabla
+BARRA 5 1/4x11/16;ANSI AISC (Rectangular);23.2862;345.068;5.9174;tabla
+BARRA 5 1/4x3/4;ANSI AISC (Rectangular);25.4032;376.437;7.6824;tabla
+BARRA 5 1/4x13/16;ANSI AISC (Rectangular);27.5201;407.807;9.76749;tabla
+BARRA 5 1/4x7/8;ANSI AISC (Rectangular);29.637;439.177;12.1994;tabla
+BARRA 5 1/4x15/16;ANSI AISC (Rectangular);31.754;470.547;15.0047;tabla
+BARRA 5 1/4x1;ANSI AISC (Rectangular);33.8709;501.917;18.2101;tabla
+BARRA 5 1/2x3/16;ANSI AISC (Rectangular);6.65321;108.204;0.125754;tabla
+BARRA 5 1/2x1/4;ANSI AISC (Rectangular);8.87095;144.272;0.298082;tabla
+BARRA 5 1/2x5/16;ANSI AISC (Rectangular);11.0887;180.34;0.582192;tabla
+BARRA 5 1/2x3/8;ANSI AISC (Rectangular);13.3064;216.408;1.00603;tabla
+BARRA 5 1/2x7/16;ANSI AISC (Rectangular);15.5242;252.476;1.59754;tabla
+BARRA 5 1/2x1/2;ANSI AISC (Rectangular);17.7419;288.544;2.38466;tabla
+BARRA 5 1/2x9/16;ANSI AISC (Rectangular);19.9596;324.612;3.39534;tabla
+BARRA 5 1/2x5/8;ANSI AISC (Rectangular);22.1774;360.68;4.65754;tabla
+BARRA 5 1/2x11/16;ANSI AISC (Rectangular);24.3951;396.748;6.19918;tabla
+BARRA 5 1/2x3/4;ANSI AISC (Rectangular);26.6129;432.816;8.04822;tabla
+BARRA 5 1/2x13/16;ANSI AISC (Rectangular);28.8306;468.884;10.2326;tabla
+BARRA 5 1/2x7/8;ANSI AISC (Rectangular);31.0483;504.952;12.7803;tabla
+BARRA 5 1/2x15/16;ANSI AISC (Rectangular);33.2661;541.02;15.7192;tabla
+BARRA 5 1/2x1;ANSI AISC (Rectangular);35.4838;577.088;19.0773;tabla
+BARRA 5 3/4x3/16;ANSI AISC (Rectangular);6.95563;123.64;0.13147;tabla
+BARRA 5 3/4x1/4;ANSI AISC (Rectangular);9.27418;164.853;0.311632;tabla
+BARRA 5 3/4x5/16;ANSI AISC (Rectangular);11.5927;206.066;0.608655;tabla
+BARRA 5 3/4x3/8;ANSI AISC (Rectangular);13.9113;247.28;1.05176;tabla
+BARRA 5 3/4x7/16;ANSI AISC (Rectangular);16.2298;288.493;1.67015;tabla
+BARRA 5 3/4x1/2;ANSI AISC (Rectangular);18.5484;329.706;2.49305;tabla
+BARRA 5 3/4x9/16;ANSI AISC (Rectangular);20.8669;370.92;3.54968;tabla
+BARRA 5 3/4x5/8;ANSI AISC (Rectangular);23.1854;412.133;4.86924;tabla
+BARRA 5 3/4x11/16;ANSI AISC (Rectangular);25.504;453.346;6.48096;tabla
+BARRA 5 3/4x3/4;ANSI AISC (Rectangular);27.8225;494.559;8.41405;tabla
+BARRA 5 3/4x13/16;ANSI AISC (Rectangular);30.1411;535.773;10.6977;tabla
+BARRA 5 3/4x7/8;ANSI AISC (Rectangular);32.4596;576.986;13.3612;tabla
+BARRA 5 3/4x15/16;ANSI AISC (Rectangular);34.7782;618.199;16.4337;tabla
+BARRA 5 3/4x1;ANSI AISC (Rectangular);37.0967;659.412;19.9444;tabla
+BARRA 6x3/16;ANSI AISC (Rectangular);7.25805;140.478;0.137186;tabla
+BARRA 6x1/4;ANSI AISC (Rectangular);9.6774;187.304;0.325181;tabla
+BARRA 6x5/16;ANSI AISC (Rectangular);12.0968;234.13;0.635119;tabla
+BARRA 6x3/8;ANSI AISC (Rectangular);14.5161;280.956;1.09749;tabla
+BARRA 6x7/16;ANSI AISC (Rectangular);16.9355;327.782;1.74277;tabla
+BARRA 6x1/2;ANSI AISC (Rectangular);19.3548;374.608;2.60145;tabla
+BARRA 6x9/16;ANSI AISC (Rectangular);21.7742;421.434;3.70401;tabla
+BARRA 6x5/8;ANSI AISC (Rectangular);24.1935;468.26;5.08095;tabla
+BARRA 6x11/16;ANSI AISC (Rectangular);26.6129;515.086;6.76274;tabla
+BARRA 6x3/4;ANSI AISC (Rectangular);29.0322;561.912;8.77988;tabla
+BARRA 6x13/16;ANSI AISC (Rectangular);31.4516;608.738;11.1628;tabla
+BARRA 6x7/8;ANSI AISC (Rectangular);33.8709;655.565;13.9421;tabla
+BARRA 6x15/16;ANSI AISC (Rectangular);36.2903;702.391;17.1482;tabla
+BARRA 6x1;ANSI AISC (Rectangular);38.7096;749.217;20.8116;tabla
+BARRA 6 1/4x3/16;ANSI AISC (Rectangular);7.56047;158.78;0.142902;tabla
+BARRA 6 1/4x1/4;ANSI AISC (Rectangular);10.0806;211.706;0.33873;tabla
+BARRA 6 1/4x5/16;ANSI AISC (Rectangular);12.6008;264.633;0.661582;tabla
+BARRA 6 1/4x3/8;ANSI AISC (Rectangular);15.1209;317.559;1.14321;tabla
+BARRA 6 1/4x7/16;ANSI AISC (Rectangular);17.6411;370.486;1.81538;tabla
+BARRA 6 1/4x1/2;ANSI AISC (Rectangular);20.1613;423.413;2.70984;tabla
+BARRA 6 1/4x9/16;ANSI AISC (Rectangular);22.6814;476.339;3.85835;tabla
+BARRA 6 1/4x5/8;ANSI AISC (Rectangular);25.2016;529.266;5.29266;tabla
+BARRA 6 1/4x11/16;ANSI AISC (Rectangular);27.7217;582.192;7.04453;tabla
+BARRA 6 1/4x3/4;ANSI AISC (Rectangular);30.2419;635.119;9.14571;tabla
+BARRA 6 1/4x13/16;ANSI AISC (Rectangular);32.762;688.045;11.628;tabla
+BARRA 6 1/4x7/8;ANSI AISC (Rectangular);35.2822;740.972;14.523;tabla
+BARRA 6 1/4x15/16;ANSI AISC (Rectangular);37.8023;793.898;17.8627;tabla
+BARRA 6 1/4x1;ANSI AISC (Rectangular);40.3225;846.825;21.6787;tabla
+BARRA 6 1/2x3/16;ANSI AISC (Rectangular);7.86289;178.606;0.148618;tabla
+BARRA 6 1/2x1/4;ANSI AISC (Rectangular);10.4839;238.141;0.352279;tabla
+BARRA 6 1/2x5/16;ANSI AISC (Rectangular);13.1048;297.676;0.688045;tabla
+BARRA 6 1/2x3/8;ANSI AISC (Rectangular);15.7258;357.211;1.18894;tabla
+BARRA 6 1/2x7/16;ANSI AISC (Rectangular);18.3467;416.746;1.888;tabla
+BARRA 6 1/2x1/2;ANSI AISC (Rectangular);20.9677;476.281;2.81823;tabla
+BARRA 6 1/2x9/16;ANSI AISC (Rectangular);23.5887;535.817;4.01268;tabla
+BARRA 6 1/2x5/8;ANSI AISC (Rectangular);26.2096;595.352;5.50436;tabla
+BARRA 6 1/2x11/16;ANSI AISC (Rectangular);28.8306;654.887;7.32631;tabla
+BARRA 6 1/2x3/4;ANSI AISC (Rectangular);31.4516;714.422;9.51154;tabla
+BARRA 6 1/2x13/16;ANSI AISC (Rectangular);34.0725;773.957;12.0931;tabla
+BARRA 6 1/2x7/8;ANSI AISC (Rectangular);36.6935;833.493;15.104;tabla
+BARRA 6 1/2x15/16;ANSI AISC (Rectangular);39.3144;893.028;18.5772;tabla
+BARRA 6 1/2x1;ANSI AISC (Rectangular);41.9354;952.563;22.5459;tabla
+BARRA 6 3/4x3/16;ANSI AISC (Rectangular);8.16531;200.017;0.154334;tabla
+BARRA 6 3/4x1/4;ANSI AISC (Rectangular);10.8871;266.689;0.365828;tabla
+BARRA 6 3/4x5/16;ANSI AISC (Rectangular);13.6088;333.361;0.714509;tabla
+BARRA 6 3/4x3/8;ANSI AISC (Rectangular);16.3306;400.033;1.23467;tabla
+BARRA 6 3/4x7/16;ANSI AISC (Rectangular);19.0524;466.706;1.96061;tabla
+BARRA 6 3/4x1/2;ANSI AISC (Rectangular);21.7742;533.378;2.92663;tabla
+BARRA 6 3/4x9/16;ANSI AISC (Rectangular);24.4959;600.05;4.16701;tabla
+BARRA 6 3/4x5/8;ANSI AISC (Rectangular);27.2177;666.722;5.71607;tabla
+BARRA 6 3/4x11/16;ANSI AISC (Rectangular);29.9395;733.394;7.60809;tabla
+BARRA 6 3/4x3/4;ANSI AISC (Rectangular);32.6612;800.067;9.87737;tabla
+BARRA 6 3/4x13/16;ANSI AISC (Rectangular);35.383;866.739;12.5582;tabla
+BARRA 6 3/4x7/8;ANSI AISC (Rectangular);38.1048;933.411;15.6849;tabla
+BARRA 6 3/4x15/16;ANSI AISC (Rectangular);40.8265;1000.08;19.2917;tabla
+BARRA 6 3/4x1;ANSI AISC (Rectangular);43.5483;1066.76;23.413;tabla
+BARRA 7x3/16;ANSI AISC (Rectangular);8.46773;223.074;0.16005;tabla
+BARRA 7x1/4;ANSI AISC (Rectangular);11.2903;297.432;0.379378;tabla
+BARRA 7x5/16;ANSI AISC (Rectangular);14.1129;371.79;0.740972;tabla
+BARRA 7x3/8;ANSI AISC (Rectangular);16.9355;446.148;1.2804;tabla
+BARRA 7x7/16;ANSI AISC (Rectangular);19.758;520.506;2.03323;tabla
+BARRA 7x1/2;ANSI AISC (Rectangular);22.5806;594.864;3.03502;tabla
+BARRA 7x9/16;ANSI AISC (Rectangular);25.4032;669.222;4.32135;tabla
+BARRA 7x5/8;ANSI AISC (Rectangular);28.2258;743.58;5.92778;tabla
+BARRA 7x11/16;ANSI AISC (Rectangular);31.0483;817.938;7.88987;tabla
+BARRA 7x3/4;ANSI AISC (Rectangular);33.8709;892.296;10.2432;tabla
+BARRA 7x13/16;ANSI AISC (Rectangular);36.6935;966.654;13.0233;tabla
+BARRA 7x7/8;ANSI AISC (Rectangular);39.5161;1041.01;16.2658;tabla
+BARRA 7x15/16;ANSI AISC (Rectangular);42.3386;1115.37;20.0062;tabla
+BARRA 7x1;ANSI AISC (Rectangular);45.1612;1189.73;24.2802;tabla
+BARRA 7 1/4x3/16;ANSI AISC (Rectangular);8.77014;247.839;0.165766;tabla
+BARRA 7 1/4x1/4;ANSI AISC (Rectangular);11.6935;330.451;0.392927;tabla
+BARRA 7 1/4x5/16;ANSI AISC (Rectangular);14.6169;413.064;0.767435;tabla
+BARRA 7 1/4x3/8;ANSI AISC (Rectangular);17.5403;495.677;1.32613;tabla
+BARRA 7 1/4x7/16;ANSI AISC (Rectangular);20.4637;578.29;2.10584;tabla
+BARRA 7 1/4x1/2;ANSI AISC (Rectangular);23.3871;660.903;3.14341;tabla
+BARRA 7 1/4x9/16;ANSI AISC (Rectangular);26.3104;743.516;4.47568;tabla
+BARRA 7 1/4x5/8;ANSI AISC (Rectangular);29.2338;826.129;6.13948;tabla
+BARRA 7 1/4x11/16;ANSI AISC (Rectangular);32.1572;908.741;8.17165;tabla
+BARRA 7 1/4x3/4;ANSI AISC (Rectangular);35.0806;991.354;10.609;tabla
+BARRA 7 1/4x13/16;ANSI AISC (Rectangular);38.004;1073.97;13.4884;tabla
+BARRA 7 1/4x7/8;ANSI AISC (Rectangular);40.9273;1156.58;16.8467;tabla
+BARRA 7 1/4x15/16;ANSI AISC (Rectangular);43.8507;1239.19;20.7207;tabla
+BARRA 7 1/4x1;ANSI AISC (Rectangular);46.7741;1321.81;25.1473;tabla
+BARRA 7 1/2x3/16;ANSI AISC (Rectangular);9.07256;274.371;0.171482;tabla
+BARRA 7 1/2x1/4;ANSI AISC (Rectangular);12.0968;365.828;0.406476;tabla
+BARRA 7 1/2x5/16;ANSI AISC (Rectangular);15.1209;457.286;0.793898;tabla
+BARRA 7 1/2x3/8;ANSI AISC (Rectangular);18.1451;548.743;1.37186;tabla
+BARRA 7 1/2x7/16;ANSI AISC (Rectangular);21.1693;640.2;2.17846;tabla
+BARRA 7 1/2x1/2;ANSI AISC (Rectangular);24.1935;731.657;3.25181;tabla
+BARRA 7 1/2x9/16;ANSI AISC (Rectangular);27.2177;823.114;4.63002;tabla
+BARRA 7 1/2x5/8;ANSI AISC (Rectangular);30.2419;914.571;6.35119;tabla
+BARRA 7 1/2x11/16;ANSI AISC (Rectangular);33.2661;1006.03;8.45343;tabla
+BARRA 7 1/2x3/4;ANSI AISC (Rectangular);36.2903;1097.49;10.9749;tabla
+BARRA 7 1/2x13/16;ANSI AISC (Rectangular);39.3144;1188.94;13.9536;tabla
+BARRA 7 1/2x7/8;ANSI AISC (Rectangular);42.3386;1280.4;17.4277;tabla
+BARRA 7 1/2x15/16;ANSI AISC (Rectangular);45.3628;1371.86;21.4353;tabla
+BARRA 7 1/2x1;ANSI AISC (Rectangular);48.387;1463.31;26.0145;tabla
+BARRA 7 3/4x3/16;ANSI AISC (Rectangular);9.37498;302.733;0.177198;tabla
+BARRA 7 3/4x1/4;ANSI AISC (Rectangular);12.5;403.644;0.420025;tabla
+BARRA 7 3/4x5/16;ANSI AISC (Rectangular);15.625;504.555;0.820362;tabla
+BARRA 7 3/4x3/8;ANSI AISC (Rectangular);18.75;605.466;1.41759;tabla
+BARRA 7 3/4x7/16;ANSI AISC (Rectangular);21.875;706.377;2.25107;tabla
+BARRA 7 3/4x1/2;ANSI AISC (Rectangular);25;807.288;3.3602;tabla
+BARRA 7 3/4x9/16;ANSI AISC (Rectangular);28.1249;908.199;4.78435;tabla
+BARRA 7 3/4x5/8;ANSI AISC (Rectangular);31.2499;1009.11;6.56289;tabla
+BARRA 7 3/4x11/16;ANSI AISC (Rectangular);34.3749;1110.02;8.73521;tabla
+BARRA 7 3/4x3/4;ANSI AISC (Rectangular);37.4999;1210.93;11.3407;tabla
+BARRA 7 3/4x13/16;ANSI AISC (Rectangular);40.6249;1311.84;14.4187;tabla
+BARRA 7 3/4x7/8;ANSI AISC (Rectangular);43.7499;1412.75;18.0086;tabla
+BARRA 7 3/4x15/16;ANSI AISC (Rectangular);46.8749;1513.67;22.1498;tabla
+BARRA 7 3/4x1;ANSI AISC (Rectangular);49.9999;1614.58;26.8816;tabla
+BARRA 8x3/16;ANSI AISC (Rectangular);9.6774;332.985;0.182914;tabla
+BARRA 8x1/4;ANSI AISC (Rectangular);12.9032;443.98;0.433574;tabla
+BARRA 8x5/16;ANSI AISC (Rectangular);16.129;554.975;0.846825;tabla
+BARRA 8x3/8;ANSI AISC (Rectangular);19.3548;665.97;1.46331;tabla
+BARRA 8x7/16;ANSI AISC (Rectangular);22.5806;776.965;2.32369;tabla
+BARRA 8x1/2;ANSI AISC (Rectangular);25.8064;887.96;3.4686;tabla
+BARRA 8x9/16;ANSI AISC (Rectangular);29.0322;998.955;4.93868;tabla
+BARRA 8x5/8;ANSI AISC (Rectangular);32.258;1109.95;6.7746;tabla
+BARRA 8x11/16;ANSI AISC (Rectangular);35.4838;1220.95;9.01699;tabla
+BARRA 8x3/4;ANSI AISC (Rectangular);38.7096;1331.94;11.7065;tabla
+BARRA 8x13/16;ANSI AISC (Rectangular);41.9354;1442.94;14.8838;tabla
+BARRA 8x7/8;ANSI AISC (Rectangular);45.1612;1553.93;18.5895;tabla
+BARRA 8x15/16;ANSI AISC (Rectangular);48.387;1664.93;22.8643;tabla
+BARRA 8x1;ANSI AISC (Rectangular);51.6128;1775.92;27.7488;tabla
+BARRA 8 1/2x3/16;ANSI AISC (Rectangular);10.2822;399.403;0.194346;tabla
+BARRA 8 1/2x1/4;ANSI AISC (Rectangular);13.7097;532.538;0.460673;tabla
+BARRA 8 1/2x5/16;ANSI AISC (Rectangular);17.1371;665.672;0.899752;tabla
+BARRA 8 1/2x3/8;ANSI AISC (Rectangular);20.5645;798.807;1.55477;tabla
+BARRA 8 1/2x7/16;ANSI AISC (Rectangular);23.9919;931.941;2.46892;tabla
+BARRA 8 1/2x1/2;ANSI AISC (Rectangular);27.4193;1065.08;3.68538;tabla
+BARRA 8 1/2x9/16;ANSI AISC (Rectangular);30.8467;1198.21;5.24735;tabla
+BARRA 8 1/2x5/8;ANSI AISC (Rectangular);34.2741;1331.34;7.19801;tabla
+BARRA 8 1/2x11/16;ANSI AISC (Rectangular);37.7015;1464.48;9.58055;tabla
+BARRA 8 1/2x3/4;ANSI AISC (Rectangular);41.129;1597.61;12.4382;tabla
+BARRA 8 1/2x13/16;ANSI AISC (Rectangular);44.5564;1730.75;15.814;tabla
+BARRA 8 1/2x7/8;ANSI AISC (Rectangular);47.9838;1863.88;19.7513;tabla
+BARRA 8 1/2x15/16;ANSI AISC (Rectangular);51.4112;1997.02;24.2933;tabla
+BARRA 8 1/2x1;ANSI AISC (Rectangular);54.8386;2130.15;29.4831;tabla
+BARRA 9x3/16;ANSI AISC (Rectangular);10.8871;474.114;0.205778;tabla
+BARRA 9x1/4;ANSI AISC (Rectangular);14.5161;632.151;0.487771;tabla
+BARRA 9x5/16;ANSI AISC (Rectangular);18.1451;790.189;0.952678;tabla
+BARRA 9x3/8;ANSI AISC (Rectangular);21.7742;948.227;1.64623;tabla
+BARRA 9x7/16;ANSI AISC (Rectangular);25.4032;1106.27;2.61415;tabla
+BARRA 9x1/2;ANSI AISC (Rectangular);29.0322;1264.3;3.90217;tabla
+BARRA 9x9/16;ANSI AISC (Rectangular);32.6612;1422.34;5.55602;tabla
+BARRA 9x5/8;ANSI AISC (Rectangular);36.2903;1580.38;7.62143;tabla
+BARRA 9x11/16;ANSI AISC (Rectangular);39.9193;1738.42;10.1441;tabla
+BARRA 9x3/4;ANSI AISC (Rectangular);43.5483;1896.45;13.1698;tabla
+BARRA 9x13/16;ANSI AISC (Rectangular);47.1773;2054.49;16.7443;tabla
+BARRA 9x7/8;ANSI AISC (Rectangular);50.8064;2212.53;20.9132;tabla
+BARRA 9x15/16;ANSI AISC (Rectangular);54.4354;2370.57;25.7223;tabla
+BARRA 9x1;ANSI AISC (Rectangular);58.0644;2528.61;31.2174;tabla
+BARRA 9 1/2x3/16;ANSI AISC (Rectangular);11.4919;557.604;0.217211;tabla
+BARRA 9 1/2x1/4;ANSI AISC (Rectangular);15.3226;743.472;0.51487;tabla
+BARRA 9 1/2x5/16;ANSI AISC (Rectangular);19.1532;929.34;1.0056;tabla
+BARRA 9 1/2x3/8;ANSI AISC (Rectangular);22.9838;1115.21;1.73768;tabla
+BARRA 9 1/2x7/16;ANSI AISC (Rectangular);26.8145;1301.08;2.75938;tabla
+BARRA 9 1/2x1/2;ANSI AISC (Rectangular);30.6451;1486.94;4.11896;tabla
+BARRA 9 1/2x9/16;ANSI AISC (Rectangular);34.4757;1672.81;5.86469;tabla
+BARRA 9 1/2x5/8;ANSI AISC (Rectangular);38.3064;1858.68;8.04484;tabla
+BARRA 9 1/2x11/16;ANSI AISC (Rectangular);42.137;2044.55;10.7077;tabla
+BARRA 9 1/2x3/4;ANSI AISC (Rectangular);45.9677;2230.42;13.9015;tabla
+BARRA 9 1/2x13/16;ANSI AISC (Rectangular);49.7983;2416.28;17.6745;tabla
+BARRA 9 1/2x7/8;ANSI AISC (Rectangular);53.6289;2602.15;22.075;tabla
+BARRA 9 1/2x15/16;ANSI AISC (Rectangular);57.4596;2788.02;27.1513;tabla
+BARRA 9 1/2x1;ANSI AISC (Rectangular);61.2902;2973.89;32.9517;tabla
+BARRA 10x3/16;ANSI AISC (Rectangular);12.0968;650.362;0.228643;tabla
+BARRA 10x1/4;ANSI AISC (Rectangular);16.129;867.149;0.541968;tabla
+BARRA 10x5/16;ANSI AISC (Rectangular);20.1613;1083.94;1.05853;tabla
+BARRA 10x3/8;ANSI AISC (Rectangular);24.1935;1300.72;1.82914;tabla
+BARRA 10x7/16;ANSI AISC (Rectangular);28.2258;1517.51;2.90461;tabla
+BARRA 10x1/2;ANSI AISC (Rectangular);32.258;1734.3;4.33574;tabla
+BARRA 10x9/16;ANSI AISC (Rectangular);36.2903;1951.08;6.17335;tabla
+BARRA 10x5/8;ANSI AISC (Rectangular);40.3225;2167.87;8.46825;tabla
+BARRA 10x11/16;ANSI AISC (Rectangular);44.3548;2384.66;11.2712;tabla
+BARRA 10x3/4;ANSI AISC (Rectangular);48.387;2601.45;14.6331;tabla
+BARRA 10x13/16;ANSI AISC (Rectangular);52.4193;2818.23;18.6047;tabla
+BARRA 10x7/8;ANSI AISC (Rectangular);56.4515;3035.02;23.2369;tabla
+BARRA 10x15/16;ANSI AISC (Rectangular);60.4838;3251.81;28.5803;tabla
+BARRA 10x1;ANSI AISC (Rectangular);64.516;3468.6;34.686;tabla
+BARRA 10 1/2x3/16;ANSI AISC (Rectangular);12.7016;752.875;0.240075;tabla
+BARRA 10 1/2x1/4;ANSI AISC (Rectangular);16.9355;1003.83;0.569066;tabla
+BARRA 10 1/2x5/16;ANSI AISC (Rectangular);21.1693;1254.79;1.11146;tabla
+BARRA 10 1/2x3/8;ANSI AISC (Rectangular);25.4032;1505.75;1.9206;tabla
+BARRA 10 1/2x7/16;ANSI AISC (Rectangular);29.637;1756.71;3.04984;tabla
+BARRA 10 1/2x1/2;ANSI AISC (Rectangular);33.8709;2007.67;4.55253;tabla
+BARRA 10 1/2x9/16;ANSI AISC (Rectangular);38.1048;2258.62;6.48202;tabla
+BARRA 10 1/2x5/8;ANSI AISC (Rectangular);42.3386;2509.58;8.89166;tabla
+BARRA 10 1/2x11/16;ANSI AISC (Rectangular);46.5725;2760.54;11.8348;tabla
+BARRA 10 1/2x3/4;ANSI AISC (Rectangular);50.8064;3011.5;15.3648;tabla
+BARRA 10 1/2x13/16;ANSI AISC (Rectangular);55.0402;3262.46;19.535;tabla
+BARRA 10 1/2x7/8;ANSI AISC (Rectangular);59.2741;3513.42;24.3987;tabla
+BARRA 10 1/2x15/16;ANSI AISC (Rectangular);63.5079;3764.37;30.0094;tabla
+BARRA 10 1/2x1;ANSI AISC (Rectangular);67.7418;4015.33;36.4203;tabla
+BARRA 11x3/16;ANSI AISC (Rectangular);13.3064;865.631;0.251507;tabla
+BARRA 11x1/4;ANSI AISC (Rectangular);17.7419;1154.18;0.596165;tabla
+BARRA 11x5/16;ANSI AISC (Rectangular);22.1774;1442.72;1.16438;tabla
+BARRA 11x3/8;ANSI AISC (Rectangular);26.6129;1731.26;2.01206;tabla
+BARRA 11x7/16;ANSI AISC (Rectangular);31.0483;2019.81;3.19507;tabla
+BARRA 11x1/2;ANSI AISC (Rectangular);35.4838;2308.35;4.76932;tabla
+BARRA 11x9/16;ANSI AISC (Rectangular);39.9193;2596.89;6.79069;tabla
+BARRA 11x5/8;ANSI AISC (Rectangular);44.3548;2885.44;9.31508;tabla
+BARRA 11x11/16;ANSI AISC (Rectangular);48.7902;3173.98;12.3984;tabla
+BARRA 11x3/4;ANSI AISC (Rectangular);53.2257;3462.53;16.0965;tabla
+BARRA 11x13/16;ANSI AISC (Rectangular);57.6612;3751.07;20.4652;tabla
+BARRA 11x7/8;ANSI AISC (Rectangular);62.0967;4039.61;25.5606;tabla
+BARRA 11x15/16;ANSI AISC (Rectangular);66.5321;4328.16;31.4384;tabla
+BARRA 11x1;ANSI AISC (Rectangular);70.9676;4616.7;38.1545;tabla
+BARRA 11 1/2x3/16;ANSI AISC (Rectangular);13.9113;989.119;0.262939;tabla
+BARRA 11 1/2x1/4;ANSI AISC (Rectangular);18.5484;1318.82;0.623263;tabla
+BARRA 11 1/2x5/16;ANSI AISC (Rectangular);23.1854;1648.53;1.21731;tabla
+BARRA 11 1/2x3/8;ANSI AISC (Rectangular);27.8225;1978.24;2.10351;tabla
+BARRA 11 1/2x7/16;ANSI AISC (Rectangular);32.4596;2307.94;3.3403;tabla
+BARRA 11 1/2x1/2;ANSI AISC (Rectangular);37.0967;2637.65;4.98611;tabla
+BARRA 11 1/2x9/16;ANSI AISC (Rectangular);41.7338;2967.36;7.09936;tabla
+BARRA 11 1/2x5/8;ANSI AISC (Rectangular);46.3709;3297.06;9.73849;tabla
+BARRA 11 1/2x11/16;ANSI AISC (Rectangular);51.008;3626.77;12.9619;tabla
+BARRA 11 1/2x3/4;ANSI AISC (Rectangular);55.6451;3956.47;16.8281;tabla
+BARRA 11 1/2x13/16;ANSI AISC (Rectangular);60.2821;4286.18;21.3955;tabla
+BARRA 11 1/2x7/8;ANSI AISC (Rectangular);64.9192;4615.89;26.7224;tabla
+BARRA 11 1/2x15/16;ANSI AISC (Rectangular);69.5563;4945.59;32.8674;tabla
+BARRA 11 1/2x1;ANSI AISC (Rectangular);74.1934;5275.3;39.8888;tabla
+BARRA 12x3/16;ANSI AISC (Rectangular);14.5161;1123.82;0.274371;tabla
+BARRA 12x1/4;ANSI AISC (Rectangular);19.3548;1498.43;0.650362;tabla
+BARRA 12x5/16;ANSI AISC (Rectangular);24.1935;1873.04;1.27024;tabla
+BARRA 12x3/8;ANSI AISC (Rectangular);29.0322;2247.65;2.19497;tabla
+BARRA 12x7/16;ANSI AISC (Rectangular);33.8709;2622.26;3.48553;tabla
+BARRA 12x1/2;ANSI AISC (Rectangular);38.7096;2996.87;5.20289;tabla
+BARRA 12x9/16;ANSI AISC (Rectangular);43.5483;3371.47;7.40803;tabla
+BARRA 12x5/8;ANSI AISC (Rectangular);48.387;3746.08;10.1619;tabla
+BARRA 12x11/16;ANSI AISC (Rectangular);53.2257;4120.69;13.5255;tabla
+BARRA 12x3/4;ANSI AISC (Rectangular);58.0644;4495.3;17.5598;tabla
+BARRA 12x13/16;ANSI AISC (Rectangular);62.9031;4869.91;22.3257;tabla
+BARRA 12x7/8;ANSI AISC (Rectangular);67.7418;5244.52;27.8843;tabla
+BARRA 12x15/16;ANSI AISC (Rectangular);72.5805;5619.12;34.2964;tabla
+BARRA 12x1;ANSI AISC (Rectangular);77.4192;5993.73;41.6231;tabla
+BARRA 1/16x1/16;ANSI AISC (Cuadrado);0.0252016;3.96949E-05;3.96949E-05;tabla
+BARRA 1/8x1/8;ANSI AISC (Cuadrado);0.100806;0.000635119;0.000635119;tabla
+BARRA 3/16x3/16;ANSI AISC (Cuadrado);0.226814;0.00321529;0.00321529;tabla
+BARRA 1/4x1/4;ANSI AISC (Cuadrado);0.403225;0.0101619;0.0101619;tabla
+BARRA 5/16x5/16;ANSI AISC (Cuadrado);0.630039;0.0248093;0.0248093;tabla
+BARRA 3/8x3/8;ANSI AISC (Cuadrado);0.907256;0.0514446;0.0514446;tabla
+BARRA 7/16x7/16;ANSI AISC (Cuadrado);1.23488;0.0953075;0.0953075;tabla
+BARRA 1/2x1/2;ANSI AISC (Cuadrado);1.6129;0.16259;0.16259;tabla
+BARRA 9/16x9/16;ANSI AISC (Cuadrado);2.04133;0.260438;0.260438;tabla
+BARRA 5/8x5/8;ANSI AISC (Cuadrado);2.52016;0.396949;0.396949;tabla
+BARRA 11/16x11/16;ANSI AISC (Cuadrado);3.04939;0.581173;0.581173;tabla
+BARRA 3/4x3/4;ANSI AISC (Cuadrado);3.62902;0.823114;0.823114;tabla
+BARRA 13/16x13/16;ANSI AISC (Cuadrado);4.25906;1.13373;1.13373;tabla
+BARRA 7/8x7/8;ANSI AISC (Cuadrado);4.93951;1.52492;1.52492;tabla
+BARRA 15/16x15/16;ANSI AISC (Cuadrado);5.67035;2.00956;2.00956;tabla
+BARRA 1x1;ANSI AISC (Cuadrado);6.4516;2.60145;2.60145;tabla
+BARRA 1 1/8x1 1/8;ANSI AISC (Cuadrado);8.16531;4.16701;4.16701;tabla
+BARRA 1 1/4x1 1/4;ANSI AISC (Cuadrado);10.0806;6.35119;6.35119;tabla
+BARRA 1 3/8x1 3/8;ANSI AISC (Cuadrado);12.1976;9.29877;9.29877;tabla
+BARRA 1 7/16x1 7/16;ANSI AISC (Cuadrado);13.3316;11.1083;11.1083;tabla
+BARRA 1 1/2x1 1/2;ANSI AISC (Cuadrado);14.5161;13.1698;13.1698;tabla
+BARRA 1 9/16x1 9/16;ANSI AISC (Cuadrado);15.751;15.5058;15.5058;tabla
+BARRA 1 5/8x1 5/8;ANSI AISC (Cuadrado);17.0363;18.1396;18.1396;tabla
+BARRA 1 11/16x1 11/16;ANSI AISC (Cuadrado);18.3719;21.0955;21.0955;tabla
+BARRA 1 3/4x1 3/4;ANSI AISC (Cuadrado);19.758;24.3987;24.3987;tabla
+BARRA 1 13/16x1 13/16;ANSI AISC (Cuadrado);21.1945;28.0755;28.0755;tabla
+BARRA 1 7/8x1 7/8;ANSI AISC (Cuadrado);22.6814;32.1529;32.1529;tabla
+BARRA 1 15/16x1 15/16;ANSI AISC (Cuadrado);24.2187;36.6591;36.6591;tabla
+BARRA 2x2;ANSI AISC (Cuadrado);25.8064;41.6231;41.6231;tabla
+BARRA 2 1/16x2 1/16;ANSI AISC (Cuadrado);27.4445;47.075;47.075;tabla
+BARRA 2 1/8x2 1/8;ANSI AISC (Cuadrado);29.133;53.0458;53.0458;tabla
+BARRA 2 3/16x2 3/16;ANSI AISC (Cuadrado);30.8719;59.5672;59.5672;tabla
+BARRA 2 1/4x2 1/4;ANSI AISC (Cuadrado);32.6612;66.6722;66.6722;tabla
+BARRA 2 5/16x2 5/16;ANSI AISC (Cuadrado);34.5009;74.3947;74.3947;tabla
+BARRA 2 3/8x2 3/8;ANSI AISC (Cuadrado);36.3911;82.7693;82.7693;tabla
+BARRA 2 7/16x2 7/16;ANSI AISC (Cuadrado);38.3316;91.8319;91.8319;tabla
+BARRA 2 1/2x2 1/2;ANSI AISC (Cuadrado);40.3225;101.619;101.619;tabla
+BARRA 2 9/16x2 9/16;ANSI AISC (Cuadrado);42.3638;112.168;112.168;tabla
+BARRA 2 5/8x2 5/8;ANSI AISC (Cuadrado);44.4556;123.519;123.519;tabla
+BARRA 2 11/16x2 11/16;ANSI AISC (Cuadrado);46.5977;135.709;135.709;tabla
+BARRA 2 3/4x2 3/4;ANSI AISC (Cuadrado);48.7902;148.78;148.78;tabla
+BARRA 2 13/16x2 13/16;ANSI AISC (Cuadrado);51.0332;162.774;162.774;tabla
+BARRA 2 7/8x2 7/8;ANSI AISC (Cuadrado);53.3265;177.732;177.732;tabla
+BARRA 2 15/16x2 15/16;ANSI AISC (Cuadrado);55.6703;193.699;193.699;tabla
+BARRA 3x3;ANSI AISC (Cuadrado);58.0644;210.717;210.717;tabla
+BARRA 3 1/16x3 1/16;ANSI AISC (Cuadrado);60.509;228.833;228.833;tabla
+BARRA 3 1/8x3 1/8;ANSI AISC (Cuadrado);63.0039;248.093;248.093;tabla
+BARRA 3 3/16x3 3/16;ANSI AISC (Cuadrado);65.5493;268.544;268.544;tabla
+BARRA 3 1/4x3 1/4;ANSI AISC (Cuadrado);68.145;290.234;290.234;tabla
+BARRA 3 5/16x3 5/16;ANSI AISC (Cuadrado);70.7912;313.212;313.212;tabla
+BARRA 3 3/8x3 3/8;ANSI AISC (Cuadrado);73.4878;337.528;337.528;tabla
+BARRA 3 7/16x3 7/16;ANSI AISC (Cuadrado);76.2347;363.233;363.233;tabla
+BARRA 3 1/2x3 1/2;ANSI AISC (Cuadrado);79.0321;390.38;390.38;tabla
+BARRA 3 9/16x3 9/16;ANSI AISC (Cuadrado);81.8799;419.02;419.02;tabla
+BARRA 3 5/8x3 5/8;ANSI AISC (Cuadrado);84.7781;449.207;449.207;tabla
+BARRA 3 11/16x3 11/16;ANSI AISC (Cuadrado);87.7266;480.998;480.998;tabla
+BARRA 3 3/4x3 3/4;ANSI AISC (Cuadrado);90.7256;514.446;514.446;tabla
+BARRA 3 13/16x3 13/16;ANSI AISC (Cuadrado);93.775;549.61;549.61;tabla
+BARRA 3 7/8x3 7/8;ANSI AISC (Cuadrado);96.8748;586.545;586.545;tabla
+BARRA 3 15/16x3 15/16;ANSI AISC (Cuadrado);100.025;625.313;625.313;tabla
+BARRA 4x4;ANSI AISC (Cuadrado);103.226;665.97;665.97;tabla
+BARRA 4 1/16x4 1/16;ANSI AISC (Cuadrado);106.477;708.579;708.579;tabla
+BARRA 4 1/8x4 1/8;ANSI AISC (Cuadrado);109.778;753.201;753.201;tabla
+BARRA 4 3/16x4 3/16;ANSI AISC (Cuadrado);113.13;799.897;799.897;tabla
+BARRA 4 1/4x4 1/4;ANSI AISC (Cuadrado);116.532;848.732;848.732;tabla
+BARRA 4 5/16x4 5/16;ANSI AISC (Cuadrado);119.985;899.77;899.77;tabla
+BARRA 4 3/8x4 3/8;ANSI AISC (Cuadrado);123.488;953.075;953.075;tabla
+BARRA 4 7/16x4 7/16;ANSI AISC (Cuadrado);127.041;1008.71;1008.71;tabla
+BARRA 4 1/2x4 1/2;ANSI AISC (Cuadrado);130.645;1066.76;1066.76;tabla
+BARRA 4 9/16x4 9/16;ANSI AISC (Cuadrado);134.299;1127.27;1127.27;tabla
+BARRA 4 5/8x4 5/8;ANSI AISC (Cuadrado);138.004;1190.31;1190.31;tabla
+BARRA 4 11/16x4 11/16;ANSI AISC (Cuadrado);141.759;1255.97;1255.97;tabla
+BARRA 4 3/4x4 3/4;ANSI AISC (Cuadrado);145.564;1324.31;1324.31;tabla
+BARRA 4 13/16x4 13/16;ANSI AISC (Cuadrado);149.42;1395.4;1395.4;tabla
+BARRA 4 7/8x4 7/8;ANSI AISC (Cuadrado);153.326;1469.31;1469.31;tabla
+BARRA 4 15/16x4 15/16;ANSI AISC (Cuadrado);157.283;1546.12;1546.12;tabla
+BARRA 5x5;ANSI AISC (Cuadrado);161.29;1625.9;1625.9;tabla
+BARRA 5 1/16x5 1/16;ANSI AISC (Cuadrado);165.347;1708.74;1708.74;tabla
+BARRA 5 1/8x5 1/8;ANSI AISC (Cuadrado);169.455;1794.69;1794.69;tabla
+BARRA 5 3/16x5 3/16;ANSI AISC (Cuadrado);173.614;1883.85;1883.85;tabla
+BARRA 5 1/4x5 1/4;ANSI AISC (Cuadrado);177.822;1976.3;1976.3;tabla
+BARRA 5 5/16x5 5/16;ANSI AISC (Cuadrado);182.081;2072.1;2072.1;tabla
+BARRA 5 3/8x5 3/8;ANSI AISC (Cuadrado);186.391;2171.34;2171.34;tabla
+BARRA 5 7/16x5 7/16;ANSI AISC (Cuadrado);190.751;2274.11;2274.11;tabla
+BARRA 5 1/2x5 1/2;ANSI AISC (Cuadrado);195.161;2380.49;2380.49;tabla
+BARRA 5 9/16x5 9/16;ANSI AISC (Cuadrado);199.622;2490.55;2490.55;tabla
+BARRA 5 5/8x5 5/8;ANSI AISC (Cuadrado);204.133;2604.38;2604.38;tabla
+BARRA 5 11/16x5 11/16;ANSI AISC (Cuadrado);208.694;2722.08;2722.08;tabla
+BARRA 5 3/4x5 3/4;ANSI AISC (Cuadrado);213.306;2843.72;2843.72;tabla
+BARRA 5 13/16x5 13/16;ANSI AISC (Cuadrado);217.968;2969.39;2969.39;tabla
+BARRA 5 7/8x5 7/8;ANSI AISC (Cuadrado);222.681;3099.18;3099.18;tabla
+BARRA 5 15/16x5 15/16;ANSI AISC (Cuadrado);227.444;3233.18;3233.18;tabla
+BARRA 6x6;ANSI AISC (Cuadrado);232.258;3371.47;3371.47;tabla
+BARRA 6 1/16x6 1/16;ANSI AISC (Cuadrado);237.121;3514.16;3514.16;tabla
+BARRA 6 1/8x6 1/8;ANSI AISC (Cuadrado);242.036;3661.33;3661.33;tabla
+BARRA 6 3/16x6 3/16;ANSI AISC (Cuadrado);247.001;3813.08;3813.08;tabla
+BARRA 6 1/4x6 1/4;ANSI AISC (Cuadrado);252.016;3969.49;3969.49;tabla
+BARRA 6 5/16x6 5/16;ANSI AISC (Cuadrado);257.081;4130.67;4130.67;tabla
+BARRA 6 3/8x6 3/8;ANSI AISC (Cuadrado);262.197;4296.71;4296.71;tabla
+BARRA 6 7/16x6 7/16;ANSI AISC (Cuadrado);267.363;4467.7;4467.7;tabla
+BARRA 6 1/2x6 1/2;ANSI AISC (Cuadrado);272.58;4643.74;4643.74;tabla
+BARRA 6 9/16x6 9/16;ANSI AISC (Cuadrado);277.847;4824.94;4824.94;tabla
+BARRA 6 5/8x6 5/8;ANSI AISC (Cuadrado);283.165;5011.39;5011.39;tabla
+BARRA 6 11/16x6 11/16;ANSI AISC (Cuadrado);288.533;5203.19;5203.19;tabla
+BARRA 6 3/4x6 3/4;ANSI AISC (Cuadrado);293.951;5400.45;5400.45;tabla
+BARRA 6 13/16x6 13/16;ANSI AISC (Cuadrado);299.42;5603.26;5603.26;tabla
+BARRA 6 7/8x6 7/8;ANSI AISC (Cuadrado);304.939;5811.73;5811.73;tabla
+BARRA 6 15/16x6 15/16;ANSI AISC (Cuadrado);310.508;6025.97;6025.97;tabla
+BARRA 7x7;ANSI AISC (Cuadrado);316.128;6246.07;6246.07;tabla
+BARRA 7 1/16x7 1/16;ANSI AISC (Cuadrado);321.799;6472.15;6472.15;tabla
+BARRA 7 1/8x7 1/8;ANSI AISC (Cuadrado);327.52;6704.31;6704.31;tabla
+BARRA 7 3/16x7 3/16;ANSI AISC (Cuadrado);333.291;6942.67;6942.67;tabla
+BARRA 7 1/4x7 1/4;ANSI AISC (Cuadrado);339.112;7187.32;7187.32;tabla
+BARRA 7 5/16x7 5/16;ANSI AISC (Cuadrado);344.984;7438.38;7438.38;tabla
+BARRA 7 3/8x7 3/8;ANSI AISC (Cuadrado);350.907;7695.96;7695.96;tabla
+BARRA 7 7/16x7 7/16;ANSI AISC (Cuadrado);356.879;7960.18;7960.18;tabla
+BARRA 7 1/2x7 1/2;ANSI AISC (Cuadrado);362.902;8231.14;8231.14;tabla
+BARRA 7 9/16x7 9/16;ANSI AISC (Cuadrado);368.976;8508.96;8508.96;tabla
+BARRA 7 5/8x7 5/8;ANSI AISC (Cuadrado);375.1;8793.75;8793.75;tabla
+BARRA 7 11/16x7 11/16;ANSI AISC (Cuadrado);381.274;9085.64;9085.64;tabla
+BARRA 7 3/4x7 3/4;ANSI AISC (Cuadrado);387.499;9384.73;9384.73;tabla
+BARRA 7 13/16x7 13/16;ANSI AISC (Cuadrado);393.774;9691.14;9691.14;tabla
+BARRA 7 7/8x7 7/8;ANSI AISC (Cuadrado);400.1;10005;10005;tabla
+BARRA 7 15/16x7 15/16;ANSI AISC (Cuadrado);406.476;10326.4;10326.4;tabla
+BARRA 8x8;ANSI AISC (Cuadrado);412.902;10655.5;10655.5;tabla
+BARRA 8 1/16x8 1/16;ANSI AISC (Cuadrado);419.379;10992.4;10992.4;tabla
+BARRA 8 1/8x8 1/8;ANSI AISC (Cuadrado);425.906;11337.3;11337.3;tabla
+BARRA 8 3/16x8 3/16;ANSI AISC (Cuadrado);432.484;11690.2;11690.2;tabla
+BARRA 8 1/4x8 1/4;ANSI AISC (Cuadrado);439.112;12051.2;12051.2;tabla
+BARRA 8 5/16x8 5/16;ANSI AISC (Cuadrado);445.79;12420.6;12420.6;tabla
+BARRA 8 3/8x8 3/8;ANSI AISC (Cuadrado);452.519;12798.4;12798.4;tabla
+BARRA 8 7/16x8 7/16;ANSI AISC (Cuadrado);459.298;13184.7;13184.7;tabla
+BARRA 8 1/2x8 1/2;ANSI AISC (Cuadrado);466.128;13579.7;13579.7;tabla
+BARRA 8 9/16x8 9/16;ANSI AISC (Cuadrado);473.008;13983.5;13983.5;tabla
+BARRA 8 5/8x8 5/8;ANSI AISC (Cuadrado);479.939;14396.3;14396.3;tabla
+BARRA 8 11/16x8 11/16;ANSI AISC (Cuadrado);486.919;14818.2;14818.2;tabla
+BARRA 8 3/4x8 3/4;ANSI AISC (Cuadrado);493.951;15249.2;15249.2;tabla
+BARRA 8 13/16x8 13/16;ANSI AISC (Cuadrado);501.032;15689.6;15689.6;tabla
+BARRA 8 7/8x8 7/8;ANSI AISC (Cuadrado);508.164;16139.4;16139.4;tabla
+BARRA 8 15/16x8 15/16;ANSI AISC (Cuadrado);515.347;16598.9;16598.9;tabla
+BARRA 9x9;ANSI AISC (Cuadrado);522.58;17068.1;17068.1;tabla
+BARRA 9 1/16x9 1/16;ANSI AISC (Cuadrado);529.863;17547.2;17547.2;tabla
+BARRA 9 1/8x9 1/8;ANSI AISC (Cuadrado);537.197;18036.3;18036.3;tabla
+BARRA 9 3/16x9 3/16;ANSI AISC (Cuadrado);544.581;18535.5;18535.5;tabla
+BARRA 9 1/4x9 1/4;ANSI AISC (Cuadrado);552.015;19045;19045;tabla
+BARRA 9 5/16x9 5/16;ANSI AISC (Cuadrado);559.5;19565;19565;tabla
+BARRA 9 3/8x9 3/8;ANSI AISC (Cuadrado);567.035;20095.6;20095.6;tabla
+BARRA 9 7/16x9 7/16;ANSI AISC (Cuadrado);574.621;20636.8;20636.8;tabla
+BARRA 9 1/2x9 1/2;ANSI AISC (Cuadrado);582.257;21188.9;21188.9;tabla
+BARRA 9 9/16x9 9/16;ANSI AISC (Cuadrado);589.943;21752.1;21752.1;tabla
+BARRA 9 5/8x9 5/8;ANSI AISC (Cuadrado);597.68;22326.4;22326.4;tabla
+BARRA 9 11/16x9 11/16;ANSI AISC (Cuadrado);605.468;22911.9;22911.9;tabla
+BARRA 9 3/4x9 3/4;ANSI AISC (Cuadrado);613.305;23509;23509;tabla
+BARRA 9 13/16x9 13/16;ANSI AISC (Cuadrado);621.193;24117.6;24117.6;tabla
+BARRA 9 7/8x9 7/8;ANSI AISC (Cuadrado);629.132;24737.9;24737.9;tabla
+BARRA 9 15/16x9 15/16;ANSI AISC (Cuadrado);637.121;25370.2;25370.2;tabla
+BARRA 10x10;ANSI AISC (Cuadrado);645.16;26014.5;26014.5;tabla
+BARRA 10 1/16x10 1/16;ANSI AISC (Cuadrado);653.25;26670.9;26670.9;tabla
+BARRA 10 1/8x10 1/8;ANSI AISC (Cuadrado);661.39;27339.8;27339.8;tabla
+BARRA 10 3/16x10 3/16;ANSI AISC (Cuadrado);669.58;28021.1;28021.1;tabla
+BARRA 10 1/4x10 1/4;ANSI AISC (Cuadrado);677.821;28715.1;28715.1;tabla
+BARRA 10 5/16x10 5/16;ANSI AISC (Cuadrado);686.113;29421.9;29421.9;tabla
+BARRA 10 3/8x10 3/8;ANSI AISC (Cuadrado);694.454;30141.7;30141.7;tabla
+BARRA 10 7/16x10 7/16;ANSI AISC (Cuadrado);702.846;30874.6;30874.6;tabla
+BARRA 10 1/2x10 1/2;ANSI AISC (Cuadrado);711.289;31620.7;31620.7;tabla
+BARRA 10 9/16x10 9/16;ANSI AISC (Cuadrado);719.782;32380.4;32380.4;tabla
+BARRA 10 5/8x10 5/8;ANSI AISC (Cuadrado);728.325;33153.6;33153.6;tabla
+BARRA 10 11/16x10 11/16;ANSI AISC (Cuadrado);736.919;33940.6;33940.6;tabla
+BARRA 10 3/4x10 3/4;ANSI AISC (Cuadrado);745.563;34741.5;34741.5;tabla
+BARRA 10 13/16x10 13/16;ANSI AISC (Cuadrado);754.258;35556.5;35556.5;tabla
+BARRA 10 7/8x10 7/8;ANSI AISC (Cuadrado);763.002;36385.8;36385.8;tabla
+BARRA 10 15/16x10 15/16;ANSI AISC (Cuadrado);771.798;37229.5;37229.5;tabla
+BARRA 11x11;ANSI AISC (Cuadrado);780.644;38087.8;38087.8;tabla
+BARRA 11 1/8x11 1/8;ANSI AISC (Cuadrado);798.486;39848.8;39848.8;tabla
+BARRA 11 1/4x11 1/4;ANSI AISC (Cuadrado);816.531;41670.1;41670.1;tabla
+BARRA 11 3/8x11 3/8;ANSI AISC (Cuadrado);834.777;43553.2;43553.2;tabla
+BARRA 11 7/16x11 7/16;ANSI AISC (Cuadrado);843.975;44518.4;44518.4;tabla
+BARRA 11 1/2x11 1/2;ANSI AISC (Cuadrado);853.224;45499.5;45499.5;tabla
+BARRA 11 9/16x11 9/16;ANSI AISC (Cuadrado);862.524;46496.7;46496.7;tabla
+BARRA 11 5/8x11 5/8;ANSI AISC (Cuadrado);871.873;47510.2;47510.2;tabla
+BARRA 11 11/16x11 11/16;ANSI AISC (Cuadrado);881.273;48540.2;48540.2;tabla
+BARRA 11 3/4x11 3/4;ANSI AISC (Cuadrado);890.724;49586.8;49586.8;tabla
+BARRA 11 13/16x11 13/16;ANSI AISC (Cuadrado);900.225;50650.3;50650.3;tabla
+BARRA 11 7/8x11 7/8;ANSI AISC (Cuadrado);909.776;51730.8;51730.8;tabla
+BARRA 11 15/16x11 15/16;ANSI AISC (Cuadrado);919.378;52828.5;52828.5;tabla
+BARRA 12x12;ANSI AISC (Cuadrado);929.03;53943.6;53943.6;tabla
+C 3x3.5;ANSI/AISC (Acero laminado C);7.03224;65.3483;7.03431;tabla
+C 3x4.1;ANSI/AISC (Acero laminado C);7.74192;68.6782;7.95002;tabla
+C 3x5;ANSI/AISC (Acero laminado C);9.48385;77.0028;10.0312;tabla
+C 3x6;ANSI/AISC (Acero laminado C);11.3548;86.1599;12.4869;tabla
+C 4x4.5;ANSI/AISC (Acero laminado C);8.90321;151.924;12.0291;tabla
+C 4x5.4;ANSI/AISC (Acero laminado C);10.1935;160.249;12.9864;tabla
+C 4x6.25;ANSI/AISC (Acero laminado C);11.4193;166.493;14.36;tabla
+C 4x7.25;ANSI/AISC (Acero laminado C);13.7419;190.634;17.6898;tabla
+C 5x6.7;ANSI/AISC (Acero laminado C);12.7097;311.341;19.5629;tabla
+C 5x9;ANSI/AISC (Acero laminado C);17.0322;370.03;25.9728;tabla
+C 6x8.2;ANSI/AISC (Acero laminado C);15.4193;545.263;28.5951;tabla
+C 6x10.5;ANSI/AISC (Acero laminado C);19.8064;628.509;35.7959;tabla
+C 6x13;ANSI/AISC (Acero laminado C);24.6451;720.08;43.7043;tabla
+C 7x9.8;ANSI/AISC (Acero laminado C);18.5161;882.411;39.8333;tabla
+C 7x12.25;ANSI/AISC (Acero laminado C);23.1612;1007.28;48.2828;tabla
+C 7x14.75;ANSI/AISC (Acero laminado C);27.9354;1132.15;57.0237;tabla
+C 8x11.5;ANSI/AISC (Acero laminado C);21.7419;1352.75;54.5263;tabla
+C 8x13.75;ANSI/AISC (Acero laminado C);25.9999;1502.6;63.2672;tabla
+C 8x18.75;ANSI/AISC (Acero laminado C);35.5483;1827.26;81.9976;tabla
+C 9x13.4;ANSI/AISC (Acero laminado C);25.4193;1989.59;72.8405;tabla
+C 9x15;ANSI/AISC (Acero laminado C);28.387;2122.78;79.5002;tabla
+C 9x20;ANSI/AISC (Acero laminado C);37.8709;2534.85;100.312;tabla
+C 10x15.3;ANSI/AISC (Acero laminado C);28.9032;2801.24;94.4845;tabla
+C 10x20;ANSI/AISC (Acero laminado C);37.8709;3284.07;116.545;tabla
+C 10x25;ANSI/AISC (Acero laminado C);47.4193;3791.87;139.021;tabla
+C 10x30;ANSI/AISC (Acero laminado C);56.8386;4287.18;163.579;tabla
+C 12x20.7;ANSI/AISC (Acero laminado C);39.2257;5369.39;160.665;tabla
+C 12x25;ANSI/AISC (Acero laminado C);47.3547;5993.73;185.223;tabla
+C 12x30;ANSI/AISC (Acero laminado C);56.8386;6742.95;213.11;tabla
+C 15x33.9;ANSI/AISC (Acero laminado C);64.516;13111.3;335.899;tabla
+C 15x40;ANSI/AISC (Acero laminado C);76.1289;14484.9;381.684;tabla
+C 15x50;ANSI/AISC (Acero laminado C);94.8385;16815.7;457.855;tabla
+MC 3 x 7.1;ANSI MC/C;13.4598;113.215;27.721;tabla
+MC 4 x 13.8;ANSI MC/C;26.1614;368.365;88.6573;tabla
+MC 6 x 6.5;ANSI MC/C;12.3224;457.855;23.5171;tabla
+MC 6 x 7;ANSI MC/C;13.2703;474.504;25.0988;tabla
+MC 6 x 12;ANSI MC/C;22.749;778.353;77.0028;tabla
+MC 6 x 15.1;ANSI MC/C;28.6258;1036.42;144.016;tabla
+MC 6 x 16.3;ANSI MC/C;30.9007;1082.2;156.919;tabla
+MC 6 x 15.3;ANSI MC/C;29.005;1053.07;204.37;tabla
+MC 6 x 18;ANSI MC/C;34.1235;1236.21;244.744;tabla
+MC 7 x 19.1;ANSI MC/C;36.2088;1793.96;252.236;tabla
+MC 7 x 22.7;ANSI MC/C;43.0335;1972.94;301.352;tabla
+MC 8 x 8.5;ANSI MC/C;16.1139;969.819;25.9728;tabla
+MC 8 x 18.7;ANSI MC/C;35.4505;2181.05;172.736;tabla
+MC 8 x 20;ANSI MC/C;37.915;2264.3;183.974;tabla
+MC 8 x 21.4;ANSI MC/C;40.5691;2559.82;273.88;tabla
+MC 8 x 22.8;ANSI MC/C;43.2231;2655.56;291.778;tabla
+MC 9 x 23.9;ANSI MC/C;45.3084;3533.8;297.189;tabla
+MC 9 x 25.4;ANSI MC/C;48.1521;3658.67;315.087;tabla
+MC 10 x 6.5;ANSI MC/C;12.3224;953.17;5.53588;tabla
+MC 10 x 8.4;ANSI MC/C;15.9243;1327.78;13.5691;tabla
+MC 10 x 22;ANSI MC/C;41.7065;4245.56;266.388;tabla
+MC 10 x 25;ANSI MC/C;47.3938;4578.55;301.768;tabla
+MC 10 x 28.5;ANSI MC/C;54.0289;5244.52;470.342;tabla
+MC 10 x 33.6;ANSI MC/C;63.6972;5785.62;545.263;tabla
+MC 10 x 41.1;ANSI MC/C;77.9153;6534.83;653.483;tabla
+MC 12 x 10.6;ANSI MC/C;20.095;2301.76;15.7335;tabla
+MC 12 x 14.3;ANSI MC/C;27.1092;3167.52;41.6231;tabla
+MC 12 x 31;ANSI MC/C;58.7683;8407.87;470.342;tabla
+MC 12 x 35;ANSI MC/C;66.3513;8990.6;524.452;tabla
+MC 12 x 40;ANSI MC/C;75.83;9739.82;591.049;tabla
+MC 12 x 45;ANSI MC/C;85.3088;10447.4;657.646;tabla
+MC 12 x 50;ANSI MC/C;94.7875;11196.6;724.243;tabla
+MC 13 x 31.8;ANSI MC/C;60.2849;9947.93;474.504;tabla
+MC 13 x 35;ANSI MC/C;66.3513;10489;511.965;tabla
+MC 13 x 40;ANSI MC/C;75.83;11363.1;570.237;tabla
+MC 13 x 50;ANSI MC/C;94.7875;13069.7;682.62;tabla
+MC 18 x 42.7;ANSI MC/C;80.9485;23059.2;595.211;tabla
+MC 18 x 45.8;ANSI MC/C;86.8254;24058.2;620.185;tabla
+MC 18 x 51.9;ANSI MC/C;98.3894;26097.7;678.457;tabla
+MC 18 x 58;ANSI MC/C;109.954;28095.6;732.567;tabla
+HSS 2 x 2 x 1/8;ANSI AISC (Cuadrado);5.78204;20.2288;20.2288;tabla
+HSS 2 x 2 x 3/16;ANSI AISC (Cuadrado);8.18964;26.6804;26.6804;tabla
+HSS 2 x 2 x 1/4;ANSI AISC (Cuadrado);10.256;31.0925;31.0925;tabla
+HSS 2x2x5/16;ANSI AISC (Cuadrado);11.9811;36.6284;36.6284;tabla
+HSS 2 1/4 x 2 1/4 x 1/8;ANSI AISC (Cuadrado);6.59721;29.6357;29.6357;tabla
+HSS 2 1/4 x 2 1/4 x 3/16;ANSI AISC (Cuadrado);9.40292;39.6669;39.6669;tabla
+HSS 2 1/4 x 2 1/4 x 1/4;ANSI AISC (Cuadrado);11.8674;47.0342;47.0342;tabla
+HSS 2 1/2 x 2 1/2 x 1/8;ANSI AISC (Cuadrado);7.39343;41.5399;41.5399;tabla
+HSS 2 1/2 x 2 1/2 x 3/16;ANSI AISC (Cuadrado);10.5972;56.1912;56.1912;tabla
+HSS 2 1/2 x 2 1/2 x 1/4;ANSI AISC (Cuadrado);13.4788;67.8457;67.8457;tabla
+HSS 2 1/2 x 2 1/2 x 5/16;ANSI AISC (Cuadrado);16.0191;75.7541;75.7541;tabla
+HSS 3x2x3/16;ANSI AISC (Cuadrado);10.5972;77.419;40.7907;tabla
+HSS 3x2x1/4;ANSI AISC (Cuadrado);13.4788;91.9871;47.8666;tabla
+HSS 3 x 3 x 1/8;ANSI AISC (Cuadrado);9.00481;74.0892;74.0892;tabla
+HSS 3 x 3 x 3/16;ANSI AISC (Cuadrado);13.0238;102.393;102.393;tabla
+HSS 3 x 3 x 1/4;ANSI AISC (Cuadrado);16.7016;125.702;125.702;tabla
+HSS 3 x 3 x 5/16;ANSI AISC (Cuadrado);20.057;143.6;143.6;tabla
+HSS 3 x 3 x 3/8;ANSI AISC (Cuadrado);23.0713;157.335;157.335;tabla
+HSS 3 1/2 x 3 1/2 x 1/8;ANSI AISC (Cuadrado);10.6352;120.707;120.707;tabla
+HSS 3 1/2 x 3 1/2 x 3/16;ANSI AISC (Cuadrado);15.4504;168.574;168.574;tabla
+HSS 3 1/2 x 3 1/2 x 1/4;ANSI AISC (Cuadrado);19.9243;209.781;209.781;tabla
+HSS 3 1/2 x 3 1/2 x 5/16;ANSI AISC (Cuadrado);24.076;243.079;243.079;tabla
+HSS 3 1/2 x 3 1/2 x 3/8;ANSI AISC (Cuadrado);27.9054;270.134;270.134;tabla
+HSS 4 x 4 x 1/8;ANSI AISC (Cuadrado);12.2465;183.142;183.142;tabla
+HSS 4 x 4 x 3/16;ANSI AISC (Cuadrado);17.858;258.48;258.48;tabla
+HSS 4 x 4 x 1/4;ANSI AISC (Cuadrado);23.1471;324.661;324.661;tabla
+HSS 4 x 4 x 5/16;ANSI AISC (Cuadrado);28.114;380.436;380.436;tabla
+HSS 4 x 4 x 3/8;ANSI AISC (Cuadrado);32.7396;428.718;428.718;tabla
+HSS 4 x 4 x 1/2;ANSI AISC (Cuadrado);41.0051;495.315;495.315;tabla
+HSS 4 1/2 x 4 1/2 x 1/8;ANSI AISC (Cuadrado);13.8579;264.307;264.307;tabla
+HSS 4 1/2 x 4 1/2 x 3/16;ANSI AISC (Cuadrado);20.2845;375.441;375.441;tabla
+HSS 4 1/2 x 4 1/2 x 1/4;ANSI AISC (Cuadrado);26.3699;474.504;474.504;tabla
+HSS 4 1/2 x 4 1/2 x 5/16;ANSI AISC (Cuadrado);32.1519;561.912;561.912;tabla
+HSS 4 1/2 x 4 1/2 x 3/8;ANSI AISC (Cuadrado);37.5738;636.834;636.834;tabla
+HSS 4 1/2 x 4 1/2 x 1/2;ANSI AISC (Cuadrado);47.4506;753.379;753.379;tabla
+HSS 5 x 5 x 1/8;ANSI AISC (Cuadrado);15.4693;366.284;366.284;tabla
+HSS 5 x 5 x 3/16;ANSI AISC (Cuadrado);22.6921;524.452;524.452;tabla
+HSS 5 x 5 x 1/4;ANSI AISC (Cuadrado);29.6116;665.97;665.97;tabla
+HSS 5 x 5 x 5/16;ANSI AISC (Cuadrado);36.1709;790.84;790.84;tabla
+HSS 5 x 5 x 3/8;ANSI AISC (Cuadrado);42.4079;903.222;903.222;tabla
+HSS 5 x 5 x 1/2;ANSI AISC (Cuadrado);53.8962;1082.2;1082.2;tabla
+HSS 5 1/2 x 5 1/2 x 1/8;ANSI AISC (Cuadrado);17.0807;491.153;491.153;tabla
+HSS 5 1/2 x 5 1/2 x 3/16;ANSI AISC (Cuadrado);25.1187;707.593;707.593;tabla
+HSS 5 1/2 x 5 1/2 x 1/4;ANSI AISC (Cuadrado);32.8344;903.222;903.222;tabla
+HSS 5 1/2 x 5 1/2 x 5/16;ANSI AISC (Cuadrado);40.2089;1078.04;1078.04;tabla
+HSS 5 1/2 x 5 1/2 x 3/8;ANSI AISC (Cuadrado);47.2611;1236.21;1236.21;tabla
+HSS 6 x 6 x 1/8;ANSI AISC (Cuadrado);18.6921;645.159;645.159;tabla
+HSS 6 x 6 x 3/16;ANSI AISC (Cuadrado);27.5453;928.196;928.196;tabla
+HSS 6 x 6 x 1/4;ANSI AISC (Cuadrado);36.0572;1190.42;1190.42;tabla
+HSS 6 x 6 x 5/16;ANSI AISC (Cuadrado);44.2468;1427.67;1427.67;tabla
+HSS 6 x 6 x 3/8;ANSI AISC (Cuadrado);52.0952;1644.11;1644.11;tabla
+HSS 6 x 6 x 1/2;ANSI AISC (Cuadrado);66.8062;2010.4;2010.4;tabla
+HSS 6 x 6 x 5/8;ANSI AISC (Cuadrado);80.1902;2297.6;2297.6;tabla
+HSS 7 x 7 x 1/8;ANSI AISC (Cuadrado);21.9149;1032.25;1032.25;tabla
+HSS 7 x 7 x 3/16;ANSI AISC (Cuadrado);32.3794;1498.43;1498.43;tabla
+HSS 7 x 7 x 1/4;ANSI AISC (Cuadrado);42.5027;1935.48;1935.48;tabla
+HSS 7 x 7 x 5/16;ANSI AISC (Cuadrado);52.3037;2335.06;2335.06;tabla
+HSS 7 x 7 x 3/8;ANSI AISC (Cuadrado);61.7635;2705.5;2705.5;tabla
+HSS 7 x 7 x 1/2;ANSI AISC (Cuadrado);79.7163;3350.66;3350.66;tabla
+HSS 7 x 7 x 5/8;ANSI AISC (Cuadrado);96.3231;3887.6;3887.6;tabla
+HSS 8 x 8 x 1/8;ANSI AISC (Cuadrado);25.1376;1556.71;1556.71;tabla
+HSS 8 x 8 x 3/16;ANSI AISC (Cuadrado);37.2136;2264.3;2264.3;tabla
+HSS 8 x 8 x 1/4;ANSI AISC (Cuadrado);48.9483;2942.76;2942.76;tabla
+HSS 8 x 8 x 5/16;ANSI AISC (Cuadrado);60.3607;3562.94;3562.94;tabla
+HSS 8 x 8 x 3/8;ANSI AISC (Cuadrado);71.4508;4162.31;4162.31;tabla
+HSS 8 x 8 x 1/2;ANSI AISC (Cuadrado);92.6074;5202.89;5202.89;tabla
+HSS 8x8x9/16;ANSI AISC (Cuadrado);102.693;5952.11;5952.11;tabla
+HSS 8 x 8 x 5/8;ANSI AISC (Cuadrado);112.456;6076.98;6076.98;tabla
+HSS 9 x 9 x 1/8;ANSI AISC (Cuadrado);28.3604;2226.84;2226.84;tabla
+HSS 9 x 9 x 3/16;ANSI AISC (Cuadrado);42.0477;3254.93;3254.93;tabla
+HSS 9 x 9 x 1/4;ANSI AISC (Cuadrado);55.4128;4245.56;4245.56;tabla
+HSS 9 x 9 x 5/16;ANSI AISC (Cuadrado);68.4366;5161.27;5161.27;tabla
+HSS 9 x 9 x 3/8;ANSI AISC (Cuadrado);81.1192;6035.36;6035.36;tabla
+HSS 9 x 9 x 1/2;ANSI AISC (Cuadrado);105.517;7617.04;7617.04;tabla
+HSS 9x9x9/16;ANSI AISC (Cuadrado);117.214;8782.48;8782.48;tabla
+HSS 9 x 9 x 5/8;ANSI AISC (Cuadrado);128.57;8990.6;8990.6;tabla
+HSS 10 x 10 x 3/16;ANSI AISC (Cuadrado);46.8819;4495.3;4495.3;tabla
+HSS 10 x 10 x 1/4;ANSI AISC (Cuadrado);61.8583;5868.86;5868.86;tabla
+HSS 10 x 10 x 5/16;ANSI AISC (Cuadrado);76.4935;7159.18;7159.18;tabla
+HSS 10 x 10 x 3/8;ANSI AISC (Cuadrado);90.8064;8407.87;8407.87;tabla
+HSS 10 x 10 x 1/2;ANSI AISC (Cuadrado);118.409;10655.5;10655.5;tabla
+HSS 10x10x9/16;ANSI AISC (Cuadrado);131.717;12362.1;12362.1;tabla
+HSS 10 x 10 x 5/8;ANSI AISC (Cuadrado);144.703;12653.4;12653.4;tabla
+HSS 12 x 12 x 3/16;ANSI AISC (Cuadrado);56.5692;7866.77;7866.77;tabla
+HSS 12 x 12 x 1/4;ANSI AISC (Cuadrado);74.7494;10322.5;10322.5;tabla
+HSS 12 x 12 x 5/16;ANSI AISC (Cuadrado);92.6264;12653.4;12653.4;tabla
+HSS 12 x 12 x 3/8;ANSI AISC (Cuadrado);110.143;14859.5;14859.5;tabla
+HSS 12 x 12 x 1/2;ANSI AISC (Cuadrado);144.21;19021.8;19021.8;tabla
+HSS 12 x 12 x 5/8;ANSI AISC (Cuadrado);176.949;22809.5;22809.5;tabla
+HSS 14 x 14 x 5/16;ANSI AISC (Cuadrado);108.74;20395.3;20395.3;tabla
+HSS 14 x 14 x 3/8;ANSI AISC (Cuadrado);129.499;24016.6;24016.6;tabla
+HSS 14 x 14 x 1/2;ANSI AISC (Cuadrado);170.011;30926;30926;tabla
+HSS 14 x 14 x 5/8;ANSI AISC (Cuadrado);209.215;37336;37336;tabla
+HSS 16 x 16 x 5/16;ANSI AISC (Cuadrado);124.873;30759.5;30759.5;tabla
+HSS 16 x 16 x 3/8;ANSI AISC (Cuadrado);148.854;36337;36337;tabla
+HSS 16 x 16 x 1/2;ANSI AISC (Cuadrado);195.831;47034.2;47034.2;tabla
+HSS 16 x 16 x 5/8;ANSI AISC (Cuadrado);241.462;57023.7;57023.7;tabla
+HSS 2 x 1 x 1/8;ANSI AISC HSS (Rectangular);4.17065;11.6545;3.83765;tabla
+HSS 2 x 1 x 3/16;ANSI AISC HSS (Rectangular);5.76308;14.5681;4.66179;tabla
+HSS 2 x 1 1/2 x 1/8;ANSI AISC HSS (Rectangular);4.98582;15.9417;10.156;tabla
+HSS 2 x 1 1/2 x 3/16;ANSI AISC HSS (Rectangular);6.97636;20.6035;13.028;tabla
+HSS 2 1/4 x 2 x 1/8;ANSI AISC HSS (Rectangular);6.1991;26.8886;22.3933;tabla
+HSS 2 1/4 x 2 x 3/16;ANSI AISC HSS (Rectangular);8.79628;35.7543;29.6773;tabla
+HSS 2 1/2 x 1 x 1/8;ANSI AISC HSS (Rectangular);4.98582;20.9364;4.78666;tabla
+HSS 2 1/2 x 1 x 3/16;ANSI AISC HSS (Rectangular);6.97636;26.8886;5.95211;tabla
+HSS 2 1/2 x 1 1/2 x 1/8;ANSI AISC HSS (Rectangular);5.78204;27.8043;12.4869;tabla
+HSS 2 1/2 x 1 1/2 x 3/16;ANSI AISC HSS (Rectangular);8.18964;36.7116;16.233;tabla
+HSS 2 1/2 x 1 1/2 x 1/4;ANSI AISC HSS (Rectangular);10.256;42.8718;18.6888;tabla
+HSS 2 1/2 x 2 x 1/8;ANSI AISC HSS (Rectangular);6.59721;34.6721;24.516;tabla
+HSS 2 1/2 x 2 x 3/16;ANSI AISC HSS (Rectangular);9.40292;46.6179;32.7158;tabla
+HSS 2 1/2 x 2 x 1/4;ANSI AISC HSS (Rectangular);11.8674;55.3588;38.7095;tabla
+HSS 3 x 1 x 1/8;ANSI AISC HSS (Rectangular);5.78204;34.0061;5.74399;tabla
+HSS 3 x 1 x 3/16;ANSI AISC HSS (Rectangular);8.18964;44.5368;7.2008;tabla
+HSS 3 x 1 1/2 x 1/8;ANSI AISC HSS (Rectangular);6.59721;44.1205;14.7762;tabla
+HSS 3 x 1 1/2 x 3/16;ANSI AISC HSS (Rectangular);9.40292;59.1049;19.438;tabla
+HSS 3 x 1 1/2 x 1/4;ANSI AISC HSS (Rectangular);11.8674;69.9269;22.6014;tabla
+HSS 3 x 2 x 1/8;ANSI AISC HSS (Rectangular);7.39343;54.1101;28.8032;tabla
+HSS 3 x 2 x 5/16;ANSI AISC HSS (Rectangular);16.0191;99.0631;51.6127;tabla
+HSS 3 x 2 1/2 x 1/8;ANSI AISC HSS (Rectangular);8.2086;64.0996;48.2828;tabla
+HSS 3 x 2 1/2 x 3/16;ANSI AISC HSS (Rectangular);11.8105;87.8248;66.1808;tabla
+HSS 3 x 2 1/2 x 1/4;ANSI AISC HSS (Rectangular);15.0902;106.971;80.3327;tabla
+HSS 3 x 2 1/2 x 5/16;ANSI AISC HSS (Rectangular);18.0286;121.54;90.7385;tabla
+HSS 3 1/2 x 1 1/2 x 1/8;ANSI AISC HSS (Rectangular);7.39343;65.3483;17.1071;tabla
+HSS 3 1/2 x 1 1/2 x 3/16;ANSI AISC HSS (Rectangular);10.5972;88.2411;22.643;tabla
+HSS 3 1/2 x 1 1/2 x 1/4;ANSI AISC HSS (Rectangular);13.4788;106.139;26.5556;tabla
+HSS 3 1/2 x 2 x 1/8;ANSI AISC HSS (Rectangular);8.2086;79.084;33.0904;tabla
+HSS 3 1/2 x 2 x 3/16;ANSI AISC HSS (Rectangular);11.8105;108.636;44.953;tabla
+HSS 3 1/2 x 2 x 1/4;ANSI AISC HSS (Rectangular);15.0902;131.945;54.1101;tabla
+HSS 3 1/2 x 2 1/2 x 1/8;ANSI AISC HSS (Rectangular);9.00481;92.8196;55.3588;tabla
+HSS 3 1/2 x 2 1/2 x 3/16;ANSI AISC HSS (Rectangular);13.0238;128.616;75.7541;tabla
+HSS 3 1/2 x 2 1/2 x 1/4;ANSI AISC HSS (Rectangular);16.7016;157.752;92.8196;tabla
+HSS 3 1/2 x 2 1/2 x 5/16;ANSI AISC HSS (Rectangular);20.057;180.644;105.723;tabla
+HSS 3 1/2 x 2 1/2 x 3/8;ANSI AISC HSS (Rectangular);23.0713;197.71;115.296;tabla
+HSS 4 x 2 x 1/8;ANSI AISC HSS (Rectangular);9.00481;110.301;37.3776;tabla
+HSS 4 x 2 x 3/16;ANSI AISC HSS (Rectangular);13.0238;152.341;50.7802;tabla
+HSS 4 x 2 x 1/4;ANSI AISC HSS (Rectangular);16.7016;186.888;61.6023;tabla
+HSS 4 x 2 x 5/16;ANSI AISC HSS (Rectangular);20.057;213.527;69.5106;tabla
+HSS 4 x 2 x 3/8;ANSI AISC HSS (Rectangular);23.0713;233.09;74.9217;tabla
+HSS 4 x 2 1/2 x 1/8;ANSI AISC HSS (Rectangular);9.81999;128.616;62.0185;tabla
+HSS 4 x 2 1/2 x 3/16;ANSI AISC HSS (Rectangular);14.2371;178.98;85.7437;tabla
+HSS 4 x 2 1/2 x 1/4;ANSI AISC HSS (Rectangular);18.3129;221.435;105.307;tabla
+HSS 4 x 2 1/2 x 5/16;ANSI AISC HSS (Rectangular);22.0665;255.15;120.291;tabla
+HSS 4 x 2 1/2 x 3/8;ANSI AISC HSS (Rectangular);25.4789;281.789;131.945;tabla
+HSS 4 x 3 x 1/8;ANSI AISC HSS (Rectangular);10.6352;146.513;94.4845;tabla
+HSS 4 x 3 x 3/16;ANSI AISC HSS (Rectangular);15.4504;205.202;131.529;tabla
+HSS 4 x 3 x 1/4;ANSI AISC HSS (Rectangular);19.9243;255.982;162.746;tabla
+HSS 4 x 3 x 5/16;ANSI AISC HSS (Rectangular);24.076;297.189;188.137;tabla
+HSS 4 x 3 x 3/8;ANSI AISC HSS (Rectangular);27.9054;330.072;208.532;tabla
+HSS 5 x 2 x 1/8;ANSI AISC HSS (Rectangular);10.6352;193.548;45.7855;tabla
+HSS 5 x 2 x 3/16;ANSI AISC HSS (Rectangular);15.4504;270.55;62.8509;tabla
+HSS 5 x 2 x 1/4;ANSI AISC HSS (Rectangular);19.9243;336.315;76.5866;tabla
+HSS 5 x 2 x 5/16;ANSI AISC HSS (Rectangular);24.076;389.176;87.4086;tabla
+HSS 5 x 2 x 3/8;ANSI AISC HSS (Rectangular);27.9054;432.881;94.9008;tabla
+HSS 5 x 2 1/2 x 1/8;ANSI AISC HSS (Rectangular);11.4314;222.268;75.7541;tabla
+HSS 5 x 2 1/2 x 3/16;ANSI AISC HSS (Rectangular);16.6447;312.59;105.307;tabla
+HSS 5 x 2 1/2 x 1/4;ANSI AISC HSS (Rectangular);21.5357;391.258;130.28;tabla
+HSS 5 x 3 x 1/8;ANSI AISC HSS (Rectangular);12.2465;250.988;114.464;tabla
+HSS 5 x 3 x 3/16;ANSI AISC HSS (Rectangular);17.858;355.045;160.249;tabla
+HSS 5 x 3 x 1/4;ANSI AISC HSS (Rectangular);23.1471;445.368;200.207;tabla
+HSS 5 x 3 x 5/16;ANSI AISC HSS (Rectangular);28.114;524.452;233.09;tabla
+HSS 5 x 3 x 3/8;ANSI AISC HSS (Rectangular);32.7396;586.886;260.145;tabla
+HSS 5 x 3 x 1/2;ANSI AISC HSS (Rectangular);41.0051;682.62;298.854;tabla
+HSS 5 x 4 x 1/8;ANSI AISC HSS (Rectangular);13.8579;308.844;219.354;tabla
+HSS 5 x 4 x 3/16;ANSI AISC HSS (Rectangular);20.2845;441.205;311.341;tabla
+HSS 5 x 4 x 1/4;ANSI AISC HSS (Rectangular);26.3699;557.75;393.755;tabla
+HSS 5 x 4 x 5/16;ANSI AISC HSS (Rectangular);32.1519;657.646;462.017;tabla
+HSS 5 x 4 x 3/8;ANSI AISC HSS (Rectangular);37.5738;745.054;524.452;tabla
+HSS 5 x 4 x 1/2;ANSI AISC HSS (Rectangular);47.4506;882.411;620.185;tabla
+HSS 6 x 2 x 1/8;ANSI AISC HSS (Rectangular);12.2465;308.844;54.5263;tabla
+HSS 6 x 2 x 3/16;ANSI AISC HSS (Rectangular);17.858;437.043;74.9217;tabla
+HSS 6 x 2 x 1/4;ANSI AISC HSS (Rectangular);23.1471;545.263;91.9871;tabla
+HSS 6 x 2 x 5/16;ANSI AISC HSS (Rectangular);28.114;636.834;104.89;tabla
+HSS 6 x 2 x 3/8;ANSI AISC HSS (Rectangular);32.7396;711.756;115.296;tabla
+HSS 6 x 3 x 1/8;ANSI AISC HSS (Rectangular);13.8579;392.506;134.443;tabla
+HSS 6 x3 x 3/16;ANSI AISC HSS (Rectangular);20.2845;557.75;189.385;tabla
+HSS 6 x 3 x 1/4;ANSI AISC HSS (Rectangular);26.3699;707.593;237.252;tabla
+HSS 6 x 3 x 5/16;ANSI AISC HSS (Rectangular);32.1519;836.625;277.626;tabla
+HSS 6 x 3 x 3/8;ANSI AISC HSS (Rectangular);37.5738;944.845;311.341;tabla
+HSS 6 x 3 x 1/2;ANSI AISC HSS (Rectangular);47.4506;1115.5;361.705;tabla
+HSS 6 x 4 x 1/8;ANSI AISC HSS (Rectangular);15.4693;474.504;255.982;tabla
+HSS 6 x 4 x 3/16;ANSI AISC HSS (Rectangular);22.6921;682.62;364.619;tabla
+HSS 6 x 4 x 1/4;ANSI AISC HSS (Rectangular);29.6116;869.924;462.017;tabla
+HSS 6 x 4 x 5/16;ANSI AISC HSS (Rectangular);36.1709;1032.25;549.425;tabla
+HSS 6 x 4 x 3/8;ANSI AISC HSS (Rectangular);42.4079;1177.93;620.185;tabla
+HSS 6 x 4 x 1/2;ANSI AISC HSS (Rectangular);53.8962;1415.19;740.892;tabla
+HSS 6 x 5 x 1/8;ANSI AISC HSS (Rectangular);17.0807;557.75;424.556;tabla
+HSS 6 x 5 x 3/16;ANSI AISC HSS (Rectangular);25.1187;803.327;607.698;tabla
+HSS 6 x 5 x 1/4;ANSI AISC HSS (Rectangular);32.8344;1028.09;778.353;tabla
+HSS 6 x 5 x 5/16;ANSI AISC HSS (Rectangular);40.2089;1232.05;928.196;tabla
+HSS 6 x 5 x 3/8;ANSI AISC HSS (Rectangular);47.2611;1411.02;1061.39;tabla
+HSS 6 x 5 x 1/2;ANSI AISC HSS (Rectangular);60.3607;1710.71;1281.99;tabla
+HSS 7 x 2 x 1/8;ANSI AISC HSS (Rectangular);13.8579;462.017;63.2672;tabla
+HSS 7 x 2 x 3/16;ANSI AISC HSS (Rectangular);20.2845;653.483;87.4086;tabla
+HSS 7 x 2 x 1/4;ANSI AISC HSS (Rectangular);26.3699;824.138;107.388;tabla
+HSS 7 x 3 x 1/8;ANSI AISC HSS (Rectangular);15.4693;574.399;154.422;tabla
+HSS 7 x 3 x 3/16;ANSI AISC HSS (Rectangular);22.6921;824.138;218.105;tabla
+HSS 7 x 3 x 1/4;ANSI AISC HSS (Rectangular);29.6116;1048.9;274.713;tabla
+HSS 7 x 3 x 5/16;ANSI AISC HSS (Rectangular);36.1709;1244.53;322.163;tabla
+HSS 7 x 3 x 3/8;ANSI AISC HSS (Rectangular);42.4079;1419.35;362.538;tabla
+HSS 7 x 3 x 1/2;ANSI AISC HSS (Rectangular);53.8962;1694.06;424.556;tabla
+HSS 7 x 4 x 1/8;ANSI AISC HSS (Rectangular);17.0807;690.944;292.611;tabla
+HSS 7 x 4 x 3/16;ANSI AISC HSS (Rectangular);25.1187;990.631;416.231;tabla
+HSS 7 x 4 x 1/4;ANSI AISC HSS (Rectangular);32.8344;1269.51;532.776;tabla
+HSS 7 x 4 x 5/16;ANSI AISC HSS (Rectangular);40.2089;1519.24;632.672;tabla
+HSS 7 x 4 x 3/8;ANSI AISC HSS (Rectangular);47.2611;1739.85;720.08;tabla
+HSS 7 x 4 x 1/2;ANSI AISC HSS (Rectangular);60.3607;2110.29;861.599;tabla
+HSS 7 x 5 x 1/8;ANSI AISC HSS (Rectangular);18.6921;803.327;482.828;tabla
+HSS 7 x 5 x 3/16;ANSI AISC HSS (Rectangular);27.5453;1161.29;690.944;tabla
+HSS 7 x 5 x 1/4;ANSI AISC HSS (Rectangular);36.0572;1494.27;886.573;tabla
+HSS 7 x 5 x 5/16;ANSI AISC HSS (Rectangular);44.2468;1789.8;1061.39;tabla
+HSS 7 x 5 x 3/8;ANSI AISC HSS (Rectangular);52.0952;2060.35;1219.56;tabla
+HSS 7 x 5 x 1/2;ANSI AISC HSS (Rectangular);66.8062;2522.36;1481.78;tabla
+HSS 8 x 2 x 1/8;ANSI AISC HSS (Rectangular);15.4693;653.483;71.5918;tabla
+HSS 8 x 2 x 3/16;ANSI AISC HSS (Rectangular);22.6921;932.358;99.4793;tabla
+HSS 8 x 2 x 1/4;ANSI AISC HSS (Rectangular);29.6116;1186.26;122.372;tabla
+HSS 8 x 2 x 5/16;ANSI AISC HSS (Rectangular);36.1709;1402.7;140.686;tabla
+HSS 8 x 2 x 3/8;ANSI AISC HSS (Rectangular);42.4079;1590;155.254;tabla
+HSS 8 x 3 x 1/8;ANSI AISC HSS (Rectangular);17.0807;803.327;174.817;tabla
+HSS 8 x 3 x 3/16;ANSI AISC HSS (Rectangular);25.1187;1157.12;247.241;tabla
+HSS 8 x 3 x 1/4;ANSI AISC HSS (Rectangular);32.8344;1477.62;311.757;tabla
+HSS 8 x 3 x 5/16;ANSI AISC HSS (Rectangular);40.2089;1764.82;366.7;tabla
+HSS 8 x 3 x 3/8;ANSI AISC HSS (Rectangular);47.2611;2018.72;416.231;tabla
+HSS 8 x 3 x 1/2;ANSI AISC HSS (Rectangular);60.3607;2439.12;486.991;tabla
+HSS 8 x 4 x 1/8;ANSI AISC HSS (Rectangular);18.6921;953.17;328.823;tabla
+HSS 8 x 4 x 3/16;ANSI AISC HSS (Rectangular);27.5453;1377.73;470.342;tabla
+HSS 8 x 4 x 1/4;ANSI AISC HSS (Rectangular);36.0572;1768.98;599.373;tabla
+HSS 8 x 4 x 5/16;ANSI AISC HSS (Rectangular);44.2468;2122.78;715.918;tabla
+HSS 8 x 4 x 3/8;ANSI AISC HSS (Rectangular);52.0952;2443.28;815.814;tabla
+HSS 8 x 4 x 1/2;ANSI AISC HSS (Rectangular);66.8062;2988.54;982.306;tabla
+HSS 8 x 4 x 5/8;ANSI AISC HSS (Rectangular);80.1902;3413.1;1107.18;tabla
+HSS 8 x 6 x 3/16;ANSI AISC HSS (Rectangular);32.3794;1818.93;1173.77;tabla
+HSS 8 x 6 x 1/4;ANSI AISC HSS (Rectangular);42.5027;2355.87;1515.08;tabla
+HSS 8 x 6 x 5/16;ANSI AISC HSS (Rectangular);52.3037;2842.86;1823.09;tabla
+HSS 8 x 6 x 3/8;ANSI AISC HSS (Rectangular);61.7635;3292.39;2106.13;tabla
+HSS 8 x 6 x 1/2;ANSI AISC HSS (Rectangular);79.7163;4087.39;2601.45;tabla
+HSS 8 x 6 x 5/8;ANSI AISC HSS (Rectangular);96.3231;4745.04;3009.35;tabla
+HSS 9 x 3 x 3/16;ANSI AISC HSS (Rectangular);27.5453;1565.03;276.378;tabla
+HSS 9 x 3 x 1/4;ANSI AISC HSS (Rectangular);36.0572;2006.24;348.802;tabla
+HSS 9 x 3 x 5/16;ANSI AISC HSS (Rectangular);44.2468;2401.66;411.237;tabla
+HSS 9 x 3 x 3/8;ANSI AISC HSS (Rectangular);52.0952;2759.61;466.179;tabla
+HSS 9 x 3 x 1/2;ANSI AISC HSS (Rectangular);66.8062;3363.15;549.425;tabla
+HSS 9 x 5 x 3/16;ANSI AISC HSS (Rectangular);32.3794;2126.94;861.599;tabla
+HSS 9 x 5 x 1/4;ANSI AISC HSS (Rectangular);42.5027;2751.29;1107.18;tabla
+HSS 9 x 5 x 5/16;ANSI AISC HSS (Rectangular);52.3037;3321.53;1331.94;tabla
+HSS 9 x 5 x 3/8;ANSI AISC HSS (Rectangular);61.7635;3850.14;1531.73;tabla
+HSS 9 x 5 x 1/2;ANSI AISC HSS (Rectangular);79.7163;4786.66;1881.37;tabla
+HSS 9 x 5 x 5/8;ANSI AISC HSS (Rectangular);96.3231;5535.88;2164.4;tabla
+HSS 9 x 7 x 3/16;ANSI AISC HSS (Rectangular);37.2136;2693.02;1835.58;tabla
+HSS 9 x 7 x 1/4;ANSI AISC HSS (Rectangular);48.9483;3500.51;2380.84;tabla
+HSS 9 x 7 x 5/16;ANSI AISC HSS (Rectangular);60.3607;4245.56;2880.32;tabla
+HSS 9 x 7 x 3/8;ANSI AISC HSS (Rectangular);71.4508;4953.15;3346.5;tabla
+HSS 9 x 7 x 1/2;ANSI AISC HSS (Rectangular);92.6074;6201.85;4162.31;tabla
+HSS 9 x 7 x 5/8;ANSI AISC HSS (Rectangular);112.456;7242.43;4869.91;tabla
+HSS 10 x 2 x 1/8;ANSI AISC HSS (Rectangular);18.6921;1186.26;89.0735;tabla
+HSS 10 x 2 x 3/16;ANSI AISC HSS (Rectangular);27.5453;1706.55;123.621;tabla
+HSS 10 x 2 x 1/4;ANSI AISC HSS (Rectangular);36.0572;2185.21;152.757;tabla
+HSS 10 x 2 x 5/16;ANSI AISC HSS (Rectangular);44.2468;2605.61;176.482;tabla
+HSS 10 x 2 x 3/8;ANSI AISC HSS (Rectangular);52.0952;2984.38;195.629;tabla
+HSS 10 x 3 x 1/8;ANSI AISC HSS (Rectangular);20.3035;1423.51;214.775;tabla
+HSS 10 x 3 x 3/16;ANSI AISC HSS (Rectangular);29.9529;2056.18;305.098;tabla
+HSS 10 x 3 x 1/4;ANSI AISC HSS (Rectangular);39.2799;2647.23;386.263;tabla
+HSS 10 x 3 x 5/16;ANSI AISC HSS (Rectangular);48.2658;3175.85;457.855;tabla
+HSS 10 x 3 x 3/8;ANSI AISC HSS (Rectangular);56.9294;3662.84;516.127;tabla
+HSS 10 x 3 1/2 x 1/8;ANSI AISC HSS (Rectangular);21.0997;1540.06;300.519;tabla
+HSS 10 x 3 1/2 x 3/16;ANSI AISC HSS (Rectangular);31.1661;2231;428.718;tabla
+HSS 10 x 3 1/2 x 1/4;ANSI AISC HSS (Rectangular);40.8913;2876.16;545.263;tabla
+HSS 10 x 3 1/2 x 5/16;ANSI AISC HSS (Rectangular);50.2943;3463.05;649.321;tabla
+HSS 10 x 3 1/2 x 3/8;ANSI AISC HSS (Rectangular);59.3559;3999.98;740.892;tabla
+HSS 10 x 3 1/2 x 1/2;ANSI AISC HSS (Rectangular);76.4746;4911.53;890.735;tabla
+HSS 10 x 4 x 1/8;ANSI AISC HSS (Rectangular);21.9149;1656.6;401.663;tabla
+HSS 10 x 4 x 3/16;ANSI AISC HSS (Rectangular);32.3794;2405.82;578.562;tabla
+HSS 10 x 4 x 1/4;ANSI AISC HSS (Rectangular);42.5027;3109.25;736.73;tabla
+HSS 10 x 4 x 5/16;ANSI AISC HSS (Rectangular);52.3037;3750.25;882.411;tabla
+HSS 10 x 4 x 3/8;ANSI AISC HSS (Rectangular);61.7635;4328.81;1011.44;tabla
+HSS 10 x 4 x 1/2;ANSI AISC HSS (Rectangular);79.7163;5369.39;1227.88;tabla
+HSS 10 x 4 x 5/8;ANSI AISC HSS (Rectangular);96.3231;6201.85;1394.38;tabla
+HSS 10 x 5 x 3/16;ANSI AISC HSS (Rectangular);34.787;2755.45;944.845;tabla
+HSS 10 x 5 x 1/4;ANSI AISC HSS (Rectangular);45.7255;3571.27;1219.56;tabla
+HSS 10 x 5 x 5/16;ANSI AISC HSS (Rectangular);56.3417;4328.81;1465.13;tabla
+HSS 10 x 5 x 3/8;ANSI AISC HSS (Rectangular);66.5977;4994.78;1689.9;tabla
+HSS 10 x 6 x 3/16;ANSI AISC HSS (Rectangular);37.2136;3105.09;1419.35;tabla
+HSS 10 x 6 x1/4;ANSI AISC HSS (Rectangular);48.9483;4033.28;1835.58;tabla
+HSS 10 x 6 x 5/16;ANSI AISC HSS (Rectangular);60.3607;4911.53;2218.51;tabla
+HSS 10 x 6 x 3/8;ANSI AISC HSS (Rectangular);71.4508;5702.37;2572.31;tabla
+HSS 10 x 6 x 1/2;ANSI AISC HSS (Rectangular);92.6074;7117.56;3196.66;tabla
+HSS 10 x 6 x 5/8;ANSI AISC HSS (Rectangular);112.456;8366.25;3721.11;tabla
+HSS 10 x 8 x 3/16;ANSI AISC HSS (Rectangular);42.0477;3804.36;2709.67;tabla
+HSS 10 x 8 x 1/4;ANSI AISC HSS (Rectangular);55.4128;4953.15;3525.48;tabla
+HSS 10 x 8 x 5/16;ANSI AISC HSS (Rectangular);68.4366;6035.36;4287.18;tabla
+HSS 10 x 8 x 3/8;ANSI AISC HSS (Rectangular);81.1192;7034.31;4994.78;tabla
+HSS 10 x 8 x 1/2;ANSI AISC HSS (Rectangular);105.517;8907.35;6285.09;tabla
+HSS 10 x 8 x 5/8;ANSI AISC HSS (Rectangular);128.57;10530.7;7408.92;tabla
+HSS 12 x 2 x 3/16;ANSI AISC HSS (Rectangular);32.3794;2805.4;147.762;tabla
+HSS 12 x 2 x 1/4;ANSI AISC HSS (Rectangular);42.5027;3617.05;183.558;tabla
+HSS 12 x 2 x 5/16;ANSI AISC HSS (Rectangular);52.3037;4328.81;212.278;tabla
+HSS 12 x 3 x 3/16;ANSI AISC HSS (Rectangular);34.787;3313.2;362.954;tabla
+HSS 12 x 3 x 1/4;ANSI AISC HSS (Rectangular);45.7255;4287.18;462.017;tabla
+HSS 12 x 3 x 5/16;ANSI AISC HSS (Rectangular);56.3417;5161.27;545.263;tabla
+HSS 12 x 3 1/2 x 5/16;ANSI AISC HSS (Rectangular);58.3512;5577.5;774.19;tabla
+HSS 12 x 3 1/2 x 3/8;ANSI AISC HSS (Rectangular);69.0243;6493.21;886.573;tabla
+HSS 12 x 4 x 3/16;ANSI AISC HSS (Rectangular);37.2136;3821;682.62;tabla
+HSS 12 x 4 x 1/4;ANSI AISC HSS (Rectangular);48.9483;4953.15;874.086;tabla
+HSS 12 x 4 x 5/16;ANSI AISC HSS (Rectangular);60.3607;5993.73;1048.9;tabla
+HSS 12 x 4 x 3/8;ANSI AISC HSS (Rectangular);71.4508;6992.69;1202.91;tabla
+HSS 12 x 4 x 1/2;ANSI AISC HSS (Rectangular);92.6074;8740.86;1469.3;tabla
+HSS 12 x 4 x 5/8;ANSI AISC HSS (Rectangular);112.456;10197.7;1681.57;tabla
+HSS 12 x 6 x 3/16;ANSI AISC HSS (Rectangular);42.0477;4828.28;1664.93;tabla
+HSS 12 x 6 x 1/4;ANSI AISC HSS (Rectangular);55.4128;6285.09;2160.24;tabla
+HSS 12 x 6 x 5/16;ANSI AISC HSS (Rectangular);68.4366;7658.66;2613.93;tabla
+HSS 12 x 6 x 3/8;ANSI AISC HSS (Rectangular);81.1192;8948.98;3034.33;tabla
+HSS 12 x 6 x 1/2;ANSI AISC HSS (Rectangular);105.517;11279.9;3791.87;tabla
+HSS 12 x 6 x 5/8;ANSI AISC HSS (Rectangular);128.57;13361;4453.68;tabla
+HSS 12 x 8 x 3/16;ANSI AISC HSS (Rectangular);46.8819;5827.24;3150.87;tabla
+HSS 12 x 8 x 1/4;ANSI AISC HSS (Rectangular);61.8583;7658.66;4112.37;tabla
+HSS 12 x 8 x 5/16;ANSI AISC HSS (Rectangular);76.4935;9323.58;4994.78;tabla
+HSS 12 x 8 x 3/8;ANSI AISC HSS (Rectangular);90.8064;10905.3;5827.24;tabla
+HSS 12 x 8 x 1/2;ANSI AISC HSS (Rectangular);118.409;13860.5;7408.92;tabla
+HSS 12 x 8 x 5/8;ANSI AISC HSS (Rectangular);144.703;16524.4;8740.86;tabla
+HSS 12 x 10 x 1/4;ANSI AISC HSS (Rectangular);68.3039;8990.6;6826.2;tabla
+HSS 12 x 10 x 5/16;ANSI AISC HSS (Rectangular);84.5505;10988.5;8324.63;tabla
+HSS 12 x 10 x 3/8;ANSI AISC HSS (Rectangular);100.475;12903.2;9739.82;tabla
+HSS 12 x 10 x 1/2;ANSI AISC HSS (Rectangular);131.319;16441.1;12403.7;tabla
+HSS 14 x 4 x 3/16;ANSI AISC HSS (Rectangular);42.0477;5702.37;790.84;tabla
+HSS 14 x 4 x 1/4;ANSI AISC HSS (Rectangular);55.4128;7408.92;1015.6;tabla
+HSS 14 x 4 x 5/16;ANSI AISC HSS (Rectangular);68.4366;8990.6;1215.4;tabla
+HSS 14 x 4 x 3/8;ANSI AISC HSS (Rectangular);81.1192;10489;1398.54;tabla
+HSS 14 x 4 x 1/2;ANSI AISC HSS (Rectangular);105.517;13194.5;1714.87;tabla
+HSS 14 x 4 x 5/8;ANSI AISC HSS (Rectangular);128.57;15525.4;1964.61;tabla
+HSS 14 x 6 x 3/16;ANSI AISC HSS (Rectangular);46.8819;7075.93;1910.5;tabla
+HSS 14 x 6 x 1/4;ANSI AISC HSS (Rectangular);61.8583;9240.34;2480.74;tabla
+HSS 14 x 6 x 5/16;ANSI AISC HSS (Rectangular);76.4935;11279.9;3009.35;tabla
+HSS 14 x 6 x 3/8;ANSI AISC HSS (Rectangular);90.8064;13194.5;3500.51;tabla
+HSS 14 x 6 x 1/2;ANSI AISC HSS (Rectangular);118.409;16732.5;4370.43;tabla
+HSS 14 x 6 x 5/8;ANSI AISC HSS (Rectangular);144.703;19895.9;5161.27;tabla
+HSS 14 x 10 x 1/4;ANSI AISC HSS (Rectangular);74.7494;12903.2;7741.9;tabla
+HSS 14 x 10 x 5/16;ANSI AISC HSS (Rectangular);92.6264;15816.8;9448.45;tabla
+HSS 14 x 10 x 3/8;ANSI AISC HSS (Rectangular);110.143;18605.5;11113.4;tabla
+HSS 14 x 10 x 1/2;ANSI AISC HSS (Rectangular);144.21;23850.1;14193.5;tabla
+HSS 14 x 10 x 5/8;ANSI AISC HSS (Rectangular);176.949;28595.1;16940.6;tabla
+HSS 16 x 4 x 3/16;ANSI AISC HSS (Rectangular);46.8819;8033.27;894.898;tabla
+HSS 16 x 4 x 1/4;ANSI AISC HSS (Rectangular);61.8583;10530.7;1152.96;tabla
+HSS 16 x 4 x 5/16;ANSI AISC HSS (Rectangular);76.4935;12819.9;1381.89;tabla
+HSS 16 x 4 x 3/8;ANSI AISC HSS (Rectangular);90.8064;14984.3;1594.17;tabla
+HSS 16 x 4 x 1/2;ANSI AISC HSS (Rectangular);118.409;18938.5;1956.29;tabla
+HSS 16 x 4 x 5/8;ANSI AISC HSS (Rectangular);144.703;22434.9;2251.81;tabla
+HSS 16 x 8 x 1/4;ANSI AISC HSS (Rectangular);74.7494;15317.3;5286.14;tabla
+HSS 16 x 8 x 5/16;ANSI AISC HSS (Rectangular);92.6264;18772;6451.59;tabla
+HSS 16 x 8 x 3/8;ANSI AISC HSS (Rectangular);110.143;22101.9;7533.79;tabla
+HSS 16 x 8 x 1/2;ANSI AISC HSS (Rectangular);144.21;28262.1;9573.32;tabla
+HSS 16 x 8 x 5/8;ANSI AISC HSS (Rectangular);176.949;33922.9;11404.7;tabla
+HSS 16 x 12 x 5/16;ANSI AISC HSS (Rectangular);108.74;24765.8;15983.3;tabla
+HSS 16 x 12 x 3/8;ANSI AISC HSS (Rectangular);129.499;29219.4;18813.7;tabla
+HSS 16 x 12 x 1/2;ANSI AISC HSS (Rectangular);170.011;37627.3;24183;tabla
+HSS 16 x 12 x 5/8;ANSI AISC HSS (Rectangular);209.215;45369.2;29136.2;tabla
+HSS 18 x 6 x 1/4;ANSI AISC HSS (Rectangular);74.7494;17440.1;3125.9;tabla
+HSS 18 x 6 x 5/16;ANSI AISC HSS (Rectangular);92.6264;21352.7;3800.19;tabla
+HSS 18 x 6 x 3/8;ANSI AISC HSS (Rectangular);110.143;25057.1;4412.05;tabla
+HSS 18 x 6 x 1/2;ANSI AISC HSS (Rectangular);144.21;32049.8;5577.5;tabla
+HSS 18 x 6 x 5/8;ANSI AISC HSS (Rectangular);176.949;38418.2;6576.46;tabla
+HSS 20 x 4 x 1/4;ANSI AISC HSS (Rectangular);74.7494;19063.4;1427.67;tabla
+HSS 20 x 4 x 5/16;ANSI AISC HSS (Rectangular);92.6264;23309;1714.87;tabla
+HSS 20 x 4 x 3/8;ANSI AISC HSS (Rectangular);110.143;27346.4;1981.26;tabla
+HSS 20 x 4 x 1/2;ANSI AISC HSS (Rectangular);144.21;34880.2;2443.28;tabla
+HSS 20 x 8 x 5/16;ANSI AISC HSS (Rectangular);108.74;32715.8;7866.77;tabla
+HSS 20 x 8 x 3/8;ANSI AISC HSS (Rectangular);129.499;38543;9240.34;tabla
+HSS 20 x 8 x 1/2;ANSI AISC HSS (Rectangular);170.011;49531.5;11779.3;tabla
+HSS 20 x 8 x 5/8;ANSI AISC HSS (Rectangular);209.215;59937.3;14068.6;tabla
+HSS 20 x 12 x 5/16;ANSI AISC HSS (Rectangular);124.873;42039.4;19313.1;tabla
+HSS 20 x 12 x 3/8;ANSI AISC HSS (Rectangular);148.854;49947.8;22767.9;tabla
+HSS 20 x 12 x 1/2;ANSI AISC HSS (Rectangular);195.831;64515.9;29344.3;tabla
+HSS 20 x 12 x 5/8;ANSI AISC HSS (Rectangular);241.462;78251.5;35421.3;tabla
+HSS 1 1/4x1 1/4x1/8;ANSI AISC HSS (Cuadrado);3.35548;4.24556;4.24556;tabla
+HSS 1 1/4x1 1/4x3/16;ANSI AISC HSS (Cuadrado);4.51189;5.07802;5.07802;tabla
+HSS 1 1/2x1 1/2x1/8;ANSI AISC HSS (Cuadrado);4.15169;7.82515;7.82515;tabla
+HSS 1 1/2x1 1/2x3/16;ANSI AISC HSS (Cuadrado);5.72517;9.82306;9.82306;tabla
+HSS 1 5/8x1 5/8x1/8;ANSI AISC HSS (Cuadrado);4.56876;10.2393;10.2393;tabla
+HSS 1 5/8x1 5/8x3/16;ANSI AISC HSS (Cuadrado);6.33181;13.028;13.028;tabla
+HSS 1 3/4x1 3/4x3/16;ANSI AISC HSS (Cuadrado);6.93845;16.8574;16.8574;tabla
+HSS 9x6x3/16;ANSI AISC (Rectangular);34.787;2576.47;1386.05;tabla
+HSS 9x6x1/4;ANSI AISC (Rectangular);45.7255;3321.53;1777.31;tabla
+HSS 9x6x5/16;ANSI AISC (Rectangular);56.3417;4012.47;2139.43;tabla
+HSS 9x6x3/8;ANSI AISC (Rectangular);66.5977;4661.79;2472.41;tabla
+HSS 9x6x1/2;ANSI AISC (Rectangular);86.1618;5785.62;3046.81;tabla
+HSS 9x6x9/16;ANSI AISC (Rectangular);95.4321;6243.47;3296.55;tabla
+HSS 9x6x5/8;ANSI AISC (Rectangular);104.38;6701.33;3517.16;tabla
+HSS 9x7x9/16;ANSI AISC (Rectangular);102.693;7075.93;4786.66;tabla
+HSS 10x5x1/2;ANSI AISC (Rectangular);86.1618;6576.46;2185.21;tabla
+HSS 10x5x9/16;ANSI AISC (Rectangular);95.4321;7117.56;2351.71;tabla
+HSS 10x5x5/8;ANSI AISC (Rectangular);104.38;7617.04;2497.39;tabla
+HSS 10x6x9/16;ANSI AISC (Rectangular);102.693;8199.76;3642.02;tabla
+HSS 10x8x9/16;ANSI AISC (Rectangular);117.214;10280.9;7242.43;tabla
+HSS 12x4x9/16;ANSI AISC (Rectangular);102.693;9989.55;1648.28;tabla
+HSS 12x6x9/16;ANSI AISC (Rectangular);117.214;13028;4328.81;tabla
+HSS 12x8x9/16;ANSI AISC (Rectangular);131.717;16108.2;8532.74;tabla
+ST 1.5 x 2.85;ANSI ST;5.40289;9.28196;4.74504;tabla
+ST 1.5 x 3.75;ANSI ST;7.10906;12.0291;8.32463;tabla
+ST 2 x 3.85;ANSI ST;7.29864;15.5671;12.7783;tabla
+ST 2 x 4.75;ANSI ST;9.00481;19.2299;18.4807;tabla
+ST 2.5 x 5;ANSI ST;9.47875;27.9291;24.849;tabla
+ST 2.5 x 7.375;ANSI ST;13.9906;52.8614;34.6721;tabla
+ST 3 x 6.25;ANSI ST;11.8484;52.4452;37.5025;tabla
+ST 3 x 8.6;ANSI ST;16.3035;88.2411;47.4504;tabla
+ST 3 x 8.625;ANSI ST;16.3603;88.6573;47.8666;tabla
+ST 3.5 x 7.65;ANSI ST;14.5025;91.1547;54.9425;tabla
+ST 3.5 x 10;ANSI ST;18.9575;139.854;66.1808;tabla
+ST 4 x 9.2;ANSI ST;17.4409;145.265;76.5866;tabla
+ST 4 x 11.5;ANSI ST;21.8011;208.116;88.6573;tabla
+ST 5 x 12.7;ANSI ST;24.076;324.244;139.854;tabla
+ST 5 x 17.5;ANSI ST;33.1756;520.289;172.736;tabla
+ST 6 x 15.9;ANSI ST;30.1424;616.023;193.964;tabla
+ST 6 x 17.5;ANSI ST;33.1756;715.918;204.786;tabla
+ST 6 x 20.4;ANSI ST;38.6733;786.677;280.54;tabla
+ST 6 x 25;ANSI ST;47.3938;1044.74;324.244;tabla
+ST 7.5 x 21.45;ANSI ST;40.6638;1369.4;296.773;tabla
+ST 7.5 x 25;ANSI ST;47.3938;1685.74;324.244;tabla
+ST 9 x 27.35;ANSI ST;51.8488;2593.12;432.881;tabla
+ST 9 x 35;ANSI ST;66.3513;3517.16;499.478;tabla
+ST 10 x 33;ANSI ST;62.5598;3866.79;570.237;tabla
+ST 10 x 37.5;ANSI ST;71.0906;4536.92;616.023;tabla
+ST 10 x 43;ANSI ST;81.5173;5161.27;969.819;tabla
+ST 10 x 48;ANSI ST;90.996;5952.11;1040.58;tabla
+ST 12 x 40;ANSI ST;75.83;6742.95;874.086;tabla
+ST 12 x 45;ANSI ST;85.3088;7908.4;928.196;tabla
+ST 12 x 50;ANSI ST;94.7875;8948.98;986.468;tabla
+ST 12 x 53;ANSI ST;100.475;8990.6;1598.33;tabla
+ST 12 x 60.5;ANSI ST;114.693;10780.4;1727.36;tabla
+WT 2x6.5;ANSI WT/MT;12.3226;80.3327;21.8938;tabla
+WT 2.5x8;ANSI WT/MT;15.1613;156.087;35.1716;tabla
+WT 2.5x9.5;ANSI WT/MT;17.9354;189.802;42.0394;tabla
+WT 3x4.25;ANSI WT/MT;8.12902;41.415;37.6689;tabla
+WT 3x4.5;ANSI WT/MT;8.64514;45.7855;39.542;tabla
+WT 3x6;ANSI WT/MT;11.4838;62.4347;54.9425;tabla
+WT 3x8;ANSI WT/MT;15.2903;91.9871;70.3431;tabla
+WT 3x7.5;ANSI WT/MT;14.258;193.964;58.6886;tabla
+WT 3x10;ANSI WT/MT;18.9677;276.378;73.2567;tabla
+WT 3x12.5;ANSI WT/MT;23.6774;355.045;95.317;tabla
+WT 4x5;ANSI WT/MT;9.54837;89.4898;43.7043;tabla
+WT 4x6.5;ANSI WT/MT;12.3871;120.291;56.6075;tabla
+WT 4x7.5;ANSI WT/MT;14.3226;136.524;70.7593;tabla
+WT 4x9;ANSI WT/MT;16.9677;165.66;141.935;tabla
+WT 4x10.5;ANSI WT/MT;19.8709;203.121;162.33;tabla
+WT 4x12;ANSI WT/MT;22.8387;380.436;146.93;tabla
+WT 4x14;ANSI WT/MT;26.5806;449.53;176.066;tabla
+WT 4x15.5;ANSI WT/MT;29.4193;770.028;178.147;tabla
+WT 4x17.5;ANSI WT/MT;33.1612;886.573;200.624;tabla
+WT 4x20;ANSI WT/MT;37.8709;1019.77;238.501;tabla
+WT 4x24;ANSI WT/MT;45.4838;1269.51;285.119;tabla
+WT 4x29;ANSI WT/MT;55.0967;1560.87;379.603;tabla
+WT 4x33.5;ANSI WT/MT;63.4837;1843.91;453.692;tabla
+WT 5x6;ANSI WT/MT;11.4193;181.061;45.3692;tabla
+WT 5x7.5;ANSI WT/MT;14.258;226.846;60.3536;tabla
+WT 5x8.5;ANSI WT/MT;16.129;252.236;74.0892;tabla
+WT 5x9.5;ANSI WT/MT;18.129;278.043;89.4898;tabla
+WT 5x11;ANSI WT/MT;20.9032;286.367;237.668;tabla
+WT 5x13;ANSI WT/MT;24.5806;327.158;293.443;tabla
+WT 5x15;ANSI WT/MT;28.5161;386.263;347.553;tabla
+WT 5x16.5;ANSI WT/MT;31.2903;761.704;320.914;tabla
+WT 5x19.5;ANSI WT/MT;36.9677;936.521;367.949;tabla
+WT 5x22.5;ANSI WT/MT;42.7741;1111.34;424.556;tabla
+WT 5x24.5;ANSI WT/MT;46.516;1943.8;416.231;tabla
+WT 5x27;ANSI WT/MT;50.9676;2151.92;462.017;tabla
+WT 5x30;ANSI WT/MT;57.0321;2418.3;536.939;tabla
+WT 5x34;ANSI WT/MT;64.516;2776.26;620.185;tabla
+WT 5x38.5;ANSI WT/MT;72.9031;3196.66;724.243;tabla
+WT 5x44;ANSI WT/MT;83.8708;3716.95;865.761;tabla
+WT 5x50;ANSI WT/MT;94.8385;4287.18;1019.77;tabla
+WT 5x56;ANSI WT/MT;106.451;4911.53;1190.42;tabla
+WT 6x7;ANSI WT/MT;13.4193;319.25;49.1153;tabla
+WT 6x8;ANSI WT/MT;15.2258;362.121;58.6886;tabla
+WT 6x9.5;ANSI WT/MT;18;420.394;78.2515;tabla
+WT 6x11;ANSI WT/MT;20.9032;486.991;96.9819;tabla
+WT 6x13;ANSI WT/MT;24.6451;486.991;360.456;tabla
+WT 6x15;ANSI WT/MT;28.387;561.912;424.556;tabla
+WT 6x17.5;ANSI WT/MT;33.3548;665.97;507.802;tabla
+WT 6x20;ANSI WT/MT;37.6773;915.709;599.373;tabla
+WT 6x22.5;ANSI WT/MT;42.3225;1040.58;690.944;tabla
+WT 6x25;ANSI WT/MT;47.0967;1173.77;778.353;tabla
+WT 6x26.5;ANSI WT/MT;50.1934;1993.75;736.73;tabla
+WT 6x29;ANSI WT/MT;54.9676;2226.84;795.002;tabla
+WT 6x32.5;ANSI WT/MT;61.5483;3629.54;857.437;tabla
+WT 6x36;ANSI WT/MT;68.387;4058.26;965.657;tabla
+WT 6x39.5;ANSI WT/MT;74.8386;4495.3;1073.88;tabla
+WT 6x43.5;ANSI WT/MT;82.5805;4994.78;1202.91;tabla
+WT 6x48;ANSI WT/MT;90.9676;5619.12;1331.94;tabla
+WT 6x53;ANSI WT/MT;100.645;6285.09;1510.92;tabla
+WT 6x60;ANSI WT/MT;113.548;7159.18;1806.44;tabla
+WT 6x68;ANSI WT/MT;129.032;8283.01;2106.13;tabla
+WT 6x76;ANSI WT/MT;144.516;9448.45;2434.95;tabla
+WT 6x85;ANSI WT/MT;161.29;10780.4;2822.05;tabla
+WT 6x95;ANSI WT/MT;180.645;12278.8;3288.23;tabla
+WT 6x105;ANSI WT/MT;199.354;13818.9;3833.49;tabla
+WT 6x115;ANSI WT/MT;218.064;15442.2;4412.05;tabla
+WT 6x126;ANSI WT/MT;239.354;17232;5036.4;tabla
+WT 6x139.5;ANSI WT/MT;264.516;19521.3;5868.86;tabla
+WT 6x152.5;ANSI WT/MT;288.387;21852.1;6742.95;tabla
+WT 6x168;ANSI WT/MT;319.354;24682.5;7908.4;tabla
+WT 7x11;ANSI WT/MT;20.9677;616.023;145.681;tabla
+WT 7x13;ANSI WT/MT;24.8387;720.08;185.223;tabla
+WT 7x15;ANSI WT/MT;28.5161;790.84;407.491;tabla
+WT 7x17;ANSI WT/MT;32.258;869.924;482.828;tabla
+WT 7x19;ANSI WT/MT;35.9999;969.819;553.588;tabla
+WT 7x21.5;ANSI WT/MT;40.7096;940.683;911.547;tabla
+WT 7x24;ANSI WT/MT;45.6128;1069.71;1036.42;tabla
+WT 7x26.5;ANSI WT/MT;50.3225;1198.75;1148.8;tabla
+WT 7x30.5;ANSI WT/MT;57.8063;2235.16;1202.91;tabla
+WT 7x34;ANSI WT/MT;64.516;2526.52;1356.91;tabla
+WT 7x37;ANSI WT/MT;70.3224;2784.59;1498.43;tabla
+WT 7x41;ANSI WT/MT;77.4192;3084.27;1714.87;tabla
+WT 7x45;ANSI WT/MT;85.1611;7533.79;1519.24;tabla
+WT 7x49.5;ANSI WT/MT;94.1934;8366.25;1702.39;tabla
+WT 7x54.5;ANSI WT/MT;103.226;9281.96;1885.53;tabla
+WT 7x60;ANSI WT/MT;114.193;10280.9;2151.92;tabla
+WT 7x66;ANSI WT/MT;125.161;11404.7;2405.82;tabla
+WT 7x72.5;ANSI WT/MT;137.419;14068.6;2601.45;tabla
+WT 7x79.5;ANSI WT/MT;150.967;15567.1;2921.94;tabla
+WT 7x88;ANSI WT/MT;167.096;17440.1;3350.66;tabla
+WT 7x96.5;ANSI WT/MT;183.225;19396.4;3737.76;tabla
+WT 7x105.5;ANSI WT/MT;200;21352.7;4245.56;tabla
+WT 7x116.5;ANSI WT/MT;220.645;23974.9;4828.28;tabla
+WT 7x128.5;ANSI WT/MT;243.87;26846.9;5535.88;tabla
+WT 7x141.5;ANSI WT/MT;268.387;30051.9;6368.34;tabla
+WT 7x155.5;ANSI WT/MT;294.838;33589.9;7325.67;tabla
+WT 7x171;ANSI WT/MT;324.515;37585.7;8449.5;tabla
+WT 7x185;ANSI WT/MT;350.967;41373.4;9531.7;tabla
+WT 7x199;ANSI WT/MT;376.773;45369.2;10697.1;tabla
+WT 7x213;ANSI WT/MT;404.515;49115.3;11945.8;tabla
+WT 7x227.5;ANSI WT/MT;431.612;53277.6;13361;tabla
+WT 7x250;ANSI WT/MT;474.193;59937.3;15608.7;tabla
+WT 7x275;ANSI WT/MT;521.934;67845.7;18397.4;tabla
+WT 7x302.5;ANSI WT/MT;574.192;76586.6;21810.5;tabla
+WT 7x332.5;ANSI WT/MT;630.966;86576.1;25889.6;tabla
+WT 7x365;ANSI WT/MT;690.321;98230.6;30759.5;tabla
+WT 8x13;ANSI WT/MT;24.7741;978.144;199.375;tabla
+WT 8x15.5;ANSI WT/MT;29.4193;1144.64;258.063;tabla
+WT 8x18;ANSI WT/MT;34.129;1273.67;507.802;tabla
+WT 8x20;ANSI WT/MT;37.9999;1377.73;599.373;tabla
+WT 8x22.5;ANSI WT/MT;42.7741;1573.35;682.62;tabla
+WT 8x25;ANSI WT/MT;47.5483;1760.66;774.19;tabla
+WT 8x28.5;ANSI WT/MT;54.1289;2027.05;899.06;tabla
+WT 8x33.5;ANSI WT/MT;63.2902;2476.58;2022.88;tabla
+WT 8x38.5;ANSI WT/MT;72.9031;2880.32;2368.36;tabla
+WT 8x44.5;ANSI WT/MT;84.516;3383.96;2797.08;tabla
+WT 8x50;ANSI WT/MT;94.8385;3875.11;3196.66;tabla
+WT 9x17.5;ANSI WT/MT;33.2257;1669.09;319.25;tabla
+WT 9x20;ANSI WT/MT;37.9354;1864.72;397.501;tabla
+WT 9x23;ANSI WT/MT;43.6773;2168.57;470.342;tabla
+WT 9x25;ANSI WT/MT;47.3547;2226.84;832.463;tabla
+WT 9x27.5;ANSI WT/MT;52.258;2476.58;936.521;tabla
+WT 9x30;ANSI WT/MT;56.9031;2693.02;1040.58;tabla
+WT 9x32.5;ANSI WT/MT;61.6128;2942.76;1140.47;tabla
+WT 9x35.5;ANSI WT/MT;67.0966;3254.93;1252.86;tabla
+WT 9x38;ANSI WT/MT;71.6128;3171.68;2988.54;tabla
+WT 9x43;ANSI WT/MT;81.9353;3646.19;3429.75;tabla
+WT 9x48.5;ANSI WT/MT;91.6127;4162.31;3904.25;tabla
+WT 9x53;ANSI WT/MT;100.645;4578.55;4328.81;tabla
+WT 9x59.5;ANSI WT/MT;113.548;5244.52;4953.15;tabla
+WT 9x65;ANSI WT/MT;123.871;5785.62;5286.14;tabla
+WT 9x71.5;ANSI WT/MT;135.484;6493.21;5910.49;tabla
+WT 9x79;ANSI WT/MT;149.677;7242.43;6659.7;tabla
+WT 9x87.5;ANSI WT/MT;165.806;8158.14;7533.79;tabla
+WT 9x96;ANSI WT/MT;181.29;9157.09;8407.87;tabla
+WT 9x105.5;ANSI WT/MT;201.29;10239.3;9531.7;tabla
+WT 9x117;ANSI WT/MT;221.29;11612.9;10863.6;tabla
+WT 9x129;ANSI WT/MT;245.161;13069.7;12403.7;tabla
+WT 9x141.5;ANSI WT/MT;269.032;14651.3;14027;tabla
+WT 9x155.5;ANSI WT/MT;295.483;16566;15941.7;tabla
+WT 10.5x22;ANSI WT/MT;41.8709;2959.41;428.718;tabla
+WT 10.5x25;ANSI WT/MT;47.4838;3342.34;520.289;tabla
+WT 10.5x28.5;ANSI WT/MT;53.9999;3762.73;636.834;tabla
+WT 10.5x24;ANSI WT/MT;45.6128;3117.57;807.489;tabla
+WT 10.5x27.5;ANSI WT/MT;52.258;3512.99;1007.28;tabla
+WT 10.5x31;ANSI WT/MT;58.9031;3904.25;1194.58;tabla
+WT 10.5x34;ANSI WT/MT;64.516;4287.18;1348.59;tabla
+WT 10.5x36.5;ANSI WT/MT;69.0321;4578.55;1469.3;tabla
+WT 10.5x41.5;ANSI WT/MT;78.7095;5286.14;1694.06;tabla
+WT 10.5x46.5;ANSI WT/MT;88.3869;5993.73;1931.31;tabla
+WT 10.5x50.5;ANSI WT/MT;96.1288;5619.12;5161.27;tabla
+WT 10.5X55.5;ANSI WT/MT;105.161;6243.47;5702.37;tabla
+WT 10.5x61;ANSI WT/MT;115.484;6909.44;6326.72;tabla
+WT 10.5x66;ANSI WT/MT;125.161;7533.79;6909.44;tabla
+WT 10.5x73.5;ANSI WT/MT;139.355;8491.12;7825.15;tabla
+WT 10.5x83;ANSI WT/MT;157.419;9406.83;9032.22;tabla
+WT 10.5x91;ANSI WT/MT;172.903;10530.7;10031.2;tabla
+WT 10.5x100.5;ANSI WT/MT;190.967;11862.6;11279.9;tabla
+WT 12x27.5;ANSI WT/MT;52.258;4869.91;603.536;tabla
+WT 12x31;ANSI WT/MT;58.7741;5452.63;715.918;tabla
+WT 12x34;ANSI WT/MT;64.516;5702.37;1465.13;tabla
+WT 12x38;ANSI WT/MT;72.2579;6285.09;1719.04;tabla
+WT 12x42;ANSI WT/MT;79.9998;6909.44;1964.61;tabla
+WT 12x47;ANSI WT/MT;89.0321;7741.9;2268.46;tabla
+WT 12x51.5;ANSI WT/MT;97.4192;8491.12;2484.9;tabla
+WT 12x52;ANSI WT/MT;98.7095;7866.77;5411.01;tabla
+WT 12x58.5;ANSI WT/MT;110.968;8824.11;6201.85;tabla
+WT 12x65.5;ANSI WT/MT;124.516;9906.31;7075.93;tabla
+WT 12x73;ANSI WT/MT;138.709;10988.5;8116.51;tabla
+WT 12x81;ANSI WT/MT;154.193;12195.6;9198.71;tabla
+WT 12x88;ANSI WT/MT;166.451;13277.8;9989.55;tabla
+WT 12x96;ANSI WT/MT;181.935;14568.1;11030.1;tabla
+WT 12x103.5;ANSI WT/MT;195.483;15900;12029.1;tabla
+WT 12x114.5;ANSI WT/MT;216.774;17939.6;13569.1;tabla
+WT 12x125;ANSI WT/MT;237.419;19895.9;15067.6;tabla
+WT 12x139.5;ANSI WT/MT;264.516;22726.2;17148.7;tabla
+WT 12x153;ANSI WT/MT;289.677;25431.7;19146.6;tabla
+WT 12x167.5;ANSI WT/MT;316.774;28553.5;21352.7;tabla
+WT 12x185;ANSI WT/MT;351.612;32424.4;24183;tabla
+WT 13.5x42;ANSI WT/MT;79.9998;8990.6;2197.7;tabla
+WT 13.5x47;ANSI WT/MT;89.0321;9947.93;2580.63;tabla
+WT 13.5x51;ANSI WT/MT;96.774;10738.8;2896.97;tabla
+WT 13.5x57;ANSI WT/MT;108.387;12029.1;3300.72;tabla
+WT 13.5x64.5;ANSI WT/MT;121.935;13444.3;3837.65;tabla
+WT 13.5x73;ANSI WT/MT;139.355;13985.4;9240.34;tabla
+WT 13.5x80.5;ANSI WT/MT;153.548;15483.8;10322.5;tabla
+WT 13.5x89;ANSI WT/MT;169.677;17232;11571.2;tabla
+WT 13.5x97;ANSI WT/MT;184.516;18480.7;12861.6;tabla
+WT 13.5x108.5;ANSI WT/MT;206.451;20894.8;14651.3;tabla
+WT 13.5x117.5;ANSI WT/MT;223.871;23142.5;15983.3;tabla
+WT 13.5x129;ANSI WT/MT;245.806;25515;17898;tabla
+WT 13.5x140.5;ANSI WT/MT;267.741;28178.9;19854.2;tabla
+WT 13.5x153.5;ANSI WT/MT;291.612;31342.2;21935.4;tabla
+WT 13.5x168;ANSI WT/MT;319.354;34921.8;24432.8;tabla
+WT 13.5x184;ANSI WT/MT;349.677;39084.1;27263.2;tabla
+WT 13.5x269.5;ANSI WT/MT;511.612;63683.4;44120.5;tabla
+WT 15x45;ANSI WT/MT;85.1611;12070.7;2385.01;tabla
+WT 15x49.5;ANSI WT/MT;93.5482;13402.7;2659.72;tabla
+WT 15x54;ANSI WT/MT;102.58;14526.5;3038.49;tabla
+WT 15x58;ANSI WT/MT;110.322;15525.4;3417.26;tabla
+WT 15x62;ANSI WT/MT;117.419;16482.8;3762.73;tabla
+WT 15x66;ANSI WT/MT;125.806;17523.3;4079.07;tabla
+WT 15x74;ANSI WT/MT;140.645;19396.4;4745.04;tabla
+WT 15x86.5;ANSI WT/MT;163.871;20686.7;12445.3;tabla
+WT 15x95.5;ANSI WT/MT;180.645;22851.1;13985.4;tabla
+WT 15x105.5;ANSI WT/MT;200.645;25390.1;15733.5;tabla
+WT 15x117.5;ANSI WT/MT;223.871;28054;17773.1;tabla
+WT 15x130.5;ANSI WT/MT;248.387;31841.7;19979.1;tabla
+WT 15x146;ANSI WT/MT;277.419;35837.5;22851.1;tabla
+WT 15x163;ANSI WT/MT;309.677;40832.3;25889.6;tabla
+WT 15x178.5;ANSI WT/MT;338.709;45369.2;28844.8;tabla
+WT 15x195.5;ANSI WT/MT;371.612;50780.2;32216.3;tabla
+WT 16x59;ANSI WT/MT;111.613;19521.3;3895.93;tabla
+WT 16.5x59;ANSI WT/MT;112.258;19521.3;3891.76;tabla
+WT 16x65;ANSI WT/MT;123.871;21352.7;4536.92;tabla
+WT 16.5x65;ANSI WT/MT;123.226;21352.7;4536.92;tabla
+WT 16x70.5;ANSI WT/MT;134.193;22976;5119.65;tabla
+WT 16.5x70.5;ANSI WT/MT;133.548;22976;5119.65;tabla
+WT 16x76;ANSI WT/MT;144.516;24640.9;5660.75;tabla
+WT 16.5x76;ANSI WT/MT;145.161;24640.9;5660.75;tabla
+WT 16.5x84.5;ANSI WT/MT;159.355;27013.4;6451.59;tabla
+WT 16x100.5;ANSI WT/MT;190.322;30176.8;15608.7;tabla
+WT 16.5x100.5;ANSI WT/MT;191.613;30176.8;15608.7;tabla
+WT 16x110.5;ANSI WT/MT;209.677;33256.9;17481.7;tabla
+WT 16.5x110.5;ANSI WT/MT;210.322;33256.9;17481.7;tabla
+WT 16x120.5;ANSI WT/MT;228.387;36253.8;19396.4;tabla
+WT 16.5x120.5;ANSI WT/MT;229.677;36295.4;19396.4;tabla
+WT 16x131.5;ANSI WT/MT;249.677;39250.6;21519.2;tabla
+WT 16.5x131.5;ANSI WT/MT;249.677;39250.6;21519.2;tabla
+WT 16x145.5;ANSI WT/MT;276.128;43704.3;24183;tabla
+WT 16.5x145.5;ANSI WT/MT;276.128;44120.5;24183;tabla
+WT 16x159;ANSI WT/MT;301.29;48282.8;26846.9;tabla
+WT 16.5x159;ANSI WT/MT;301.935;48282.8;26846.9;tabla
+WT 16.5x177;ANSI WT/MT;336.128;54942.5;30343.3;tabla
+WT 16.5x193.5;ANSI WT/MT;367.741;60769.8;33714.7;tabla
+WT 18x67.5;ANSI WT/MT;128.387;26513.9;4703.42;tabla
+WT 18x75;ANSI WT/MT;142.58;29053;5619.12;tabla
+WT 18x80;ANSI WT/MT;151.613;30801.1;6118.6;tabla
+WT 18x85;ANSI WT/MT;161.29;32715.8;6659.7;tabla
+WT 18x91;ANSI WT/MT;172.903;35171.6;7242.43;tabla
+WT 18x97;ANSI WT/MT;183.871;37502.5;7783.53;tabla
+WT 18x105;ANSI WT/MT;199.354;40998.8;8574.37;tabla
+WT 18x116;ANSI WT/MT;219.354;44953;9739.82;tabla
+WT 18x128;ANSI WT/MT;242.58;50364;10988.5;tabla
+WT 18x115;ANSI WT/MT;218.064;38876;19562.9;tabla
+WT 18x115.5;ANSI WT/MT;220;40707.4;19562.9;tabla
+WT 18x122.5;ANSI WT/MT;232.258;41415;21102.9;tabla
+WT 18x123.5;ANSI WT/MT;234.193;43288.1;21102.9;tabla
+WT 18x130;ANSI WT/MT;246.451;44120.5;22684.6;tabla
+WT 18x131;ANSI WT/MT;248.387;46201.7;22684.6;tabla
+WT 18x140;ANSI WT/MT;265.806;47450.4;24932.3;tabla
+WT 18x141;ANSI WT/MT;267.741;49531.5;24932.3;tabla
+WT 18x150;ANSI WT/MT;284.516;51196.5;26971.8;tabla
+WT 18x151;ANSI WT/MT;287.096;53277.6;26971.8;tabla
+WT 18x164;ANSI WT/MT;310.967;56191.2;29594.1;tabla
+WT 18x165;ANSI WT/MT;312.257;58688.6;29594.1;tabla
+WT 18x179.5;ANSI WT/MT;339.999;62434.7;32715.8;tabla
+WT 18x180.5;ANSI WT/MT;341.935;65348.3;32715.8;tabla
+WT 18x197.5;ANSI WT/MT;374.838;72424.3;36503.5;tabla
+WT 18x220.5;ANSI WT/MT;418.709;82413.8;41498.3;tabla
+WT 18x243.5;ANSI WT/MT;462.58;92403.4;46617.9;tabla
+WT 18x264.5;ANSI WT/MT;501.934;101560;51612.7;tabla
+WT 18x326;ANSI WT/MT;620.644;131529;67013.3;tabla
+WT 20x74.5;ANSI WT/MT;141.29;33922.9;4745.04;tabla
+WT 20x83.5;ANSI WT/MT;158.064;37419.2;5868.86;tabla
+WT 20x91.5;ANSI WT/MT;172.258;39750.1;6867.82;tabla
+WT 20x105.5;ANSI WT/MT;200.645;46617.9;8116.51;tabla
+WT 20x117.5;ANSI WT/MT;223.225;52445.2;9240.34;tabla
+WT 20x132;ANSI WT/MT;249.677;60353.6;10239.3;tabla
+WT 20x139;ANSI WT/MT;264.516;64515.9;10863.6;tabla
+WT 20x147;ANSI WT/MT;278.064;67845.7;11696.1;tabla
+WT 20x163.5;ANSI WT/MT;309.032;76586.6;13319.4;tabla
+WT 20x165.5;ANSI WT/MT;314.838;78251.5;13402.7;tabla
+WT 20x196;ANSI WT/MT;372.902;94484.5;16690.9;tabla
+WT 20x99.5;ANSI WT/MT;188.387;41123.7;14443.2;tabla
+WT 20x107.5;ANSI WT/MT;205.161;42871.8;16566;tabla
+WT 20x124.5;ANSI WT/MT;236.774;50364;19271.5;tabla
+WT 20x138.5;ANSI WT/MT;262.58;56607.5;21727.3;tabla
+WT 20x148.5;ANSI WT/MT;281.29;62434.7;22726.2;tabla
+WT 20x162;ANSI WT/MT;307.741;68678.2;25348.5;tabla
+WT 20x181;ANSI WT/MT;343.225;77835.3;28761.6;tabla
+WT 20x186;ANSI WT/MT;352.903;80332.7;29510.8;tabla
+WT 20x198.5;ANSI WT/MT;376.128;86159.9;32091.4;tabla
+WT 20x215.5;ANSI WT/MT;408.386;95317;35088.3;tabla
+WT 20x251.5;ANSI WT/MT;477.418;113631;42455.6;tabla
+WT 20x296.5;ANSI WT/MT;562.58;137773;52445.2;tabla
+WT 22x115;ANSI WT/MT;218.709;59937.3;16566;tabla
+WT 22x131;ANSI WT/MT;248.387;68262;19229.9;tabla
+WT 22x145;ANSI WT/MT;274.838;76170.4;21685.7;tabla
+WT 22x167.5;ANSI WT/MT;317.419;90322.2;24973.9;tabla
+MT 2x3;ANSI WT/MT;5.64515;30.4681;8.65761;tabla
+MT 2.5x9.45;ANSI WT/MT;17.9354;181.061;43.7043;tabla
+MT 3x1.85;ANSI WT/MT;3.51612;20.104;3.59208;tabla
+MT 3x2.2;ANSI WT/MT;4.17419;24.0998;3.7336;tabla
+MT 4x3.1;ANSI WT/MT;5.87741;62.4347;7.32567;tabla
+MT 4x3.25;ANSI WT/MT;6.18708;65.3483;7.82515;tabla
+MT 5x3.75;ANSI WT/MT;7.16128;121.123;11.6961;tabla
+MT 5x4;ANSI WT/MT;7.6774;128.199;12.3205;tabla
+MT 5x4.5;ANSI WT/MT;8.58063;144.432;13.9854;tabla
+MT 6x5;ANSI WT/MT;9.54837;233.922;21.5192;tabla
+MT 6x5.4;ANSI WT/MT;10.258;250.988;21.0613;tabla
+MT 6x5.9;ANSI WT/MT;11.2258;275.129;22.6014;tabla
+MT 6.25x5.8;ANSI WT/MT;10.9677;288.865;31.4671;tabla
+MT 6.25x6.2;ANSI WT/MT;11.7419;303.433;41.6231;tabla
+TUBO 1/2 x 0.109;ANSI ASTM;1.61139;0.711416;0.711416;geometria
+TUBO 1/2 x 0.147;ANSI ASTM;2.06637;0.835653;0.835653;geometria
+TUBO 3/4 x 0.113;ANSI ASTM;2.1422;1.54157;1.54157;geometria
+TUBO 3/4 x 0.154;ANSI ASTM;2.80571;1.86416;1.86416;geometria
+TUBO 1 x 0.133;ANSI ASTM;3.18486;3.68143;3.68143;geometria
+TUBO 1 x 0.179;ANSI ASTM;4.11378;4.45311;4.45311;geometria
+TUBO 1 1/4 x 0.140;ANSI ASTM;4.30335;8.10443;8.10443;geometria
+TUBO 1 1/4 x 0.191;ANSI ASTM;5.68725;10.0641;10.0641;geometria
+TUBO 1 1/2 x 0.145;ANSI ASTM;5.15644;12.8988;12.8988;geometria
+TUBO 1 1/2 x 0.200;ANSI ASTM;6.88157;16.2833;16.2833;geometria
+TUBO 2 x 0.154;ANSI ASTM;6.93845;27.8975;27.8975;geometria
+TUBO 2 x 0.218;ANSI ASTM;9.53562;36.3757;36.3757;geometria
+TUBO 2 x 0.436;ANSI ASTM;17.1376;54.99;54.99;geometria
+TUBO 2 1/2 x 0.203;ANSI ASTM;10.9954;64.0215;64.0215;geometria
+TUBO 2 1/2 x 0.276;ANSI ASTM;14.5404;80.5524;80.5524;geometria
+TUBO 2 1/2 x 0.552;ANSI ASTM;25.9718;120.237;120.237;geometria
+TUBO 3 x 0.216;ANSI ASTM;14.3698;125.584;125.584;geometria
+TUBO 3 x 0.300;ANSI ASTM;19.5262;162.094;162.094;geometria
+TUBO 3 x 0.600;ANSI ASTM;35.261;249.427;249.427;geometria
+TUBO 3 1/2 x 0.226;ANSI ASTM;17.2892;199.28;199.28;geometria
+TUBO 3 1/2 x 0.318;ANSI ASTM;23.6969;261.397;261.397;geometria
+TUBO 4 x 0.237;ANSI ASTM;20.4741;301.044;301.044;geometria
+TUBO 4 x 0.337;ANSI ASTM;28.4363;400.019;400.019;geometria
+TUBO 4 x 0.674;ANSI ASTM;52.3227;636.154;636.154;geometria
+TUBO 5 x 0.258;ANSI ASTM;27.678;630.029;630.029;geometria
+TUBO 5 x 0.375;ANSI ASTM;39.4316;858.891;858.891;geometria
+TUBO 5 x 0.750;ANSI ASTM;73.176;1397.41;1397.41;geometria
+TUBO 6 x 0.280;ANSI ASTM;36.0193;1174.13;1174.13;geometria
+TUBO 6 x 0.432;ANSI ASTM;54.2185;1689.42;1689.42;geometria
+TUBO 6 x 0.864;ANSI ASTM;100.854;2768.06;2768.06;geometria
+TUBO 8 x 0.322;ANSI ASTM;54.2185;3022.68;3022.68;geometria
+TUBO 8 x 0.500;ANSI ASTM;82.2756;4408.35;4408.35;geometria
+TUBO 8 x 0.875;ANSI ASTM;137.442;6755.26;6755.26;geometria
+TUBO 10 x 0.365;ANSI ASTM;76.7779;6787.28;6787.28;geometria
+TUBO 10 x 0.500;ANSI ASTM;103.887;8951.56;8951.56;geometria
+TUBO 12 x 0.375;ANSI ASTM;94.0292;11768.2;11768.2;geometria
+TUBO 12 x 0.500;ANSI ASTM;124.172;15233.4;15233.4;geometria
+W 4x13;ANSI W;24.6448;470.342;160.665;tabla
+W 5x16;ANSI W;30.332;890.735;312.59;tabla
+W 5x19;ANSI W;36.0193;1094.69;380.019;tabla
+W 6x8.5;ANSI W;16.1139;620.185;82.8301;tabla
+W 6x9;ANSI W;17.0618;682.62;91.5709;tabla
+W 6x12;ANSI W;22.749;919.871;124.453;tabla
+W 6x16;ANSI W;30.332;1336.1;184.391;tabla
+W 6x15;ANSI W;28.4363;1211.23;387.928;tabla
+W 6x20;ANSI W;37.915;1723.2;553.588;tabla
+W 6x25;ANSI W;47.3938;2222.68;711.756;tabla
+W 8x10;ANSI W;18.9575;1281.99;86.9924;tabla
+W 8x13;ANSI W;24.6448;1648.28;113.631;tabla
+W 8x15;ANSI W;28.4363;1997.91;141.935;tabla
+W 8x18;ANSI W;34.1235;2576.47;331.736;tabla
+W 8x21;ANSI W;39.8108;3134.22;406.658;tabla
+W 8x24;ANSI W;45.498;3442.23;761.704;tabla
+W 8x28;ANSI W;53.081;4079.07;903.222;tabla
+W 8x31;ANSI W;58.7683;4578.55;1544.22;tabla
+W 8x35;ANSI W;66.3513;5286.14;1773.15;tabla
+W 8x40;ANSI W;75.83;6076.98;2043.7;tabla
+W 8x48;ANSI W;90.996;7658.66;2534.85;tabla
+W 8x58;ANSI W;109.954;9490.08;3125.9;tabla
+W 8x67;ANSI W;127.015;11321.5;3687.81;tabla
+W 10x12;ANSI W;22.749;2239.33;90.7385;tabla
+W 10x15;ANSI W;28.4363;2867.83;120.291;tabla
+W 10x17;ANSI W;32.2278;3408.94;148.178;tabla
+W 10x19;ANSI W;36.0193;4008.31;178.563;tabla
+W 10x22;ANSI W;41.7065;4911.53;474.504;tabla
+W 10x26;ANSI W;49.2895;5993.73;586.886;tabla
+W 10x30;ANSI W;56.8725;7075.93;695.106;tabla
+W 10x33;ANSI W;62.5598;7117.56;1523.41;tabla
+W 10x39;ANSI W;73.9343;8699.24;1873.04;tabla
+W 10x45;ANSI W;85.3088;10322.5;2222.68;tabla
+W 10x49;ANSI W;92.8918;11321.5;3887.6;tabla
+W 10x54;ANSI W;102.371;12611.8;4287.18;tabla
+W 10x60;ANSI W;113.745;14193.5;4828.28;tabla
+W 10x68;ANSI W;128.911;16399.5;5577.5;tabla
+W 10x77;ANSI W;145.973;18938.5;6409.96;tabla
+W 10x88;ANSI W;166.826;22226.8;7450.54;tabla
+W 10x100;ANSI W;189.575;25931.2;8615.99;tabla
+W 10x112;ANSI W;212.324;29802.2;9823.06;tabla
+W 12x14;ANSI W;26.5405;3687.81;98.2306;tabla
+W 12x16;ANSI W;30.332;4287.18;117.377;tabla
+W 12x19;ANSI W;36.0193;5411.01;156.503;tabla
+W 12x22;ANSI W;41.7065;6493.21;193.964;tabla
+W 12x26;ANSI W;49.2895;8491.12;720.08;tabla
+W 12x30;ANSI W;56.8725;9906.31;844.95;tabla
+W 12x35;ANSI W;66.3513;11862.6;1019.77;tabla
+W 12x40;ANSI W;75.83;12778.3;1835.58;tabla
+W 12x45;ANSI W;85.3088;14484.9;2081.16;tabla
+W 12x50;ANSI W;94.7875;16274.6;2343.38;tabla
+W 12x53;ANSI W;100.475;17689.8;3987.5;tabla
+W 12x58;ANSI W;109.954;19771;4453.68;tabla
+W 12x65;ANSI W;123.224;22185.1;7242.43;tabla
+W 12x72;ANSI W;136.494;24849;8116.51;tabla
+W 12x79;ANSI W;149.764;27554.5;8990.6;tabla
+W 12x87;ANSI W;164.93;30801.1;10031.2;tabla
+W 12x96;ANSI W;181.992;34672.1;11238.2;tabla
+W 12x106;ANSI W;200.95;38834.4;12528.6;tabla
+W 12x120;ANSI W;227.49;44536.8;14360;tabla
+W 12x136;ANSI W;257.822;51612.7;16566;tabla
+W 12x152;ANSI W;288.154;59521.1;18896.9;tabla
+W 12x170;ANSI W;322.278;68678.2;21519.2;tabla
+W 12x190;ANSI W;360.193;78667.7;24516;tabla
+W 12x210;ANSI W;398.108;89073.5;27637.8;tabla
+W 12x230;ANSI W;436.023;100728;30884.4;tabla
+W 12x252;ANSI W;477.729;113215;34464;tabla
+W 12x279;ANSI W;528.914;129448;39000.9;tabla
+W 12x305;ANSI W;578.204;147762;43704.3;tabla
+W 12x336;ANSI W;636.972;168990;49531.5;tabla
+W 14x22;ANSI W;41.7065;8283.01;291.362;tabla
+W 14x26;ANSI W;49.2895;10197.7;370.862;tabla
+W 14x30;ANSI W;56.8725;12112.3;815.814;tabla
+W 14x34;ANSI W;64.4555;14151.9;969.819;tabla
+W 14x38;ANSI W;72.0385;16024.9;1111.34;tabla
+W 14x43;ANSI W;81.5173;17814.7;1881.37;tabla
+W 14x48;ANSI W;90.996;20145.6;2139.43;tabla
+W 14x53;ANSI W;100.475;22518.1;2401.66;tabla
+W 14x61;ANSI W;115.641;26638.8;4453.68;tabla
+W 14x68;ANSI W;128.911;30051.9;5036.4;tabla
+W 14x74;ANSI W;140.286;33090.4;5577.5;tabla
+W 14x82;ANSI W;155.452;36670;6160.23;tabla
+W 14x90;ANSI W;170.618;41581.5;15067.6;tabla
+W 14x99;ANSI W;187.679;46201.7;16732.5;tabla
+W 14x109;ANSI W;206.637;51612.7;18605.5;tabla
+W 14x120;ANSI W;227.49;57439.9;20603.5;tabla
+W 14x132;ANSI W;250.239;63683.4;22809.5;tabla
+W 14x145;ANSI W;274.884;71175.6;28178.9;tabla
+W 14x159;ANSI W;301.424;79084;31134.1;tabla
+W 14x176;ANSI W;333.652;89073.5;34880.2;tabla
+W 14x193;ANSI W;365.88;99895.5;38751.1;tabla
+W 14x211;ANSI W;400.003;110718;42871.8;tabla
+W 14x233;ANSI W;441.71;125286;47866.6;tabla
+W 14x257;ANSI W;487.208;141519;53693.9;tabla
+W 14x283;ANSI W;536.497;159833;59937.3;tabla
+W 14x311;ANSI W;589.578;180228;67013.3;tabla
+W 14x342;ANSI W;648.347;203953;75337.9;tabla
+W 14x370;ANSI W;701.428;226430;82830.1;tabla
+W 14x398;ANSI W;754.509;249739;90322.2;tabla
+W 14x426;ANSI W;807.59;274713;98230.6;tabla
+W 14x455;ANSI W;862.566;299270;106555;tabla
+W 14x500;ANSI W;947.875;341726;119875;tabla
+W 14x550;ANSI W;1042.66;392506;135275;tabla
+W 14x605;ANSI W;1146.93;449530;153173;tabla
+W 14x665;ANSI W;1260.67;516127;173569;tabla
+W 14x730;ANSI W;1383.9;595211;196461;tabla
+W 16x26;ANSI W;49.2895;12528.6;399.166;tabla
+W 16x31;ANSI W;58.7683;15608.7;516.127;tabla
+W 16x36;ANSI W;68.247;18647.2;1019.77;tabla
+W 16x40;ANSI W;75.83;21560.8;1202.91;tabla
+W 16x45;ANSI W;85.3088;24391.2;1365.24;tabla
+W 16x50;ANSI W;94.7875;27429.7;1548.38;tabla
+W 16x57;ANSI W;108.058;31550.3;1793.96;tabla
+W 16x67;ANSI W;127.015;39708.5;4953.15;tabla
+W 16x77;ANSI W;145.973;46201.7;5743.99;tabla
+W 16x89;ANSI W;168.722;54110.1;6784.57;tabla
+W 16x100;ANSI W;189.575;62018.5;7741.9;tabla
+W 18x35;ANSI W;66.3513;21227.8;636.834;tabla
+W 18x40;ANSI W;75.83;25473.4;795.002;tabla
+W 18x46;ANSI W;87.2045;29635.7;936.521;tabla
+W 18x50;ANSI W;94.7875;33298.5;1669.09;tabla
+W 18x55;ANSI W;104.266;37044.6;1868.88;tabla
+W 18x60;ANSI W;113.745;40957.2;2085.32;tabla
+W 18x65;ANSI W;123.224;44536.8;2280.95;tabla
+W 18x71;ANSI W;134.598;48699.1;2509.88;tabla
+W 18x76;ANSI W;144.077;55358.8;6326.72;tabla
+W 18x86;ANSI W;163.035;63683.4;7284.05;tabla
+W 18x97;ANSI W;183.888;72840.5;8366.25;tabla
+W 18x106;ANSI W;200.95;79500.2;9157.09;tabla
+W 18x119;ANSI W;225.594;91154.7;10530.7;tabla
+W 18x130;ANSI W;246.448;102393;11571.2;tabla
+W 18x143;ANSI W;271.092;114464;12944.8;tabla
+W 18x158;ANSI W;299.529;127367;14443.2;tabla
+W 18x175;ANSI W;331.756;143600;16274.6;tabla
+W 18x192;ANSI W;363.984;161082;18314.2;tabla
+W 18x211;ANSI W;400.003;180228;20520.2;tabla
+W 18x234;ANSI W;443.606;203953;23225.7;tabla
+W 18x258;ANSI W;489.104;229344;26139.3;tabla
+W 18x283;ANSI W;536.497;256815;29302.7;tabla
+W 18x311;ANSI W;589.578;290113;33090.4;tabla
+W 21x44;ANSI W;83.413;35088.3;861.599;tabla
+W 21x50;ANSI W;94.7875;40957.2;1036.42;tabla
+W 21x57;ANSI W;108.058;48699.1;1273.67;tabla
+W 21x48;ANSI W;90.996;39916.6;1610.82;tabla
+W 21x55;ANSI W;104.266;47450.4;2014.56;tabla
+W 21x62;ANSI W;117.537;55358.8;2393.33;tabla
+W 21x68;ANSI W;128.911;61602.3;2693.02;tabla
+W 21x73;ANSI W;138.39;66597;2938.59;tabla
+W 21x83;ANSI W;157.347;76170.4;3388.12;tabla
+W 21x93;ANSI W;176.305;86159.9;3866.79;tabla
+W 21x101;ANSI W;191.471;100728;10322.5;tabla
+W 21x111;ANSI W;210.428;111134;11404.7;tabla
+W 21x122;ANSI W;231.282;123205;12695.1;tabla
+W 21x132;ANSI W;250.239;134027;13860.5;tabla
+W 21x147;ANSI W;278.675;151092;15650.3;tabla
+W 21x166;ANSI W;314.695;178147;18106.1;tabla
+W 21x182;ANSI W;345.027;196877;20104;tabla
+W 21x201;ANSI W;381.046;221019;22559.7;tabla
+W 21x223;ANSI W;422.752;247658;25348.5;tabla
+W 21x248;ANSI W;470.146;281372;28886.5;tabla
+W 21x275;ANSI W;521.331;317168;32674.2;tabla
+W 21x300;ANSI W;568.725;352964;36337;tabla
+W 21x333;ANSI W;631.285;399998;41373.4;tabla
+W 21x364;ANSI W;690.053;449530;46617.9;tabla
+W 21x402;ANSI W;762.092;507802;52861.4;tabla
+W 24x55;ANSI W;104.266;56191.2;1211.23;tabla
+W 24x62;ANSI W;117.537;64515.9;1436;tabla
+W 24x68;ANSI W;128.911;76170.4;2930.27;tabla
+W 24x76;ANSI W;144.077;87408.6;3433.91;tabla
+W 24x84;ANSI W;159.243;98646.8;3929.22;tabla
+W 24x94;ANSI W;178.201;112382;4536.92;tabla
+W 24x103;ANSI W;195.262;124869;4953.15;tabla
+W 24x104;ANSI W;197.158;129032;10780.4;tabla
+W 24x117;ANSI W;221.803;147346;12362.1;tabla
+W 24x131;ANSI W;248.343;167325;14151.9;tabla
+W 24x146;ANSI W;276.78;190634;16274.6;tabla
+W 24x162;ANSI W;307.112;215192;18439.1;tabla
+W 24x176;ANSI W;333.652;236419;19937.5;tabla
+W 24x192;ANSI W;363.984;260561;22060.3;tabla
+W 24x207;ANSI W;392.42;283870;24058.2;tabla
+W 24x229;ANSI W;434.127;318417;27096.7;tabla
+W 24x250;ANSI W;473.938;353380;30135.2;tabla
+W 24x279;ANSI W;528.914;399582;34255.8;tabla
+W 24x306;ANSI W;580.1;445368;38251.7;tabla
+W 24x335;ANSI W;635.076;495315;42871.8;tabla
+W 24x370;ANSI W;701.428;557750;48282.8;tabla
+W 24x408;ANSI W;773.466;628509;54942.5;tabla
+W 24x450;ANSI W;853.088;711756;62018.5;tabla
+W 24x492;ANSI W;932.709;795002;69510.6;tabla
+W 27x84;ANSI W;159.243;118626;4412.05;tabla
+W 27x94;ANSI W;178.201;136108;5161.27;tabla
+W 27x102;ANSI W;193.367;150676;5785.62;tabla
+W 27x114;ANSI W;216.116;169822;6618.08;tabla
+W 27x129;ANSI W;244.552;198126;7658.66;tabla
+W 27x146;ANSI W;276.78;235587;18439.1;tabla
+W 27x161;ANSI W;305.216;262642;20686.7;tabla
+W 27x178;ANSI W;337.444;292194;23100.8;tabla
+W 27x194;ANSI W;367.776;327158;25764.7;tabla
+W 27x217;ANSI W;411.378;370862;29302.7;tabla
+W 27x235;ANSI W;445.501;403744;32008.2;tabla
+W 27x258;ANSI W;489.104;449530;35754.3;tabla
+W 27x281;ANSI W;532.706;495315;39666.9;tabla
+W 27x307;ANSI W;581.995;545263;43704.3;tabla
+W 27x336;ANSI W;636.972;607698;49115.3;tabla
+W 27x368;ANSI W;697.636;674295;54526.3;tabla
+W 27x407;ANSI W;771.57;753379;61602.3;tabla
+W 27x448;ANSI W;849.296;849112;69510.6;tabla
+W 27x494;ANSI W;936.501;953170;78667.7;tabla
+W 27x539;ANSI W;1021.81;1.06555E+06;87824.8;tabla
+W 30x90;ANSI W;170.618;150260;4786.66;tabla
+W 30x99;ANSI W;187.679;166076;5327.76;tabla
+W 30x108;ANSI W;204.741;186055;6076.98;tabla
+W 30x116;ANSI W;219.907;205202;6826.2;tabla
+W 30x124;ANSI W;235.073;223100;7533.79;tabla
+W 30x132;ANSI W;250.239;240166;8158.14;tabla
+W 30x148;ANSI W;280.571;278043;9448.45;tabla
+W 30x173;ANSI W;327.965;342558;24890.6;tabla
+W 30x191;ANSI W;362.088;382933;28012.4;tabla
+W 30x211;ANSI W;400.003;428718;31508.7;tabla
+W 30x235;ANSI W;445.501;486991;35587.8;tabla
+W 30x261;ANSI W;494.791;545263;39916.6;tabla
+W 30x292;ANSI W;553.559;620185;45785.5;tabla
+W 30x326;ANSI W;618.015;699269;51612.7;tabla
+W 30x357;ANSI W;676.783;778353;57856.2;tabla
+W 30x391;ANSI W;741.238;861599;64515.9;tabla
+W 30x433;ANSI W;820.86;965657;72840.5;tabla
+W 30x477;ANSI W;904.273;1.08636E+06;81997.6;tabla
+W 30x526;ANSI W;997.165;1.21956E+06;92819.6;tabla
+W 30x581;ANSI W;1101.43;1.37356E+06;105307;tabla
+W 33x118;ANSI W;223.699;245577;7783.53;tabla
+W 33x130;ANSI W;246.448;279291;9073.85;tabla
+W 33x141;ANSI W;267.301;310092;10239.3;tabla
+W 33x152;ANSI W;288.154;339645;11363.1;tabla
+W 33x169;ANSI W;320.382;386679;12903.2;tabla
+W 33x201;ANSI W;381.046;482828;31175.7;tabla
+W 33x221;ANSI W;418.961;536939;34963.4;tabla
+W 33x241;ANSI W;456.876;591049;38834.4;tabla
+W 33x263;ANSI W;498.582;661808;43288.1;tabla
+W 33x291;ANSI W;551.663;736730;48282.8;tabla
+W 33x318;ANSI W;602.849;811651;53693.9;tabla
+W 33x354;ANSI W;671.096;915709;60769.8;tabla
+W 33x387;ANSI W;733.655;1.01144E+06;67429.5;tabla
+W 33x424;ANSI W;803.798;1.11966E+06;74921.7;tabla
+W 33x468;ANSI W;887.211;1.25286E+06;84495;tabla
+W 33x515;ANSI W;976.311;1.4027E+06;95317;tabla
+W 33x567;ANSI W;1074.89;1.56919E+06;107388;tabla
+W 33x619;ANSI W;1173.47;1.73985E+06;119458;tabla
+W 36x135;ANSI W;255.926;324661;9365.21;tabla
+W 36x150;ANSI W;284.363;376273;11238.2;tabla
+W 36x160;ANSI W;303.32;406242;12278.8;tabla
+W 36x170;ANSI W;322.278;437043;13319.4;tabla
+W 36x182;ANSI W;345.027;470342;14443.2;tabla
+W 36x194;ANSI W;367.776;503640;15608.7;tabla
+W 36x210;ANSI W;398.108;549425;17107.1;tabla
+W 36x232;ANSI W;439.814;624347;19479.6;tabla
+W 36x256;ANSI W;485.312;699269;21977;tabla
+W 36x230;ANSI W;436.023;624347;39125.8;tabla
+W 36x231;ANSI W;437.918;649321;39125.8;tabla
+W 36x245;ANSI W;464.459;670133;42039.4;tabla
+W 36x247;ANSI W;468.25;695106;42039.4;tabla
+W 36x260;ANSI W;492.895;720080;45369.2;tabla
+W 36x262;ANSI W;496.687;745054;45369.2;tabla
+W 36x280;ANSI W;530.81;786677;49947.8;tabla
+W 36x282;ANSI W;534.602;815814;49947.8;tabla
+W 36x300;ANSI W;568.725;844950;54110.1;tabla
+W 36x302;ANSI W;572.517;878248;54110.1;tabla
+W 36x328;ANSI W;621.806;936521;59104.9;tabla
+W 36x330;ANSI W;625.598;969819;59104.9;tabla
+W 36x359;ANSI W;680.574;1.03225E+06;65348.3;tabla
+W 36x361;ANSI W;684.366;1.06971E+06;65348.3;tabla
+W 36x393;ANSI W;745.03;1.14464E+06;72840.5;tabla
+W 36x395;ANSI W;748.821;1.18626E+06;72840.5;tabla
+W 36x439;ANSI W;832.234;1.29032E+06;82830.1;tabla
+W 36x441;ANSI W;836.026;1.3361E+06;82830.1;tabla
+W 36x485;ANSI W;919.439;1.44432E+06;93652.1;tabla
+W 36x487;ANSI W;923.23;1.49843E+06;93652.1;tabla
+W 36x527;ANSI W;999.06;1.59417E+06;103642;tabla
+W 36x529;ANSI W;1002.85;1.64828E+06;103642;tabla
+W 36x588;ANSI W;1114.7;1.81061E+06;118626;tabla
+W 36x650;ANSI W;1232.24;2.03537E+06;134443;tabla
+W 36x652;ANSI W;1236.03;2.10613E+06;134443;tabla
+W 36x720;ANSI W;1364.94;2.30176E+06;153173;tabla
+W 36x798;ANSI W;1512.81;2.60561E+06;174817;tabla
+W 36x848;ANSI W;1607.6;2.8054E+06;189385;tabla
+W 40x149;ANSI W;282.467;407907;9531.7;tabla
+W 40x167;ANSI W;316.59;482828;11779.3;tabla
+W 40x183;ANSI W;346.922;549425;13777.3;tabla
+W 40x211;ANSI W;400.003;645159;16233;tabla
+W 40x235;ANSI W;445.501;724243;18480.7;tabla
+W 40x264;ANSI W;500.478;807489;20520.2;tabla
+W 40x278;ANSI W;527.019;853274;21685.7;tabla
+W 40x294;ANSI W;557.351;911547;23392.2;tabla
+W 40x327;ANSI W;619.91;1.01977E+06;26638.8;tabla
+W 40x331;ANSI W;627.493;1.02809E+06;26805.3;tabla
+W 40x392;ANSI W;743.134;1.24453E+06;33423.4;tabla
+W 40x199;ANSI W;377.254;620185;28928.1;tabla
+W 40x215;ANSI W;407.586;695106;33423.4;tabla
+W 40x249;ANSI W;472.042;815814;38543;tabla
+W 40x277;ANSI W;525.123;911547;43288.1;tabla
+W 40x297;ANSI W;563.038;965657;45369.2;tabla
+W 40x324;ANSI W;614.223;1.06555E+06;50780.2;tabla
+W 40x362;ANSI W;686.262;1.20291E+06;57439.9;tabla
+W 40x372;ANSI W;705.219;1.23205E+06;59104.9;tabla
+W 40x397;ANSI W;752.613;1.33194E+06;64099.6;tabla
+W 40x431;ANSI W;817.068;1.44849E+06;70343.1;tabla
+W 40x436;ANSI W;826.547;1.47346E+06;71591.8;tabla
+W 40x480;ANSI W;909.96;1.64411E+06;80748.9;tabla
+W 40x503;ANSI W;953.562;1.73152E+06;84911.2;tabla
+W 40x531;ANSI W;1006.64;1.84391E+06;91570.9;tabla
+W 40x593;ANSI W;1124.18;2.09781E+06;104890;tabla
+W 40x655;ANSI W;1241.72;2.35171E+06;119042;tabla
+W 40x192;ANSI W;363.984;561912;32049.8;tabla
+W 40x221;ANSI W;418.961;690944;41123.7;tabla
+W 40x244;ANSI W;462.563;799164;48699.1;tabla
+W 40x268;ANSI W;508.061;894898;54942.5;tabla
+W 40x298;ANSI W;564.934;1.00728E+06;62018.5;tabla
+W 40x328;ANSI W;621.806;1.1155E+06;69094.4;tabla
+W 44x198;ANSI W;375.359;695106;13985.4;tabla
+W 44x224;ANSI W;424.648;799164;16274.6;tabla
+W 44x248;ANSI W;470.146;890735;18106.1;tabla
+W 44x285;ANSI W;540.289;1.02393E+06;20395.3;tabla
+W 44x230;ANSI W;436.023;865761;33132;tabla
+W 44x262;ANSI W;496.687;1.00312E+06;38418.2;tabla
+W 44x290;ANSI W;549.768;1.12382E+06;43288.1;tabla
+W 44x335;ANSI W;635.076;1.29448E+06;49947.8;tabla
+UP8 x 30;ANSI ASTM A6/A6M (Pilote universal - Métrico);57.2;4100;1384;tabla
+HP200 x 53;ANSI ASTM A6/A6M (Pilote universal - Métrico);68.4;4950;1680;tabla
+HP250 x 62;ANSI ASTM A6/A6M (Pilote universal - Métrico);80;8740;2980;tabla
+UP10 x 48;ANSI ASTM A6/A6M (Pilote universal - Métrico);90.4;10070;3439;tabla
+HP250 x 85;ANSI ASTM A6/A6M (Pilote universal - Métrico);108;12200;4200;tabla
+HP310 x 79;ANSI ASTM A6/A6M (Pilote universal - Métrico);100;16400;5290;tabla
+UP12 x 59;ANSI ASTM A6/A6M (Pilote universal - Métrico);112;18420;5984;tabla
+HP310 x 93;ANSI ASTM A6/A6M (Pilote universal - Métrico);119;19600;6370;tabla
+HP310 x 110;ANSI ASTM A6/A6M (Pilote universal - Métrico);141;23700;7740;tabla
+HP310 x 125;ANSI ASTM A6/A6M (Pilote universal - Métrico);159;27100;8870;tabla
+UP12 x 100;ANSI ASTM A6/A6M (Pilote universal - Métrico);190;33070;10910;tabla
+UP12 x 125;ANSI ASTM A6/A6M (Pilote universal - Métrico);237;42610;14140;tabla
+UP12 x 150;ANSI ASTM A6/A6M (Pilote universal - Métrico);284;52700;17580;tabla
+HP360 x 108;ANSI ASTM A6/A6M (Pilote universal - Métrico);138;30300;10900;tabla
+HP360 x 132;ANSI ASTM A6/A6M (Pilote universal - Métrico);168;37600;13600;tabla
+HP360 x 152;ANSI ASTM A6/A6M (Pilote universal - Métrico);194;43700;15800;tabla
+HP360 x 174;ANSI ASTM A6/A6M (Pilote universal - Métrico);222;50800;18400;tabla
+HP410 x 131;ANSI ASTM A6/A6M (Pilote universal - Métrico);166;46200;14500;tabla
+HP410 x 151;ANSI ASTM A6/A6M (Pilote universal - Métrico);193;54100;17100;tabla
+HP410 x 181;ANSI ASTM A6/A6M (Pilote universal - Métrico);231;66200;21000;tabla
+HP410 x 211;ANSI ASTM A6/A6M (Pilote universal - Métrico);269;77800;24900;tabla
+HP410 x 242;ANSI ASTM A6/A6M (Pilote universal - Métrico);308;91200;29000;tabla
+HP410 x 272;ANSI ASTM A6/A6M (Pilote universal - Métrico);349;104000;34000;tabla
+HP460 x 202;ANSI ASTM A6/A6M (Pilote universal - Métrico);257;91600;29400;tabla
+HP460 x 234;ANSI ASTM A6/A6M (Pilote universal - Métrico);298;107000;34700;tabla
+HP460 x 269;ANSI ASTM A6/A6M (Pilote universal - Métrico);343;126000;40500;tabla
+HP460 x 304;ANSI ASTM A6/A6M (Pilote universal - Métrico);388;145000;46600;tabla
+UB5 x 9;ANSI ASTM A6/A6M (Formas de W - Métrico);2.85;473;55.7;tabla
+UB6 x 11;ANSI ASTM A6/A6M (Formas de W - Métrico);3.56;834;89.8;tabla
+W150 x 22.5;ANSI ASTM A6/A6M (Formas de W - Métrico);28.6;1210;388;tabla
+W150 x 29.8;ANSI ASTM A6/A6M (Formas de W - Métrico);37.9;1720;554;tabla
+W150 x 37.1;ANSI ASTM A6/A6M (Formas de W - Métrico);47.4;2220;712;tabla
+UB7 x 13;ANSI ASTM A6/A6M (Formas de W - Métrico);4.41;1356;137;tabla
+UB8 x 16;ANSI ASTM A6/A6M (Formas de W - Métrico);7.02;2105;164;tabla
+UB8 x 17;ANSI ASTM A6/A6M (Formas de W - Métrico);5.96;2340;308;tabla
+W200 x 26.6;ANSI ASTM A6/A6M (Formas de W - Métrico);33.9;2580;332;tabla
+UB8 x 20;ANSI ASTM A6/A6M (Formas de W - Métrico);10.3;2896;385;tabla
+W200 x 31.3;ANSI ASTM A6/A6M (Formas de W - Métrico);39.7;3130;407;tabla
+W200 x 35.9;ANSI ASTM A6/A6M (Formas de W - Métrico);45.7;3440;762;tabla
+W200 x 41.7;ANSI ASTM A6/A6M (Formas de W - Métrico);53.2;4080;903;tabla
+W200 x 46.1;ANSI ASTM A6/A6M (Formas de W - Métrico);58.9;4580;1540;tabla
+W200 x 52;ANSI ASTM A6/A6M (Formas de W - Métrico);66.5;5290;1770;tabla
+W200 x 59;ANSI ASTM A6/A6M (Formas de W - Métrico);75.5;6080;2040;tabla
+W200 x 71;ANSI ASTM A6/A6M (Formas de W - Métrico);91;7660;2530;tabla
+W200 x 86;ANSI ASTM A6/A6M (Formas de W - Métrico);110;9490;3130;tabla
+W200 x 100;ANSI ASTM A6/A6M (Formas de W - Métrico);127;11300;3690;tabla
+UB10 x 21;ANSI ASTM A6/A6M (Formas de W - Métrico);8.55;4413;448;tabla
+W250 x 32.7;ANSI ASTM A6/A6M (Formas de W - Métrico);41.9;4910;475;tabla
+UB10 x 25;ANSI ASTM A6/A6M (Formas de W - Métrico);15.3;5537;571;tabla
+W250 x 38.5;ANSI ASTM A6/A6M (Formas de W - Métrico);49.1;5990;587;tabla
+UB10 x 29;ANSI ASTM A6/A6M (Formas de W - Métrico);23.9;6544;677;tabla
+W250 x 44.8;ANSI ASTM A6/A6M (Formas de W - Métrico);57;7080;695;tabla
+W250 x 49.1;ANSI ASTM A6/A6M (Formas de W - Métrico);62.6;7120;1520;tabla
+W250 x 58;ANSI ASTM A6/A6M (Formas de W - Métrico);74.2;8700;1870;tabla
+W250 x 67;ANSI ASTM A6/A6M (Formas de W - Métrico);85.8;10300;2220;tabla
+W250 x 73;ANSI ASTM A6/A6M (Formas de W - Métrico);92.9;11300;3890;tabla
+W250 x 80;ANSI ASTM A6/A6M (Formas de W - Métrico);102;12600;4290;tabla
+W250 x 89;ANSI ASTM A6/A6M (Formas de W - Métrico);114;14200;4830;tabla
+W250 x 101;ANSI ASTM A6/A6M (Formas de W - Métrico);128;16400;5580;tabla
+UC10 x 72;ANSI ASTM A6/A6M (Formas de W - Métrico);172;17510;5928;tabla
+W250 x 115;ANSI ASTM A6/A6M (Formas de W - Métrico);146;18900;6410;tabla
+W250 x 131;ANSI ASTM A6/A6M (Formas de W - Métrico);168;22200;7450;tabla
+W250 x 149;ANSI ASTM A6/A6M (Formas de W - Métrico);189;25900;8620;tabla
+W250 x 167;ANSI ASTM A6/A6M (Formas de W - Métrico);212;29800;9820;tabla
+W310 x 23.8;ANSI ASTM A6/A6M (Formas de W - Métrico);30.4;4290;117;tabla
+W310 x 28.3;ANSI ASTM A6/A6M (Formas de W - Métrico);35.9;5410;157;tabla
+W310 x 32.7;ANSI ASTM A6/A6M (Formas de W - Métrico);41.8;6490;194;tabla
+UB12 x 25;ANSI ASTM A6/A6M (Formas de W - Métrico);47.2;7171;336;tabla
+UB12 x 28;ANSI ASTM A6/A6M (Formas de W - Métrico);53.4;8196;389;tabla
+UB12 x 32;ANSI ASTM A6/A6M (Formas de W - Métrico);61.2;9575;461;tabla
+W310 x 38.7;ANSI ASTM A6/A6M (Formas de W - Métrico);49.4;8490;720;tabla
+UB12 x 27;ANSI ASTM A6/A6M (Formas de W - Métrico);51.3;8503;764;tabla
+W310 x 44.5;ANSI ASTM A6/A6M (Formas de W - Métrico);56.7;9910;845;tabla
+UB12 x 31;ANSI ASTM A6/A6M (Formas de W - Métrico);58.7;9899;896;tabla
+W310 x 52;ANSI ASTM A6/A6M (Formas de W - Métrico);66.5;11900;1020;tabla
+UB12 x 36;ANSI ASTM A6/A6M (Formas de W - Métrico);68.8;11700;1063;tabla
+W310 x 60;ANSI ASTM A6/A6M (Formas de W - Métrico);75.5;12800;1840;tabla
+W310 x 67;ANSI ASTM A6/A6M (Formas de W - Métrico);84.5;14500;2080;tabla
+W310 x 74;ANSI ASTM A6/A6M (Formas de W - Métrico);94.2;16300;2340;tabla
+W310 x 79;ANSI ASTM A6/A6M (Formas de W - Métrico);101;17700;3990;tabla
+W310 x 86;ANSI ASTM A6/A6M (Formas de W - Métrico);110;19800;4450;tabla
+W310 x 97;ANSI ASTM A6/A6M (Formas de W - Métrico);123;22200;7340;tabla
+W310 x 107;ANSI ASTM A6/A6M (Formas de W - Métrico);136;24800;8120;tabla
+W310 x 117;ANSI ASTM A6/A6M (Formas de W - Métrico);150;27600;8990;tabla
+W310 x 129;ANSI ASTM A6/A6M (Formas de W - Métrico);165;30800;10000;tabla
+UC12 x 92;ANSI ASTM A6/A6M (Formas de W - Métrico);174;32810;10700;tabla
+W310 x 143;ANSI ASTM A6/A6M (Formas de W - Métrico);182;34700;11200;tabla
+W310 x 158;ANSI ASTM A6/A6M (Formas de W - Métrico);201;38800;12500;tabla
+W310 x 179;ANSI ASTM A6/A6M (Formas de W - Métrico);227;44500;14400;tabla
+UC12 x 133;ANSI ASTM A6/A6M (Formas de W - Métrico);252;50900;16300;tabla
+W310 x 202;ANSI ASTM A6/A6M (Formas de W - Métrico);257;51600;16600;tabla
+W310 x 226;ANSI ASTM A6/A6M (Formas de W - Métrico);288;59500;18900;tabla
+UC12 x 161;ANSI ASTM A6/A6M (Formas de W - Métrico);306;64200;20310;tabla
+W310 x 253;ANSI ASTM A6/A6M (Formas de W - Métrico);323;68700;21500;tabla
+W310 x 283;ANSI ASTM A6/A6M (Formas de W - Métrico);361;78700;24500;tabla
+W310 x 313;ANSI ASTM A6/A6M (Formas de W - Métrico);399;89100;27600;tabla
+W310 x 342;ANSI ASTM A6/A6M (Formas de W - Métrico);437;101000;30900;tabla
+W310 x 375;ANSI ASTM A6/A6M (Formas de W - Métrico);478;113000;34500;tabla
+W310 x 415;ANSI ASTM A6/A6M (Formas de W - Métrico);528;129000;39000;tabla
+W310 x 454;ANSI ASTM A6/A6M (Formas de W - Métrico);577;148000;43700;tabla
+W310 x 500;ANSI ASTM A6/A6M (Formas de W - Métrico);638;169000;49500;tabla
+W360 x 32.9;ANSI ASTM A6/A6M (Formas de W - Métrico);41.9;8280;291;tabla
+W360 x 39;ANSI ASTM A6/A6M (Formas de W - Métrico);49.6;10200;3710;tabla
+W360 x 44.6;ANSI ASTM A6/A6M (Formas de W - Métrico);57.1;12100;816;tabla
+W360 x 51;ANSI ASTM A6/A6M (Formas de W - Métrico);64.5;14200;970;tabla
+W360 x 58;ANSI ASTM A6/A6M (Formas de W - Métrico);72.3;16000;1110;tabla
+W360 x 64;ANSI ASTM A6/A6M (Formas de W - Métrico);81.3;17800;1880;tabla
+UB14 x 45;ANSI ASTM A6/A6M (Formas de W - Métrico);85.5;19460;1362;tabla
+W360 x 72;ANSI ASTM A6/A6M (Formas de W - Métrico);91;20100;2140;tabla
+W360 x 79;ANSI ASTM A6/A6M (Formas de W - Métrico);101;22500;2400;tabla
+W360 x 91;ANSI ASTM A6/A6M (Formas de W - Métrico);115;26600;4450;tabla
+W360 x 101;ANSI ASTM A6/A6M (Formas de W - Métrico);129;30100;5040;tabla
+W360 x 110;ANSI ASTM A6/A6M (Formas de W - Métrico);141;33100;5580;tabla
+W360 x 122;ANSI ASTM A6/A6M (Formas de W - Métrico);155;36700;6160;tabla
+UC14 x 87;ANSI ASTM A6/A6M (Formas de W - Métrico);164;40250;14610;tabla
+W360 x 134;ANSI ASTM A6/A6M (Formas de W - Métrico);171;41600;15100;tabla
+W360 x 147;ANSI ASTM A6/A6M (Formas de W - Métrico);188;46200;16700;tabla
+UC14 x 103;ANSI ASTM A6/A6M (Formas de W - Métrico);195;48590;17550;tabla
+W360 x 162;ANSI ASTM A6/A6M (Formas de W - Métrico);206;51600;18600;tabla
+W360 x 179;ANSI ASTM A6/A6M (Formas de W - Métrico);228;57400;20600;tabla
+W360 x 196;ANSI ASTM A6/A6M (Formas de W - Métrico);250;63700;22800;tabla
+UC14 x 136;ANSI ASTM A6/A6M (Formas de W - Métrico);257;66260;23690;tabla
+W360 x 216;ANSI ASTM A6/A6M (Formas de W - Métrico);275;71200;28200;tabla
+W360 x 237;ANSI ASTM A6/A6M (Formas de W - Métrico);301;79100;31100;tabla
+W360 x 262;ANSI ASTM A6/A6M (Formas de W - Métrico);334;89100;34900;tabla
+W360 x 287;ANSI ASTM A6/A6M (Formas de W - Métrico);366;99900;38800;tabla
+W360 x 314;ANSI ASTM A6/A6M (Formas de W - Métrico);400;42900;11100;tabla
+UC14 x 228;ANSI ASTM A6/A6M (Formas de W - Métrico);433;122500;46850;tabla
+W360 x 347;ANSI ASTM A6/A6M (Formas de W - Métrico);442;125000;47900;tabla
+W360 x 382;ANSI ASTM A6/A6M (Formas de W - Métrico);488;142000;53700;tabla
+UC14 x 264;ANSI ASTM A6/A6M (Formas de W - Métrico);501;146600;55370;tabla
+W360 x 421;ANSI ASTM A6/A6M (Formas de W - Métrico);537;160000;59900;tabla
+W360 x 463;ANSI ASTM A6/A6M (Formas de W - Métrico);590;180000;67000;tabla
+W360 x 509;ANSI ASTM A6/A6M (Formas de W - Métrico);652;204000;75300;tabla
+W360 x 551;ANSI ASTM A6/A6M (Formas de W - Métrico);703;226000;82800;tabla
+W360 x 592;ANSI ASTM A6/A6M (Formas de W - Métrico);755;250000;90300;tabla
+W360 x 634;ANSI ASTM A6/A6M (Formas de W - Métrico);806;275000;98200;tabla
+W360 x 677;ANSI ASTM A6/A6M (Formas de W - Métrico);865;299000;107000;tabla
+W360 x 744;ANSI ASTM A6/A6M (Formas de W - Métrico);948;342000;120000;tabla
+W360 x 818;ANSI ASTM A6/A6M (Formas de W - Métrico);1050;393000;135000;tabla
+W360 x 900;ANSI ASTM A6/A6M (Formas de W - Métrico);1150;450000;153000;tabla
+W360 x 990;ANSI ASTM A6/A6M (Formas de W - Métrico);1260;516000;174000;tabla
+W360 x 1086;ANSI ASTM A6/A6M (Formas de W - Métrico);1390;595000;196000;tabla
+W410 x 38.8;ANSI ASTM A6/A6M (Formas de W - Métrico);49.5;12500;399;tabla
+W410 x 46.1;ANSI ASTM A6/A6M (Formas de W - Métrico);58.9;15600;516;tabla
+W410 x 53;ANSI ASTM A6/A6M (Formas de W - Métrico);68.4;18600;1020;tabla
+W410 x 60;ANSI ASTM A6/A6M (Formas de W - Métrico);76.1;21600;1200;tabla
+W410 x 67;ANSI ASTM A6/A6M (Formas de W - Métrico);85.8;24400;1370;tabla
+W410 x 75;ANSI ASTM A6/A6M (Formas de W - Métrico);94.8;27400;1550;tabla
+W410 x 85;ANSI ASTM A6/A6M (Formas de W - Métrico);108;31600;1790;tabla
+W410 x 100;ANSI ASTM A6/A6M (Formas de W - Métrico);126;39700;4950;tabla
+W410 x 114;ANSI ASTM A6/A6M (Formas de W - Métrico);146;46200;5740;tabla
+W410 x 132;ANSI ASTM A6/A6M (Formas de W - Métrico);169;54100;6780;tabla
+W410 x 149;ANSI ASTM A6/A6M (Formas de W - Métrico);190;62000;7740;tabla
+W460 x 52;ANSI ASTM A6/A6M (Formas de W - Métrico);66.5;21200;637;tabla
+W460 x 60;ANSI ASTM A6/A6M (Formas de W - Métrico);76.1;25500;795;tabla
+W460 x 68;ANSI ASTM A6/A6M (Formas de W - Métrico);87.1;29600;937;tabla
+UB18 x 45;ANSI ASTM A6/A6M (Formas de W - Métrico);85.5;29380;1452;tabla
+W460 x 74;ANSI ASTM A6/A6M (Formas de W - Métrico);94.8;33300;1670;tabla
+W460 x 82;ANSI ASTM A6/A6M (Formas de W - Métrico);105;37000;1870;tabla
+W410 x 89;ANSI ASTM A6/A6M (Formas de W - Métrico);114;41000;2090;tabla
+W460 x 97;ANSI ASTM A6/A6M (Formas de W - Métrico);123;44500;2280;tabla
+W460 x 106;ANSI ASTM A6/A6M (Formas de W - Métrico);135;48700;2510;tabla
+W460 x 113;ANSI ASTM A6/A6M (Formas de W - Métrico);144;55400;6330;tabla
+W460 x 128;ANSI ASTM A6/A6M (Formas de W - Métrico);163;63700;7280;tabla
+W460 x 144;ANSI ASTM A6/A6M (Formas de W - Métrico);184;72800;8370;tabla
+W460 x 158;ANSI ASTM A6/A6M (Formas de W - Métrico);201;79500;9160;tabla
+W460 x 177;ANSI ASTM A6/A6M (Formas de W - Métrico);226;91200;10500;tabla
+W460 x 193;ANSI ASTM A6/A6M (Formas de W - Métrico);247;102000;11600;tabla
+W460 x 213;ANSI ASTM A6/A6M (Formas de W - Métrico);271;114000;12900;tabla
+W460 x 235;ANSI ASTM A6/A6M (Formas de W - Métrico);299;127000;14400;tabla
+W460 x 260;ANSI ASTM A6/A6M (Formas de W - Métrico);332;144000;16300;tabla
+W460 x 286;ANSI ASTM A6/A6M (Formas de W - Métrico);363;161000;18300;tabla
+W460 x 315;ANSI ASTM A6/A6M (Formas de W - Métrico);402;180000;20500;tabla
+W460 x 349;ANSI ASTM A6/A6M (Formas de W - Métrico);443;204000;23200;tabla
+W460 x 384;ANSI ASTM A6/A6M (Formas de W - Métrico);490;229000;26100;tabla
+W460 x 421;ANSI ASTM A6/A6M (Formas de W - Métrico);537;257000;29300;tabla
+W460 x 464;ANSI ASTM A6/A6M (Formas de W - Métrico);591;290000;33100;tabla
+W530 x 66;ANSI ASTM A6/A6M (Formas de W - Métrico);83.9;35100;862;tabla
+W530 x 74;ANSI ASTM A6/A6M (Formas de W - Métrico);94.8;41000;1040;tabla
+W530 x 85;ANSI ASTM A6/A6M (Formas de W - Métrico);108;48700;1270;tabla
+W530 x 72;ANSI ASTM A6/A6M (Formas de W - Métrico);910;39900;1610;tabla
+W530 x 82;ANSI ASTM A6/A6M (Formas de W - Métrico);105;47500;2010;tabla
+W530 x 92;ANSI ASTM A6/A6M (Formas de W - Métrico);118;55400;2390;tabla
+W530 x 101;ANSI ASTM A6/A6M (Formas de W - Métrico);129;61600;2690;tabla
+W530 x 109;ANSI ASTM A6/A6M (Formas de W - Métrico);139;66600;2940;tabla
+W430 x 123;ANSI ASTM A6/A6M (Formas de W - Métrico);157;76200;3390;tabla
+W530 x 138;ANSI ASTM A6/A6M (Formas de W - Métrico);176;86200;3870;tabla
+W530 x 150;ANSI ASTM A6/A6M (Formas de W - Métrico);192;101000;10300;tabla
+W530 x 165;ANSI ASTM A6/A6M (Formas de W - Métrico);210;111000;11400;tabla
+W530 x 182;ANSI ASTM A6/A6M (Formas de W - Métrico);232;123000;12700;tabla
+W530 x 196;ANSI ASTM A6/A6M (Formas de W - Métrico);250;134000;13900;tabla
+W530 x 219;ANSI ASTM A6/A6M (Formas de W - Métrico);279;151000;15700;tabla
+W530 x 248;ANSI ASTM A6/A6M (Formas de W - Métrico);315;178000;18100;tabla
+W530 x 272;ANSI ASTM A6/A6M (Formas de W - Métrico);346;197000;20100;tabla
+W530 x 300;ANSI ASTM A6/A6M (Formas de W - Métrico);383;221000;22600;tabla
+W21 x 222;ANSI ASTM A6/A6M (Formas de W - Métrico);422;247600;25390;tabla
+W610 x 82;ANSI ASTM A6/A6M (Formas de W - Métrico);105;56200;1210;tabla
+W610 x 92;ANSI ASTM A6/A6M (Formas de W - Métrico);118;64500;1440;tabla
+W610 x 101;ANSI ASTM A6/A6M (Formas de W - Métrico);130;76200;2930;tabla
+W610 x 113;ANSI ASTM A6/A6M (Formas de W - Métrico);145;87400;3430;tabla
+W610 x 125;ANSI ASTM A6/A6M (Formas de W - Métrico);159;98600;3930;tabla
+W610 x 140;ANSI ASTM A6/A6M (Formas de W - Métrico);179;112000;4540;tabla
+W610 x 153;ANSI ASTM A6/A6M (Formas de W - Métrico);195;125000;4950;tabla
+W24 x 115;ANSI ASTM A6/A6M (Formas de W - Métrico);218;141400;5677;tabla
+W24 x 128;ANSI ASTM A6/A6M (Formas de W - Métrico);243;159000;6444;tabla
+W24 x 163;ANSI ASTM A6/A6M (Formas de W - Métrico);310;208000;8616;tabla
+W24 x 198;ANSI ASTM A6/A6M (Formas de W - Métrico);376;259400;10980;tabla
+UB24 x 100;ANSI ASTM A6/A6M (Formas de W - Métrico);190;125900;9308;tabla
+UB24 x 120;ANSI ASTM A6/A6M (Formas de W - Métrico);228;153000;11410;tabla
+UB24 x 160;ANSI ASTM A6/A6M (Formas de W - Métrico);303;209500;15840;tabla
+W610 x 155;ANSI ASTM A6/A6M (Formas de W - Métrico);198;129000;10800;tabla
+W610 x 174;ANSI ASTM A6/A6M (Formas de W - Métrico);222;147000;12400;tabla
+W610 x 195;ANSI ASTM A6/A6M (Formas de W - Métrico);249;167000;14200;tabla
+W610 x 217;ANSI ASTM A6/A6M (Formas de W - Métrico);277;191000;16300;tabla
+W610 x 241;ANSI ASTM A6/A6M (Formas de W - Métrico);308;215000;18400;tabla
+W610 x 262;ANSI ASTM A6/A6M (Formas de W - Métrico);334;236000;19900;tabla
+W610 x 285;ANSI ASTM A6/A6M (Formas de W - Métrico);365;261000;22100;tabla
+W610 x 307;ANSI ASTM A6/A6M (Formas de W - Métrico);392;284000;24100;tabla
+W610 x 341;ANSI ASTM A6/A6M (Formas de W - Métrico);434;318000;27100;tabla
+W610 x 372;ANSI ASTM A6/A6M (Formas de W - Métrico);474;353000;30100;tabla
+W610 x 415;ANSI ASTM A6/A6M (Formas de W - Métrico);528;400000;34300;tabla
+W610 x 455;ANSI ASTM A6/A6M (Formas de W - Métrico);579;445000;38300;tabla
+W610 x 498;ANSI ASTM A6/A6M (Formas de W - Métrico);634;495000;42900;tabla
+W610 x 551;ANSI ASTM A6/A6M (Formas de W - Métrico);703;558000;48300;tabla
+W690 x 125;ANSI ASTM A6/A6M (Formas de W - Métrico);159;119000;4410;tabla
+W690 x 140;ANSI ASTM A6/A6M (Formas de W - Métrico);178;136000;5160;tabla
+W690 x 152;ANSI ASTM A6/A6M (Formas de W - Métrico);194;151000;5790;tabla
+W690 x 170;ANSI ASTM A6/A6M (Formas de W - Métrico);217;170000;6620;tabla
+W690 x 192;ANSI ASTM A6/A6M (Formas de W - Métrico);244;198000;7660;tabla
+W27 x 159;ANSI ASTM A6/A6M (Formas de W - Métrico);301;248200;9787;tabla
+W27 x 182;ANSI ASTM A6/A6M (Formas de W - Métrico);345;289300;11540;tabla
+W27 x 201;ANSI ASTM A6/A6M (Formas de W - Métrico);381;323200;13040;tabla
+W27 x 221;ANSI ASTM A6/A6M (Formas de W - Métrico);418;359400;14650;tabla
+W690 x 217;ANSI ASTM A6/A6M (Formas de W - Métrico);279;236000;18400;tabla
+W690 x 240;ANSI ASTM A6/A6M (Formas de W - Métrico);307;20700;2630;tabla
+W690 x 265;ANSI ASTM A6/A6M (Formas de W - Métrico);339;292000;23100;tabla
+W690 x 289;ANSI ASTM A6/A6M (Formas de W - Métrico);368;327000;25800;tabla
+W690 x 323;ANSI ASTM A6/A6M (Formas de W - Métrico);412;371000;29300;tabla
+W690 x 350;ANSI ASTM A6/A6M (Formas de W - Métrico);448;404000;32000;tabla
+W690 x 384;ANSI ASTM A6/A6M (Formas de W - Métrico);491;450000;35800;tabla
+W690 x 419;ANSI ASTM A6/A6M (Formas de W - Métrico);536;495000;39700;tabla
+W690 x 457;ANSI ASTM A6/A6M (Formas de W - Métrico);582;545000;43700;tabla
+W690 x 500;ANSI ASTM A6/A6M (Formas de W - Métrico);640;608000;49100;tabla
+W690 x 548;ANSI ASTM A6/A6M (Formas de W - Métrico);703;674000;54500;tabla
+W760 x 134;ANSI ASTM A6/A6M (Formas de W - Métrico);170;150000;4790;tabla
+W760 x 147;ANSI ASTM A6/A6M (Formas de W - Métrico);187;166000;5300;tabla
+W760 x 161;ANSI ASTM A6/A6M (Formas de W - Métrico);205;186000;6080;tabla
+W760 x 173;ANSI ASTM A6/A6M (Formas de W - Métrico);221;205000;6830;tabla
+W760 x 185;ANSI ASTM A6/A6M (Formas de W - Métrico);235;223000;7530;tabla
+W760 x 196;ANSI ASTM A6/A6M (Formas de W - Métrico);250;240000;8160;tabla
+W760 x 220;ANSI ASTM A6/A6M (Formas de W - Métrico);281;278000;9450;tabla
+W760 x 257;ANSI ASTM A6/A6M (Formas de W - Métrico);328;343000;24900;tabla
+W760 x 284;ANSI ASTM A6/A6M (Formas de W - Métrico);362;383000;28000;tabla
+W760 x 314;ANSI ASTM A6/A6M (Formas de W - Métrico);402;429000;31500;tabla
+W760 x 350;ANSI ASTM A6/A6M (Formas de W - Métrico);447;487000;35600;tabla
+W760 x 389;ANSI ASTM A6/A6M (Formas de W - Métrico);497;545000;39900;tabla
+W760 x 434;ANSI ASTM A6/A6M (Formas de W - Métrico);555;620000;45800;tabla
+W760 x 484;ANSI ASTM A6/A6M (Formas de W - Métrico);619;699000;51600;tabla
+W760 x 531;ANSI ASTM A6/A6M (Formas de W - Métrico);677;7.78E+06;57900;tabla
+W760 x 582;ANSI ASTM A6/A6M (Formas de W - Métrico);742;862000;64500;tabla
+W840 x 176;ANSI ASTM A6/A6M (Formas de W - Métrico);224;246000;7780;tabla
+W840 x 193;ANSI ASTM A6/A6M (Formas de W - Métrico);247;279000;9070;tabla
+W840 x 210;ANSI ASTM A6/A6M (Formas de W - Métrico);268;310000;10200;tabla
+W840 x 226;ANSI ASTM A6/A6M (Formas de W - Métrico);290;3.4E+06;11400;tabla
+W840 x 251;ANSI ASTM A6/A6M (Formas de W - Métrico);319;387000;12900;tabla
+W33 x 187;ANSI ASTM A6/A6M (Formas de W - Métrico);355;430200;14470;tabla
+W33 x 204;ANSI ASTM A6/A6M (Formas de W - Métrico);387;473300;16050;tabla
+W33 x 219;ANSI ASTM A6/A6M (Formas de W - Métrico);416;513300;17530;tabla
+W840 x 299;ANSI ASTM A6/A6M (Formas de W - Métrico);381;483000;31200;tabla
+W840 x 329;ANSI ASTM A6/A6M (Formas de W - Métrico);421;537000;35000;tabla
+W840 x 359;ANSI ASTM A6/A6M (Formas de W - Métrico);459;591000;38800;tabla
+W840 x 392;ANSI ASTM A6/A6M (Formas de W - Métrico);499;662000;43300;tabla
+W840 x 433;ANSI ASTM A6/A6M (Formas de W - Métrico);552;737000;48300;tabla
+W840 x 473;ANSI ASTM A6/A6M (Formas de W - Métrico);605;812000;53700;tabla
+W840 x 527;ANSI ASTM A6/A6M (Formas de W - Métrico);671;916000;60800;tabla
+W840 x 576;ANSI ASTM A6/A6M (Formas de W - Métrico);735;1.01E+06;67400;tabla
+W920 x 201;ANSI ASTM A6/A6M (Formas de W - Métrico);257;325000;9370;tabla
+W920 x 223;ANSI ASTM A6/A6M (Formas de W - Métrico);286;376000;11200;tabla
+W920 x 238;ANSI ASTM A6/A6M (Formas de W - Métrico);303;406000;12300;tabla
+W920 x 253;ANSI ASTM A6/A6M (Formas de W - Métrico);323;437000;13300;tabla
+W920 x 271;ANSI ASTM A6/A6M (Formas de W - Métrico);346;470000;14400;tabla
+W920 x 289;ANSI ASTM A6/A6M (Formas de W - Métrico);368;504000;15600;tabla
+W920 x 313;ANSI ASTM A6/A6M (Formas de W - Métrico);399;549000;17100;tabla
+W920 x 345;ANSI ASTM A6/A6M (Formas de W - Métrico);439;624000;19500;tabla
+W920 x 381;ANSI ASTM A6/A6M (Formas de W - Métrico);486;699000;22000;tabla
+W36 x 286;ANSI ASTM A6/A6M (Formas de W - Métrico);542;787600;25140;tabla
+W36 x 318;ANSI ASTM A6/A6M (Formas de W - Métrico);604;885100;28580;tabla
+W36 x 350;ANSI ASTM A6/A6M (Formas de W - Métrico);663;981300;32080;tabla
+W36 x 387;ANSI ASTM A6/A6M (Formas de W - Métrico);733;1.1013E+06;36470;tabla
+W920 x 311;ANSI ASTM A6/A6M (Formas de W - Métrico);440;649000;39100;tabla
+W920 x 368;ANSI ASTM A6/A6M (Formas de W - Métrico);468;695000;42000;tabla
+W920 x 390;ANSI ASTM A6/A6M (Formas de W - Métrico);498;745000;45400;tabla
+W920 x 420;ANSI ASTM A6/A6M (Formas de W - Métrico);535;816000;49900;tabla
+W920 x 449;ANSI ASTM A6/A6M (Formas de W - Métrico);574;878000;54100;tabla
+W920 x 491;ANSI ASTM A6/A6M (Formas de W - Métrico);625;970000;59100;tabla
+W920 x 537;ANSI ASTM A6/A6M (Formas de W - Métrico);684;1.07E+06;65300;tabla
+W920 x 588;ANSI ASTM A6/A6M (Formas de W - Métrico);748;1.19E+06;72800;tabla
+W920 x 656;ANSI ASTM A6/A6M (Formas de W - Métrico);839;1.34E+06;82800;tabla
+W920 x 725;ANSI ASTM A6/A6M (Formas de W - Métrico);923;1.5E+06;93700;tabla
+W920 x 787;ANSI ASTM A6/A6M (Formas de W - Métrico);1010;1.65E+06;104000;tabla
+W1000 x 222;ANSI ASTM A6/A6M (Formas de W - Métrico);283;408000;9530;tabla
+W1000 x 249;ANSI ASTM A6/A6M (Formas de W - Métrico);318;483000;11800;tabla
+W1000 x 272;ANSI ASTM A6/A6M (Formas de W - Métrico);344;549000;13800;tabla
+W1000 x 314;ANSI ASTM A6/A6M (Formas de W - Métrico);401;645000;16200;tabla
+W1000 x 350;ANSI ASTM A6/A6M (Formas de W - Métrico);446;724000;18500;tabla
+W1000 x 393;ANSI ASTM A6/A6M (Formas de W - Métrico);499;807000;20500;tabla
+W1000 x 415;ANSI ASTM A6/A6M (Formas de W - Métrico);531;853000;21700;tabla
+W1000 x 438;ANSI ASTM A6/A6M (Formas de W - Métrico);556;912000;23400;tabla
+W1000 x 486;ANSI ASTM A6/A6M (Formas de W - Métrico);619;1.02E+06;26600;tabla
+W1000 x 296;ANSI ASTM A6/A6M (Formas de W - Métrico);379;620000;28900;tabla
+W1000 x 321;ANSI ASTM A6/A6M (Formas de W - Métrico);410;695000;33400;tabla
+W1000 x 371;ANSI ASTM A6/A6M (Formas de W - Métrico);474;816000;38500;tabla
+W1000 x 412;ANSI ASTM A6/A6M (Formas de W - Métrico);526;912000;43300;tabla
+W1000 x 443;ANSI ASTM A6/A6M (Formas de W - Métrico);563;966000;45400;tabla
+W1000 x 483;ANSI ASTM A6/A6M (Formas de W - Métrico);615;1.07E+06;50800;tabla
+W1000 x 539;ANSI ASTM A6/A6M (Formas de W - Métrico);684;57400;12000;tabla
+W1000 x 554;ANSI ASTM A6/A6M (Formas de W - Métrico);710;59100;12300;tabla
+W1000 x 591;ANSI ASTM A6/A6M (Formas de W - Métrico);755;1.33E+06;64100;tabla
+W1000 x 642;ANSI ASTM A6/A6M (Formas de W - Métrico);819;1.45E+06;70300;tabla
+W1100 x 343;ANSI ASTM A6/A6M (Formas de W - Métrico);437;866000;33100;tabla
+W1100 x 390;ANSI ASTM A6/A6M (Formas de W - Métrico);498;1E+06;38400;tabla
+W1100 x 433;ANSI ASTM A6/A6M (Formas de W - Métrico);551;1.12E+06;43300;tabla
+W1100 x 499;ANSI ASTM A6/A6M (Formas de W - Métrico);635;1.29E+06;49900;tabla
+S 3 x 5.7;ANSI S;10.8058;104.058;18.6055;tabla
+S 3 x 7.5;ANSI S;14.2181;121.123;24.0582;tabla
+S 4 x 7.7;ANSI S;14.5973;251.82;31.1341;tabla
+S 4 x 9.5;ANSI S;18.0096;281.372;36.9197;tabla
+S 5 x 10;ANSI S;18.9575;511.965;49.5315;tabla
+S 5 x 14.75;ANSI S;27.9623;632.672;69.5106;tabla
+S 6 x 12.5;ANSI S;23.6969;915.709;74.9217;tabla
+S 6 x 17.25;ANSI S;32.7017;1090.53;95.317;tabla
+S 7 x 15.3;ANSI S;29.005;1527.57;109.885;tabla
+S 7 x 20;ANSI S;37.915;1764.82;131.945;tabla
+S 8 x 18.4;ANSI S;34.8818;2393.33;153.589;tabla
+S 8 x 23;ANSI S;43.6023;2693.02;177.731;tabla
+S 10 x 25.4;ANSI S;48.1521;5119.65;280.124;tabla
+S 10 x 35;ANSI S;66.3513;6118.6;345.472;tabla
+S 12 x 31.8;ANSI S;60.2849;9032.22;388.344;tabla
+S 12 x 35;ANSI S;66.3513;9490.08;409.572;tabla
+S 12 x 40.8;ANSI S;77.3466;11238.2;561.912;tabla
+S 12 x 50;ANSI S;94.7875;12611.8;649.321;tabla
+S 15 x 42.9;ANSI S;81.3277;18563.9;595.211;tabla
+S 15 x 50;ANSI S;94.7875;20187.2;649.321;tabla
+S 18 x 54.7;ANSI S;103.698;33340.1;861.599;tabla
+S 18 x 70;ANSI S;132.703;38418.2;998.955;tabla
+S 20 x 66;ANSI S;125.12;49531.5;1144.64;tabla
+S 20 x 75;ANSI S;142.181;53277.6;1227.88;tabla
+S 20.3 x 86;ANSI S;163.035;65348.3;1939.64;tabla
+S 20.3 x 96;ANSI S;181.992;69510.6;2076.99;tabla
+S 24 x 80;ANSI S;151.66;87408.6;1748.17;tabla
+S 24 x 90;ANSI S;170.618;93652.1;1860.55;tabla
+S 24 x 100;ANSI S;189.575;99063.1;1972.94;tabla
+S 24.5 x 106;ANSI S;200.95;122372;3196.66;tabla
+S 24.5 x 121;ANSI S;229.386;131529;3454.72;tabla
+HP8 x 36;ANSI ASTM A6/A6M (Pilote universal - Pulgadas);68.387;4953.15;1677.41;tabla
+HP10 x 42;ANSI ASTM A6/A6M (Pilote universal - Pulgadas);79.9998;8740.86;2984.38;tabla
+HP10 x 57;ANSI ASTM A6/A6M (Pilote universal - Pulgadas);107.742;12237.2;4203.94;tabla
+HP12 x53;ANSI ASTM A6/A6M (Pilote universal - Pulgadas);99.9998;16357.9;5286.14;tabla
+HP12 x63;ANSI ASTM A6/A6M (Pilote universal - Pulgadas);118.709;19646.1;6368.34;tabla
+HP12 x74;ANSI ASTM A6/A6M (Pilote universal - Pulgadas);140.645;23683.6;7741.9;tabla
+HP12 x84;ANSI ASTM A6/A6M (Pilote universal - Pulgadas);158.709;27055;8865.73;tabla
+HP14 x73;ANSI ASTM A6/A6M (Pilote universal - Pulgadas);138.064;30343.3;10863.6;tabla
+HP14 x89;ANSI ASTM A6/A6M (Pilote universal - Pulgadas);168.387;37627.3;13569.1;tabla
+HP14 x102;ANSI ASTM A6/A6M (Pilote universal - Pulgadas);194.193;43704.3;15816.8;tabla
+HP14 x117;ANSI ASTM A6/A6M (Pilote universal - Pulgadas);221.935;50780.2;18439.1;tabla
+HP16 x88;ANSI ASTM A6/A6M (Pilote universal - Pulgadas);166.451;46201.7;14526.5;tabla
+HP16 x101;ANSI ASTM A6/A6M (Pilote universal - Pulgadas);192.903;54110.1;17148.7;tabla
+HP16 x121;ANSI ASTM A6/A6M (Pilote universal - Pulgadas);230.967;66180.8;20978.1;tabla
+HP16 x141;ANSI ASTM A6/A6M (Pilote universal - Pulgadas);269.032;77835.3;24932.3;tabla
+HP16 x162;ANSI ASTM A6/A6M (Pilote universal - Pulgadas);307.741;91154.7;29011.3;tabla
+HP16 x183;ANSI ASTM A6/A6M (Pilote universal - Pulgadas);349.032;104474;34047.7;tabla
+HP18 x135;ANSI ASTM A6/A6M (Pilote universal - Pulgadas);257.419;91570.9;29385.9;tabla
+HP18 x157;ANSI ASTM A6/A6M (Pilote universal - Pulgadas);298.064;106971;34672.1;tabla
+HP18 x181;ANSI ASTM A6/A6M (Pilote universal - Pulgadas);343.225;125702;40540.9;tabla
+HP18 x204;ANSI ASTM A6/A6M (Pilote universal - Pulgadas);388.386;144849;46617.9;tabla
+HP 13 x 60;ANSI HP;113.745;20936.4;6867.82;tabla
+HP 13 x 73;ANSI HP;138.39;26222.6;8615.99;tabla
+HP 13 x 87;ANSI HP;164.93;31425.5;10405.8;tabla
+HP 13 x 100;ANSI HP;189.575;36878.1;12237.2;tabla
+M3 x 2.9;ANSI M;5.49768;62.4347;10.3225;tabla
+M4 x 3.2;ANSI M;6.0664;119.042;10.3225;tabla
+M4 x 3.45;ANSI M;6.54034;119.042;10.3225;tabla
+M4 x 4.08;ANSI M;7.73466;146.93;13.5275;tabla
+M4 x 6;ANSI M;11.3745;196.461;61.186;tabla
+M5 x 18.9;ANSI M;35.8297;1007.28;362.121;tabla
+M6 x 3.7;ANSI M;7.01428;248.074;7.2008;tabla
+M6 x 4.4;ANSI M;8.3413;300.935;7.49217;tabla
+M8 x 6.2;ANSI M;11.7537;732.567;14.6513;tabla
+M8 x 6.5;ANSI M;12.3224;770.028;15.6503;tabla
+M10 x 7.5;ANSI M;14.2181;1373.56;23.3922;tabla
+M10 x 8;ANSI M;15.166;1440.16;24.6825;tabla
+M10 x 9;ANSI M;17.0618;1623.3;27.9708;tabla
+M12 x 10;ANSI M;18.9575;2568.15;42.8718;tabla
+M12 x 10.8;ANSI M;20.4741;2776.26;42.0394;tabla
+M12 x 11.8;ANSI M;22.3699;3005.19;45.3692;tabla
+M12.5 x 11.6;ANSI M;21.9907;3342.34;62.8509;tabla
+M12.5 x 12.4;ANSI M;23.5073;3716.95;83.6625;tabla
+M14 x 18;ANSI M;34.1235;6160.23;109.885;tabla

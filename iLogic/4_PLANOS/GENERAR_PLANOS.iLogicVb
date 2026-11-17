@@ -1,5 +1,5 @@
 ' =====================================================================
-'  GENERAR_PLANOS  v2.5  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  GENERAR_PLANOS  v2.12  -  Regla externa iLogic (Inventor 2026) - COIMSER
 '  Genera el juego de planos de FABRICACION y HABILITADO de un ensamble
 '  ya numerado con TEKLA_NUMERACION, en un solo .idw con una hoja por plano,
 '  siguiendo la jerarquia:
@@ -34,6 +34,22 @@
 '         NOTAS DE FABRICACION leido de NOTAS_FABRICACION.txt (secciones [GENERAL],
 '         [CONJUNTO], [HABILITADO]); se edita el .txt y se vuelve a ejecutar la regla.
 '
+'  v2.12 - Nombre del plano de un conjunto: PLCAY-CP1-CH-001-FAB (antes repetia la planta: CP1-PLCAY-CP1-CH-001-FAB).
+'  v2.11 - Vistas proyectadas con reintento (fallaban en perfiles girados largos: "El parametro no es
+'         correcto"). Si una hoja falla, se avisa y se siguen generando las demas.
+'  v2.10 - Las hojas que ya existian con el modelo girado dibujado torcido se rehacen solas al
+'          ejecutar GENERAR_PLANOS (no hace falta rehacer=SI).
+'  v2.9 - VISTAS EN LOS EJES DEL MODELO: si el conjunto o la pieza vino girado (STEP, referencia
+'         torcida) las vistas se orientan con la pieza mas grande (su cara mayor y su arista mas
+'         larga), no con los ejes del ensamble. Si ya esta casi recto (< 0.5 grados) no cambia nada.
+'         Argumento rehacer=SI para rehacer todas las hojas ya existentes con las vistas nuevas.
+'  v2.8 - Rehace desarrollos "de canto" (ancho = espesor) con la cara A en la cara mayor.
+'  v2.7 - ESTILO_PLANO y NOTAS_FABRICACION se toman de la carpeta de reglas (Git), aunque las
+'         reglas esten en subcarpetas; las notas propias de una obra (en su carpeta) tienen prioridad.
+'  v2.6 - CHAPA (Sheet Metal): el habilitado lleva tambien el DESARROLLO (chapa desplegada) a la
+'         derecha, con cotas totales, notas de plegado y su medida. Si la pieza aun no tenia desarrollo
+'         se crea. En hojas que ya existian se agrega en el espacio libre (si no entra, lo avisa;
+'         argumento desarrollo=rehacer rehace esas hojas). Argumento desarrollo=NO para no ponerlo.
 '  v2.5 - REFERENCIAS (NUEVA_REFERENCIA: skeletons, equipos existentes, estructura existente)
 '         se OCULTAN en todas las vistas y no cuentan para la escala ni para los globos.
 '  v2.4 - Si el modelo crecio y las vistas de una hoja existente ya no entran a su escala,
@@ -157,6 +173,7 @@ Sub Main()
         If hActual.Count > 0 Then m = m & "Hojas actualizadas: " & hActual.Count & vbCrLf
         If hObsol.Count > 0 Then m = m & "OBSOLETAS (revisar / anular): " & String.Join(", ", hObsol) & vbCrLf
         If Not pdfOk Then m = m & "(no se pudo exportar el PDF)"
+        If errores.Count > 0 Then m = m & vbCrLf & "ATENCION - hojas que NO se pudieron crear (ver GENERAR_PLANOS.log): " & String.Join(", ", errores) & vbCrLf & "Vuelve a ejecutar la regla para reintentarlas."
         Aviso(m)
     Catch ex As Exception
         resumen.AppendLine("ERROR: " & ex.Message & vbCrLf & ex.StackTrace)
@@ -174,6 +191,7 @@ Private planta As String = ""
 Private proy As String = ""
 Private silencioso As Boolean
 Private TG As TransientGeometry
+Private errores As New List(Of String)
 Private resumen As New System.Text.StringBuilder
 Private conjOrden As New List(Of String)
 Private conjDoc As New Dictionary(Of String, Document)
@@ -311,7 +329,18 @@ Sub Sincronizar(dwg As DrawingDocument, asm As AssemblyDocument, existia As Bool
             Else
                 sh = NuevaHoja(dwg)
             End If
-            Construir(sh, k, asm)
+            Try
+                Construir(sh, k, asm)
+            Catch ex As Exception
+                ' v2.11: una hoja que falla no detiene el juego; se borra y se reintenta la proxima vez
+                resumen.AppendLine("  ERROR en la hoja " & k & ": " & ex.Message & "  (no se creo; vuelve a ejecutar)")
+                errores.Add(Marca(k))
+                Try
+                    If dwg.Sheets.Count > 1 Then sh.Delete()
+                Catch
+                End Try
+                Continue For
+            End Try
             SetTag(sh, "CLAVE", k)
             hojaDe(k) = sh
             If existia Then hNuevas.Add(Marca(k))
@@ -426,11 +455,13 @@ Sub Construir(sh As Sheet, k As String, asm As AssemblyDocument)
         Iso(sh, d, 26, 8.5, XMAX, LimiteInferior(pl))
     Else
         sh.Name = "HABILITADO " & Marca(k)
-        v = Vistas(sh, d, 2, 8.5, 40, YMAX, den)
+        Dim chapa As Boolean = ConDesarrollo(d)
+        v = Vistas(sh, d, 2, 8.5, If(chapa, 25, 40), YMAX, den)
         AcotarTotal(sh, v(0), True, True)
         AcotarTotal(sh, v(1), False, True)
         AcotarTotal(sh, v(2), True, False)
         Agujeros(sh, v(0))
+        If chapa Then Desarrollo(sh, d, 26, 8.5, XMAX, YMAX)
     End If
     SetTag(v(0), "BASE", "SI")
     Dim nt As GeneralNote = Nota(sh, TextoNota(k, asm, den))
@@ -442,15 +473,30 @@ End Sub
 ' Solo nota y globos. Vistas, cotas, lista y lo agregado a mano no se tocan.
 Sub Actualizar(sh As Sheet, k As String, asm As AssemblyDocument)
     Dim d As Document = DocDeClave(k, asm)
+    ' v2.9: rehacer=SI -> todas las hojas de la regla se rehacen (vistas nuevas, p.ej. ejes propios)
+    If Arg("rehacer").ToUpper() = "SI" Then
+        LimpiarHoja(sh)
+        Construir(sh, k, asm)
+        resumen.AppendLine("  ~ " & k & ": hoja rehecha (rehacer=SI)")
+        Exit Sub
+    End If
     Dim b As String = NombreBase(sh)
     If b.StartsWith("OBSOLETO ") Then
         sh.Name = b.Substring(9)
         SetTag(sh, "ESTADO", "")
     End If
     Dim v As DrawingView = VistaBase(sh, d)
+    ' v2.10: modelo GIRADO (STEP / referencia torcida) y la hoja vieja lo dibujo en los ejes del
+    ' ensamble -> la hoja se rehace sola con las vistas en los ejes propios del modelo
+    If v IsNot Nothing AndAlso Not RuleArguments.Exists("no_reencuadrar") AndAlso VistaTorcida(v, d) Then
+        LimpiarHoja(sh)
+        Construir(sh, k, asm)
+        resumen.AppendLine("  ~ " & k & ": el modelo esta girado; hoja rehecha con sus ejes propios")
+        Exit Sub
+    End If
     ' el modelo crecio: si las vistas ya no entran a su escala, se rehace la hoja
     If v IsNot Nothing AndAlso Not RuleArguments.Exists("no_reencuadrar") Then
-        Dim nec As Double = DenNecesario(d, 2, 8.5, If(k.StartsWith("H|"), 40, 25), YMAX)
+        Dim nec As Double = DenNecesario(d, 2, 8.5, If(k.StartsWith("H|") AndAlso Not ConDesarrollo(d), 40, 25), YMAX)
         Dim act As Double = Math.Round(1 / v.Scale, 1)
         If act < nec - 0.01 Then
             LimpiarHoja(sh)
@@ -459,8 +505,26 @@ Sub Actualizar(sh As Sheet, k As String, asm As AssemblyDocument)
             Exit Sub
         End If
     End If
+    If k.StartsWith("H|") AndAlso Arg("desarrollo").ToLower() = "rehacer" AndAlso ConDesarrollo(d) AndAlso VistaDesarrollo(sh) Is Nothing Then
+        LimpiarHoja(sh)
+        Construir(sh, k, asm)
+        resumen.AppendLine("  ~ " & k & ": hoja rehecha con el desarrollo")
+        Exit Sub
+    End If
     Dim den As Double = 1
     If v IsNot Nothing Then den = Math.Round(1 / v.Scale, 1)
+    ' chapa sin desarrollo en la hoja: se agrega en el espacio libre de la derecha
+    If k.StartsWith("H|") AndAlso ConDesarrollo(d) AndAlso VistaDesarrollo(sh) Is Nothing Then
+        Dim xLibre As Double = 0
+        For Each dv As DrawingView In sh.DrawingViews
+            xLibre = Math.Max(xLibre, dv.Left + dv.Width)
+        Next
+        If XMAX - xLibre - 1.5 >= 6 Then
+            Desarrollo(sh, d, xLibre + 1.5, 8.5, XMAX, YMAX)
+        Else
+            resumen.AppendLine("  ! " & k & ": chapa sin desarrollo y sin espacio libre en la hoja (ejecuta con desarrollo=rehacer)")
+        End If
+    End If
     ' referencias agregadas despues (skeleton, equipo existente): ocultas en todas las vistas
     For Each dv As DrawingView In sh.DrawingViews
         Try
@@ -627,7 +691,7 @@ End Sub
 
 ' Corre ESTILO_PLANO sobre el plano (sin guardar ni rehacer las listas: GENERAR guarda despues)
 Sub AplicarEstilo(dwg As DrawingDocument, asm As AssemblyDocument)
-    Dim regla As String = ""
+    Dim regla As String = RutaRegla("ESTILO_PLANO")
     Dim dir As String = System.IO.Path.GetDirectoryName(asm.FullFileName)
     For lvl As Integer = 0 To 6
         If dir Is Nothing Then Exit For
@@ -656,6 +720,19 @@ End Sub
 Sub CargarNotasFab(asm As AssemblyDocument)
     notasFab = New Dictionary(Of String, String)
     Dim archivo As String = ""
+    ' 1) notas propias de la obra (carpeta del ensamble hasta la de la obra)
+    Dim dObra As String = System.IO.Path.GetDirectoryName(asm.FullFileName)
+    For lvl As Integer = 0 To 6
+        If dObra Is Nothing OrElse dObra = "" OrElse archivo <> "" Then Exit For
+        For Each sd As String In New String() {"", "plantillas"}
+            Dim p As String = System.IO.Path.Combine(System.IO.Path.Combine(dObra, sd), "NOTAS_FABRICACION.txt")
+            If archivo = "" AndAlso System.IO.File.Exists(p) Then archivo = p
+        Next
+        If System.IO.File.Exists(System.IO.Path.Combine(dObra, "_OBRA.txt")) Then Exit For
+        dObra = System.IO.Path.GetDirectoryName(dObra)
+    Next
+    ' 2) las de la carpeta de reglas (Git)
+    If archivo = "" Then archivo = RutaRegla("NOTAS_FABRICACION.txt")
     Dim dir As String = System.IO.Path.GetDirectoryName(asm.FullFileName)
     For lvl As Integer = 0 To 6
         If dir Is Nothing Then Exit For
@@ -740,10 +817,11 @@ End Function
 ' ===================== vistas =====================
 ' Base con la mayor dimension horizontal, proyectada debajo y a la derecha.
 Function Vistas(sh As Sheet, d As Document, x0 As Double, y0 As Double, x1 As Double, y1 As Double, ByRef den As Double) As DrawingView()
-    Dim rb As Box = Caja(d)
-    Dim mn As Point = rb.MinPoint
-    Dim mx As Point = rb.MaxPoint
-    Dim ext() As Double = {mx.X - mn.X, mx.Y - mn.Y, mx.Z - mn.Z}
+    ' v2.9: ejes PROPIOS del modelo (si vino girado de un STEP, las vistas se alinean con el)
+    Dim ejes() As UnitVector = Nothing
+    Dim ext() As Double = Nothing
+    Dim c As Point = Nothing
+    Marco(d, ejes, ext, c)
     Dim iLg As Integer = 0
     For i As Integer = 1 To 2
         If ext(i) > ext(iLg) Then iLg = i
@@ -759,8 +837,6 @@ Function Vistas(sh As Sheet, d As Document, x0 As Double, y0 As Double, x1 As Do
     Dim gap As Double = 2.2
     den = DenNecesario(d, x0, y0, x1, y1)
     Dim sc As Double = 1 / den
-    Dim c As Point = TG.CreatePoint((mn.X + mx.X) / 2, (mn.Y + mx.Y) / 2, (mn.Z + mx.Z) / 2)
-    Dim ejes() As UnitVector = {TG.CreateUnitVector(1, 0, 0), TG.CreateUnitVector(0, 1, 0), TG.CreateUnitVector(0, 0, 1)}
     Dim vSm As UnitVector = ejes(iSm)
     Dim cam As Camera = ThisApplication.TransientObjects.CreateCamera()
     cam.Target = c
@@ -769,16 +845,38 @@ Function Vistas(sh As Sheet, d As Document, x0 As Double, y0 As Double, x1 As Do
     Dim bx As Double = x0 + gap + Lg * sc / 2
     Dim by As Double = y1 - gap - Md * sc / 2
     Dim v As DrawingView = sh.DrawingViews.AddBaseView(d, TG.CreatePoint2d(bx, by), sc, ViewOrientationTypeEnum.kArbitraryViewOrientation, DrawingViewStyleEnum.kHiddenLineRemovedDrawingViewStyle, "", cam)
-    Dim vb As DrawingView = sh.DrawingViews.AddProjectedView(v, TG.CreatePoint2d(bx, by - Md * sc / 2 - gap - Sm * sc / 2), DrawingViewStyleEnum.kFromBaseDrawingViewStyle)
-    Dim vr As DrawingView = sh.DrawingViews.AddProjectedView(v, TG.CreatePoint2d(bx + Lg * sc / 2 + gap + Sm * sc / 2, by), DrawingViewStyleEnum.kFromBaseDrawingViewStyle)
+    Dim vb As DrawingView = Proyectar(sh, v, TG.CreatePoint2d(bx, by - Md * sc / 2 - gap - Sm * sc / 2))
+    Dim vr As DrawingView = Proyectar(sh, v, TG.CreatePoint2d(bx + Lg * sc / 2 + gap + Sm * sc / 2, by))
     OcultarRef(v, d) : OcultarRef(vb, d) : OcultarRef(vr, d)
     Return New DrawingView() {v, vb, vr}
 End Function
 
+' v2.11: vista proyectada de una base con camara propia. Inventor a veces aun no termino de
+' calcular la vista base girada y AddProjectedView falla con "El parametro no es correcto":
+' se fuerza el calculo de la base (leer su tamano) y se reintenta.
+Function Proyectar(sh As Sheet, v As DrawingView, pt As Point2d) As DrawingView
+    Dim ultimo As Exception = Nothing
+    For intento As Integer = 1 To 4
+        Try
+            Dim w As Double = v.Width + v.Height + v.Center.X
+            If intento > 1 Then
+                Try : ThisApplication.UserInterfaceManager.DoEvents() : Catch : End Try
+                Try : sh.Update() : Catch : End Try
+                System.Threading.Thread.Sleep(200 * intento)
+            End If
+            Return sh.DrawingViews.AddProjectedView(v, pt, DrawingViewStyleEnum.kFromBaseDrawingViewStyle)
+        Catch ex As Exception
+            ultimo = ex
+        End Try
+    Next
+    Throw New Exception("no se pudo proyectar la vista de " & v.Name & " (" & ultimo.Message & ")")
+End Function
+
 ' Escala normalizada (1:den) con la que las 3 vistas del modelo entran en la zona dada
 Function DenNecesario(d As Document, x0 As Double, y0 As Double, x1 As Double, y1 As Double) As Double
-    Dim rb As Box = Caja(d)
-    Dim e() As Double = {rb.MaxPoint.X - rb.MinPoint.X, rb.MaxPoint.Y - rb.MinPoint.Y, rb.MaxPoint.Z - rb.MinPoint.Z}
+    Dim ej() As UnitVector = Nothing, ex() As Double = Nothing, cc As Point = Nothing
+    Marco(d, ej, ex, cc)
+    Dim e() As Double = {ex(0), ex(1), ex(2)}
     Array.Sort(e)
     Dim Sm As Double = e(0), Md As Double = e(1), Lg As Double = e(2)
     Dim gap As Double = 2.2
@@ -1140,7 +1238,7 @@ End Function
 
 ' "EE" + "ANTAPACAY" -> "EE-ANTAPACAY"; "EE" + "ANT-EE" -> "ANT-EE" (no repite la planta)
 Function NomBase(planta As String, nombre As String) As String
-    If nombre.ToUpper() = planta.ToUpper() OrElse nombre.ToUpper().EndsWith("-" & planta.ToUpper()) Then Return nombre
+    If nombre.ToUpper() = planta.ToUpper() OrElse nombre.ToUpper().EndsWith("-" & planta.ToUpper()) OrElse nombre.ToUpper().Contains("-" & planta.ToUpper() & "-") Then Return nombre
     Return planta & "-" & nombre
 End Function
 
@@ -1268,3 +1366,277 @@ Sub CajaEn(occs As Object, ByRef b As Box)
         End Try
     Next
 End Sub
+
+' ===================== desarrollo de chapa (v2.6) =====================
+' Pieza de chapa con desarrollo (lo crea si falta). desarrollo=NO lo desactiva.
+Function ConDesarrollo(d As Document) As Boolean
+    If Arg("desarrollo").ToUpper() = "NO" Then Return False
+    If d Is Nothing OrElse d.DocumentType <> DocumentTypeEnum.kPartDocumentObject Then Return False
+    If d.SubType <> "{9C464203-9BAE-11D3-8BAD-0060B0CE6BB4}" Then Return False
+    Try
+        Dim sm As SheetMetalComponentDefinition = CType(CType(d, PartDocument).ComponentDefinition, SheetMetalComponentDefinition)
+        If sm.SurfaceBodies.Count = 0 Then Return False
+        Dim tenia As Boolean = sm.HasFlatPattern AndAlso Math.Min(sm.FlatPattern.Length, sm.FlatPattern.Width) > 1.5 * sm.Thickness.Value
+        If Not tenia Then
+            DesarrolloBien(sm)
+            Try
+                If (System.IO.File.GetAttributes(d.FullFileName) And System.IO.FileAttributes.ReadOnly) <> System.IO.FileAttributes.ReadOnly Then d.Save2(False)
+            Catch
+            End Try
+        End If
+        Return sm.HasFlatPattern
+    Catch
+        Return False
+    End Try
+End Function
+
+Function VistaDesarrollo(sh As Sheet) As DrawingView
+    For Each dv As DrawingView In sh.DrawingViews
+        Try
+            If GetTag(dv, "DESARROLLO") = "SI" OrElse dv.IsFlatPatternView Then Return dv
+        Catch
+        End Try
+    Next
+    Return Nothing
+End Function
+
+' Vista del desarrollo en la zona dada: escala normalizada, cotas totales, notas de plegado y titulo
+Sub Desarrollo(sh As Sheet, d As Document, x0 As Double, y0 As Double, x1 As Double, y1 As Double)
+    Try
+        Dim sm As SheetMetalComponentDefinition = CType(CType(d, PartDocument).ComponentDefinition, SheetMetalComponentDefinition)
+        Dim fp As FlatPattern = sm.FlatPattern
+        Dim L As Double = fp.Length
+        Dim W As Double = fp.Width
+        Dim dens() As Double = {1, 2, 2.5, 5, 10, 15, 20, 25, 30, 40, 50, 75, 100, 150, 200, 250}
+        Dim den As Double = 250
+        For Each dd As Double In dens
+            If Math.Max(L, W) / dd <= (x1 - x0 - 4) AndAlso Math.Min(L, W) / dd <= (y1 - y0 - 5) AndAlso L / dd <= (x1 - x0 - 4) Then
+                den = dd
+                Exit For
+            End If
+        Next
+        Dim opts As NameValueMap = ThisApplication.TransientObjects.CreateNameValueMap()
+        opts.Add("SheetMetalFoldedModel", False)
+        Try : sh.Activate() : Catch : End Try
+        Dim cx As Double = (x0 + x1) / 2
+        Dim cy As Double = (y0 + y1) / 2 - 0.5
+        Dim vf As DrawingView = sh.DrawingViews.AddBaseView(d, TG.CreatePoint2d(cx, cy), 1 / den, ViewOrientationTypeEnum.kDefaultViewOrientation, DrawingViewStyleEnum.kHiddenLineRemovedDrawingViewStyle, "", Nothing, opts)
+        ' si quedo mas alto que ancho y no entra, se gira 90
+        If vf.Height > (y1 - y0 - 4) AndAlso vf.Width < vf.Height Then
+            Try : vf.RotateByAngle(Math.PI / 2) : Catch : End Try
+        End If
+        SetTag(vf, "DESARROLLO", "SI")
+        AcotarTotal(sh, vf, True, True)
+        ' notas de plegado (sentido y angulo)
+        Dim nPl As Integer = 0
+        For Each cv As DrawingCurve In vf.DrawingCurves
+            Try
+                If cv.EdgeType = DrawingEdgeTypeEnum.kBendUpEdge OrElse cv.EdgeType = DrawingEdgeTypeEnum.kBendDownEdge Then
+                    sh.DrawingNotes.BendNotes.Add(cv)
+                    nPl += 1
+                End If
+            Catch
+            End Try
+        Next
+        Dim t As String = "DESARROLLO  ESC 1:" & den & "   " & (L * 10).ToString("0") & " x " & (W * 10).ToString("0") & " mm" & If(nPl > 0, "   (" & nPl & " plegados)", "")
+        Dim gn As GeneralNote = sh.DrawingNotes.GeneralNotes.AddFitted(TG.CreatePoint2d(vf.Left, vf.Top + 2.4), t)
+        SetTag(gn, "NOTA", "DESARROLLO")
+        resumen.AppendLine("    desarrollo " & (L * 10).ToString("0") & " x " & (W * 10).ToString("0") & " mm, esc 1:" & den)
+    Catch ex As Exception
+        resumen.AppendLine("  desarrollo: " & ex.Message)
+    End Try
+End Sub
+
+' Ruta completa de un archivo de reglas (o dato) en las carpetas de reglas externas de iLogic,
+' incluidas sus subcarpetas (1_OBRA, 2_MODELADO...).
+Function RutaRegla(archivo As String) As String
+    If Not archivo.Contains(".") Then archivo &= ".iLogicVb"
+    Try
+        For Each raiz As String In iLogicVb.Automation.FileOptions.ExternalRuleDirectories
+            If Not System.IO.Directory.Exists(raiz) Then Continue For
+            For Each f As String In System.IO.Directory.GetFiles(raiz, archivo, System.IO.SearchOption.AllDirectories)
+                If f.ToLower().Contains("\_to_delete\") OrElse f.ToLower().Contains("\oldversions\") Then Continue For
+                Return f
+            Next
+        Next
+    Catch
+    End Try
+    Return ""
+End Function
+
+' Desarrollo de chapa con la cara A en la cara plana MAYOR. Una chapa hecha desde un solido
+' (STEP, derivada) a veces se desarrolla "de canto" (ancho = espesor): aqui se rehace.
+' Devuelve True si hay desarrollo valido.
+Function DesarrolloBien(sm As SheetMetalComponentDefinition) As Boolean
+    Try
+        Dim t As Double = sm.Thickness.Value
+        If sm.HasFlatPattern Then
+            Dim w As Double = Math.Min(sm.FlatPattern.Length, sm.FlatPattern.Width)
+            If w > 1.5 * t Then Return True
+            sm.FlatPattern.Delete()
+        End If
+        Dim big As Face = Nothing
+        Dim a As Double = 0
+        For Each f As Face In sm.SurfaceBodies.Item(1).Faces
+            If f.SurfaceType = SurfaceTypeEnum.kPlaneSurface AndAlso f.Evaluator.Area > a Then
+                a = f.Evaluator.Area
+                big = f
+            End If
+        Next
+        If big IsNot Nothing Then
+            For i As Integer = sm.ASideDefinitions.Count To 1 Step -1
+                Try : sm.ASideDefinitions.Item(i).Delete() : Catch : End Try
+            Next
+            Try : sm.ASideDefinitions.Add(big) : Catch : End Try
+        End If
+        sm.Unfold()
+        Try : sm.FlatPattern.ExitEdit() : Catch : End Try
+        Return sm.HasFlatPattern
+    Catch
+        Return False
+    End Try
+End Function
+
+' ===================== ejes propios del modelo (v2.9) =====================
+' Ejes (3 vectores unitarios), extension en cada eje y centro del modelo:
+'  - el marco sale de la PIEZA MAS GRANDE: normal de su cara plana mayor + su arista recta mas
+'    larga sobre esa cara (una viga, una plancha, un perfil girado dan su propia orientacion);
+'  - si ese marco esta a menos de 0.5 grados de los ejes del ensamble, se usan X, Y, Z.
+Sub Marco(d As Document, ByRef ejes() As UnitVector, ByRef ext() As Double, ByRef c As Point)
+    ejes = New UnitVector() {TG.CreateUnitVector(1, 0, 0), TG.CreateUnitVector(0, 1, 0), TG.CreateUnitVector(0, 0, 1)}
+    Dim pts As New List(Of Point)
+    Dim cuerpoGuia As SurfaceBody = Nothing
+    Dim volMax As Double = 0
+    Try
+        If d.DocumentType = DocumentTypeEnum.kPartDocumentObject Then
+            For Each b As SurfaceBody In CType(d, PartDocument).ComponentDefinition.SurfaceBodies
+                AgregarPuntos(b, pts)
+                Dim vb As Double = b.Volume(0.01)
+                If vb > volMax Then volMax = vb : cuerpoGuia = b
+            Next
+        Else
+            MarcoEn(CType(d, AssemblyDocument).ComponentDefinition.Occurrences, pts, cuerpoGuia, volMax)
+        End If
+    Catch
+    End Try
+    Dim girado As UnitVector() = EjesDeCuerpo(cuerpoGuia)
+    If girado IsNot Nothing Then
+        Dim recto As Boolean = True
+        For Each v As UnitVector In girado
+            If Math.Max(Math.Abs(v.X), Math.Max(Math.Abs(v.Y), Math.Abs(v.Z))) < Math.Cos(0.5 * Math.PI / 180) Then recto = False
+        Next
+        If Not recto Then ejes = girado
+    End If
+    ext = New Double() {0, 0, 0}
+    If pts.Count = 0 Then
+        Dim rb As Box = Caja(d)
+        ext = New Double() {rb.MaxPoint.X - rb.MinPoint.X, rb.MaxPoint.Y - rb.MinPoint.Y, rb.MaxPoint.Z - rb.MinPoint.Z}
+        c = TG.CreatePoint((rb.MinPoint.X + rb.MaxPoint.X) / 2, (rb.MinPoint.Y + rb.MaxPoint.Y) / 2, (rb.MinPoint.Z + rb.MaxPoint.Z) / 2)
+        Exit Sub
+    End If
+    Dim mn() As Double = {1.0E+30, 1.0E+30, 1.0E+30}
+    Dim mx() As Double = {-1.0E+30, -1.0E+30, -1.0E+30}
+    For Each q As Point In pts
+        For i As Integer = 0 To 2
+            Dim x As Double = q.X * ejes(i).X + q.Y * ejes(i).Y + q.Z * ejes(i).Z
+            If x < mn(i) Then mn(i) = x
+            If x > mx(i) Then mx(i) = x
+        Next
+    Next
+    Dim cx As Double = 0, cy As Double = 0, cz As Double = 0
+    For i As Integer = 0 To 2
+        ext(i) = mx(i) - mn(i)
+        Dim m As Double = (mx(i) + mn(i)) / 2
+        cx += m * ejes(i).X : cy += m * ejes(i).Y : cz += m * ejes(i).Z
+    Next
+    c = TG.CreatePoint(cx, cy, cz)
+End Sub
+
+Sub MarcoEn(occs As Object, pts As List(Of Point), ByRef guia As SurfaceBody, ByRef volMax As Double)
+    For Each o As ComponentOccurrence In occs
+        Try
+            If o.Suppressed OrElse EsRef(o) OrElse Not o.Visible Then Continue For
+            If o.DefinitionDocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+                MarcoEn(o.SubOccurrences, pts, guia, volMax)
+                Continue For
+            End If
+            For Each b As SurfaceBody In o.SurfaceBodies
+                AgregarPuntos(b, pts)
+                Dim vb As Double = b.Volume(0.01)
+                If vb > volMax Then volMax = vb : guia = b
+            Next
+        Catch
+        End Try
+    Next
+End Sub
+
+Sub AgregarPuntos(b As SurfaceBody, pts As List(Of Point))
+    Try
+        For Each v As Vertex In b.Vertices
+            pts.Add(v.Point)
+        Next
+        If b.Vertices.Count = 0 Then
+            pts.Add(b.RangeBox.MinPoint)
+            pts.Add(b.RangeBox.MaxPoint)
+        End If
+    Catch
+    End Try
+End Sub
+
+' Ejes de un cuerpo: normal de la cara plana mayor, arista recta mas larga de esa cara, y su producto
+Function EjesDeCuerpo(b As SurfaceBody) As UnitVector()
+    If b Is Nothing Then Return Nothing
+    Try
+        Dim f1 As Face = Nothing
+        Dim a1 As Double = 0
+        For Each f As Face In b.Faces
+            If f.SurfaceType = SurfaceTypeEnum.kPlaneSurface AndAlso f.Evaluator.Area > a1 Then
+                a1 = f.Evaluator.Area
+                f1 = f
+            End If
+        Next
+        If f1 Is Nothing Then Return Nothing
+        Dim n As UnitVector = CType(f1.Geometry, Plane).Normal
+        Dim u As UnitVector = Nothing
+        Dim lu As Double = 0
+        For Each ed As Edge In f1.Edges
+            If ed.GeometryType <> CurveTypeEnum.kLineSegmentCurve Then Continue For
+            Dim ps As Point = ed.StartVertex.Point, pe As Point = ed.StopVertex.Point
+            Dim dd As Double = ps.DistanceTo(pe)
+            If dd > lu Then
+                lu = dd
+                u = TG.CreateUnitVector(pe.X - ps.X, pe.Y - ps.Y, pe.Z - ps.Z)
+            End If
+        Next
+        If u Is Nothing Then Return Nothing
+        Dim v As UnitVector = n.CrossProduct(u)
+        Return New UnitVector() {u, v, n}
+    Catch
+        Return Nothing
+    End Try
+End Function
+
+' La vista base no mira segun los ejes propios del modelo (solo si el modelo esta girado)
+Function VistaTorcida(v As DrawingView, d As Document) As Boolean
+    Try
+        Dim ej() As UnitVector = Nothing, ex() As Double = Nothing, cc As Point = Nothing
+        Marco(d, ej, ex, cc)
+        Dim recto As Boolean = True
+        For Each u As UnitVector In ej
+            If Math.Max(Math.Abs(u.X), Math.Max(Math.Abs(u.Y), Math.Abs(u.Z))) < 0.9999 Then recto = False
+        Next
+        If recto Then Return False
+        Dim iSm As Integer = 0
+        For i As Integer = 1 To 2
+            If ex(i) < ex(iSm) Then iSm = i
+        Next
+        Dim cam As Camera = v.Camera
+        Dim dx As Double = cam.Eye.X - cam.Target.X, dy As Double = cam.Eye.Y - cam.Target.Y, dz As Double = cam.Eye.Z - cam.Target.Z
+        Dim L As Double = Math.Sqrt(dx * dx + dy * dy + dz * dz)
+        If L = 0 Then Return False
+        Dim dotv As Double = Math.Abs((dx * ej(iSm).X + dy * ej(iSm).Y + dz * ej(iSm).Z) / L)
+        Return dotv < 0.999
+    Catch
+        Return False
+    End Try
+End Function

@@ -1,5 +1,5 @@
 ' =====================================================================
-'  TEKLA_NUMERACION  v3.7  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  TEKLA_NUMERACION  v3.13  -  Regla externa iLogic (Inventor 2026) - COIMSER
 '  Marcacion jerarquica segun A0.61 MARCACION DE PIEZAS (TABLA_MARCAS.csv)
 '
 '   PROYECTO   ANTAPACCAY          -> propiedad PROYECTO del ensamble principal (registro unico)
@@ -55,6 +55,24 @@
 '  v3.5 - SIN REDONDEOS: el perfil de plancha y la LONGITUD respetan los decimales del modelo
 '     (PL4.5x232.4, L=4076.5). La huella sigue comparando en mm enteros, asi las marcas ya
 '     asignadas no cambian por este ajuste.
+'  v3.13 - CONJUNTO CORRIDO SOLO (dentro de CH-002): ya no toma la marca CH1 por ser el primero en correr.
+'         El numero de la marca del conjunto sale del numero del archivo (PLCAY-CP1-CH-002.iam ->
+'         CP1-CH2) si esta libre; si no, el siguiente de la serie. Asi dentro del conjunto o desde la
+'         planta da la misma marca. Configuracion 1 (INICIAL) solo se permite desde la planta
+'         (desde un conjunto borraria el registro de los demas).
+'  v3.12 - Corregido: la firma izquierda/derecha no funcionaba (Inventor no da los ejes principales;
+'         ahora se calculan del tensor de inercia).
+'  v3.11 - IZQUIERDA / DERECHA: dos piezas espejo (no simetricas) reciben marcas distintas aunque
+'          pesen igual, tambien las sacadas de un STEP. Las simetricas (planchas planas, perfiles
+'          con cortes rectos...) no cambian. En obras ya numeradas la primera conserva su marca.
+'  v3.10 - PLANCHAS DEL STEP: chapa desarrollada "de canto" se rehace con la cara mayor; plancha
+'         solida inclinada se mide por sus caras (espesor, ancho, largo), no por la caja.
+'  v3.9 - PERFIL SIN PARAMETROS (EXTRAER_PIEZA del STEP, modelado a mano): con la propiedad PERFIL
+'         (W18x50, C10x15.3, L4x4x1/2, HSS6x6x1/4...) se marca como perfil (w, c, a, xs...) y el
+'         largo se mide a lo largo del eje del perfil (normal de la cara de extremo), de punta a
+'         punta: sirve inclinado, con destajes, a inglete y en tramos cortos. Se escribe con CAMBIAR_NATURALEZA o EXTRAER_PIEZA.
+'  v3.8 - ESPEJO: pieza creada con ESPEJO_PIEZA (ESPEJO_DE) y QUIRAL=SI recibe marca propia
+'         (la inercia no distingue izquierda de derecha). QUIRAL=NO -> misma marca que la original.
 '  v3.7 - BISEL: se mide contra la cara principal de la plancha (no contra los ejes X/Y/Z), asi
 '         una plancha inclinada (tolva, chute, arriostre) con cantos rectos ya no sale como b.
 '         (El 'SI' con tilde se escribe con ChrW: el archivo queda solo ASCII.)
@@ -143,6 +161,10 @@ Sub Main()
     If modo <> "tomar_nuevo" AndAlso modo <> "conservar" Then modo = "comparar"
     If RuleArguments.Exists("reutilizar") Then reutilizar = True
     If RuleArguments.Exists("no_reutilizar") Then reutilizar = False
+    If reinicio AndAlso LeerProp(asm, "TIPO_ENSAMBLE").ToUpper() <> "PLANTA" AndAlso Not RuleArguments.Exists("forzar_inicial") Then
+        If Not sil Then MessageBox.Show("La configuracion 1 - INICIAL renumera TODA la planta: ejecutala desde el ensamble de la planta, no desde un conjunto (aqui borraria las marcas de los demas conjuntos)." & vbCrLf & "Usa la 2, 3 o 4 dentro del conjunto.", "TEKLA_NUMERACION")
+        Exit Sub
+    End If
     If reinicio AndAlso Not sil Then
         If MessageBox.Show("CONFIGURACION 1 - INICIAL" & vbCrLf & vbCrLf & "Se renumera TODA la planta " & planta & " desde 1 (EE-SP1, EE-SP1-n1...)." & vbCrLf & "El registro actual se archiva como copia. Lo que tenga BLOQUEADO = SI y lo ya enviado a corte conserva su marca y su numero no se repite." & vbCrLf & vbCrLf & "Usala solo ANTES de emitir planos. Continuar?", "TEKLA_NUMERACION", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) <> DialogResult.Yes Then Exit Sub
     End If
@@ -277,6 +299,7 @@ Private padreDoc As New Dictionary(Of String, String)
 Private docObj As New Dictionary(Of String, Document)
 Private vistas As New List(Of String)
 Private regDir As String = ""
+Private numeroSugerido As Integer = 0
 Private protegidas As New List(Of String)
 Private HOY As String = DateTime.Now.ToString("yyyy-MM-dd HH:mm")
 Private Const NCOL As Integer = 10
@@ -328,7 +351,11 @@ Function Procesar(a As AssemblyDocument) As String
         Dim claveV As String = "A|" & planta & "|" & pref & "|" & String.Join(",", firmaV)
         Dim acA As String = LeerProp(a, "ACABADO").Trim().ToUpper()
         Dim clave As String = claveV & "|I:" & FirmaInercia(a.ComponentDefinition) & "|G:" & FirmaArmado(a) & If(acA <> "", "|AC:" & acA, "")
+        numeroSugerido = 0
+        Dim mnum As Match = Regex.Match(System.IO.Path.GetFileNameWithoutExtension(a.FullFileName), "-" & Regex.Escape(pref) & "-(\d+)$", RegexOptions.IgnoreCase)
+        If mnum.Success Then Integer.TryParse(mnum.Groups(1).Value, numeroSugerido)
         miMarca = Asignar(clave, planta & "-" & pref, Existente(a), claveV, LeerProp(a, "MARCA"), a.FullFileName)
+        numeroSugerido = 0
         clave = ClaveDe(clave, miMarca)
         Dim dt As PropertySet = a.PropertySets.Item("Design Tracking Properties")
         Dim descC As String = pref
@@ -431,8 +458,16 @@ Sub NumerarParte(p As PartDocument, dueno As String)
     If marcaDoc.ContainsKey(p.FullFileName) Then Exit Sub
     Dim inf() As String = Info(p)
     If inf Is Nothing Then Exit Sub
-    Dim claveP As String = "P|" & planta & "|" & inf(5)
-    Dim marca As String = Asignar(claveP, dueno & "-" & inf(0), Existente(p), "P|" & planta & "|" & inf(6), LeerProp(p, "MARCA"), p.FullFileName)
+    ' v3.8: pieza ESPEJO (ESPEJO_PIEZA) quiral -> izquierda/derecha distintas -> marca propia
+    Dim esp As String = ""
+    If LeerProp(p, "ESPEJO_DE") <> "" AndAlso LeerProp(p, "QUIRAL").ToUpper() <> "NO" Then esp = "|ESP"
+    ' v3.11: izquierda / derecha en TODAS las piezas (STEP, copias...): firma de quiralidad
+    Dim q As String = FirmaQuiral(p)
+    Dim claveSinQ As String = "P|" & planta & "|" & inf(5) & esp
+    Dim claveP As String = claveSinQ & q
+    ' migracion: la primera pieza con la huella anterior (sin firma) conserva su marca; su espejo toma otra
+    Dim claveVieja As String = If(q <> "", claveSinQ, "P|" & planta & "|" & inf(6) & esp)
+    Dim marca As String = Asignar(claveP, dueno & "-" & inf(0), Existente(p), claveVieja, LeerProp(p, "MARCA"), p.FullFileName)
     claveP = ClaveDe(claveP, marca)
     marcaDoc(p.FullFileName) = marca
     Vincular(claveP, p, "PARTE", inf(1))
@@ -660,7 +695,15 @@ Function Asignar(clave As String, serie As String, existente As String, claveVie
         conservadas.Add(actual)
         Return Usar(actual, clave)
     End If
-    Dim marca As String = NuevoNumero(serie)
+    Dim marca As String = ""
+    If numeroSugerido > 0 Then
+        Dim sug As String = serie & numeroSugerido.ToString()
+        If Not reg.ContainsValue(sug) AndAlso Not usadasRun.ContainsKey(sug) AndAlso Not reservadas.Contains(sug) AndAlso Not enviadas.Contains(sug) Then
+            marca = sug
+            If Not cont.ContainsKey(serie) OrElse cont(serie) < numeroSugerido Then cont(serie) = numeroSugerido
+        End If
+    End If
+    If marca = "" Then marca = NuevoNumero(serie)
     reg(clave) = marca
     nuevas.Add(clave & ";" & marca)
     ' la pieza tenia una marca ya cortada y su geometria cambio
@@ -1187,11 +1230,19 @@ Function Clasificar(p As PartDocument, gl As Double, ByRef perfil As String, ByR
     Dim dt As PropertySet = p.PropertySets.Item("Design Tracking Properties")
     Dim perfilUsr As String = LeerProp(p, "PERFIL")
 
+    ' v3.9: perfil sin parametros (sacado de un STEP, modelado a mano) con la propiedad PERFIL
+    ' (W18x50, C10x15.3, L4x4x1/2, HSS6x6x1/4...): se trata como perfil, largo = lado mayor
+    Dim famUsr As String = ""
+    If gl <= 0 AndAlso perfilUsr <> "" AndAlso p.SubType <> "{9C464203-9BAE-11D3-8BAD-0060B0CE6BB4}" Then
+        famUsr = FamiliaDePerfil(perfilUsr)
+        If famUsr <> "" Then gl = LargoPerfil(p)
+    End If
+
     ' 1) Perfil de Frame Generator / Content Center
     If gl > 0 Then
         largo = gl
         esPerfil = True
-        Dim fam As String = Familia(p)
+        Dim fam As String = If(famUsr <> "", famUsr, Familia(p))
         Dim tam As String = PropDT(p, "Size Designation")
         If tam = "" Then tam = CStr(dt.Item("Stock Number").Value)
         tam = Regex.Replace(tam, "\s+-\s*[\d.,]+\s*$", "")
@@ -1240,6 +1291,7 @@ Function Clasificar(p As PartDocument, gl As Double, ByRef perfil As String, ByR
     Dim t As Double = 0, a As Double = 0, l As Double = 0
     If p.SubType = "{9C464203-9BAE-11D3-8BAD-0060B0CE6BB4}" Then
         Dim sm As SheetMetalComponentDefinition = CType(p.ComponentDefinition, SheetMetalComponentDefinition)
+        DesarrolloBien(sm)   ' v3.10: desarrollo "de canto" -> se rehace con la cara mayor
         t = sm.Thickness.Value * 10
         Try : plegado = (sm.Bends.Count > 0) : Catch : End Try
         Try
@@ -1251,7 +1303,9 @@ Function Clasificar(p As PartDocument, gl As Double, ByRef perfil As String, ByR
         End Try
     End If
 
-    ' 3) Pieza normal: caja envolvente
+    ' 3) Pieza normal: plancha aunque este inclinada (2 caras planas grandes paralelas)
+    If a = 0 Then DimsPlancha(p, t, a, l)
+    ' 4) Pieza normal: caja envolvente
     If a = 0 Then
         Dim rb As Box = p.ComponentDefinition.RangeBox
         Dim dims() As Double = {(rb.MaxPoint.X - rb.MinPoint.X) * 10, (rb.MaxPoint.Y - rb.MinPoint.Y) * 10, (rb.MaxPoint.Z - rb.MinPoint.Z) * 10}
@@ -1693,3 +1747,270 @@ Function CarpetaHistorial(regPath As String) As String
         Return System.IO.Path.GetDirectoryName(regPath)
     End Try
 End Function
+
+' Familia equivalente segun la designacion escrita en PERFIL (para perfiles sin Content Center)
+Function FamiliaDePerfil(perfil As String) As String
+    Dim x As String = perfil.Trim().ToUpper().Replace(" ", "")
+    If Regex.IsMatch(x, "^(WT|ST|MT)\d") Then Return "tee"
+    If Regex.IsMatch(x, "^(W|S|M|HP|IPE|IPN|HE[ABM]?|HP)\d") Then Return "w-shape"
+    If Regex.IsMatch(x, "^(MC|C|UPN|UPE|U)\d") Then Return "channel"
+    If Regex.IsMatch(x, "^(L|LI)\d") Then Return "angle"
+    If Regex.IsMatch(x, "^Z\d") Then Return "zee"
+    If Regex.IsMatch(x, "^(PIPE|TUBO|TB|OD|CHS)") Then Return "pipe"
+    If Regex.IsMatch(x, "^(HSS|TS|RHS|SHS|TC|TR)\d") Then Return "tube"
+    If Regex.IsMatch(x, "^(RD|RED|O)\d") Then Return "round bar"
+    If Regex.IsMatch(x, "^(FL|PLT|PLATINA)\d") Then Return "flat"
+    If Regex.IsMatch(x, "^(SQ|BC)\d") Then Return "bar"
+    Return ""
+End Function
+
+' Largo (mm) de un perfil sin parametros (STEP, modelado a mano), aunque este inclinado:
+'  1) el EJE del perfil = normal de la cara de extremo (la cara plana con mas aristas: el contorno
+'     de la seccion W, C, L, tubo...);
+'  2) el largo = cuanto mide la pieza a lo largo de ese eje (de punta a punta: con cortes a
+'     inglete o destajes da el largo total de corte).
+'  Si no encuentra la cara de extremo: la arista recta mas larga; y si no, el lado mayor de la caja.
+Function LargoPerfil(p As PartDocument) As Double
+    Try
+        Dim b As SurfaceBody = p.ComponentDefinition.SurfaceBodies.Item(1)
+        Dim fx As Face = Nothing
+        Dim nMax As Integer = 0
+        For Each f As Face In b.Faces
+            If f.SurfaceType <> SurfaceTypeEnum.kPlaneSurface Then Continue For
+            If f.Edges.Count > nMax Then
+                nMax = f.Edges.Count
+                fx = f
+            End If
+        Next
+        If fx IsNot Nothing AndAlso nMax >= 6 Then
+            Dim n As UnitVector = CType(fx.Geometry, Plane).Normal
+            Dim mn As Double = 1.0E+30, mx As Double = -1.0E+30
+            For Each v As Vertex In b.Vertices
+                Dim x As Double = v.Point.X * n.X + v.Point.Y * n.Y + v.Point.Z * n.Z
+                If x < mn Then mn = x
+                If x > mx Then mx = x
+            Next
+            If mx > mn Then Return (mx - mn) * 10
+        End If
+    Catch
+    End Try
+    Dim lg As Double = 0
+    Try
+        For Each b As SurfaceBody In p.ComponentDefinition.SurfaceBodies
+            For Each e As Edge In b.Edges
+                If e.GeometryType <> CurveTypeEnum.kLineSegmentCurve Then Continue For
+                Try
+                    Dim d As Double = e.StartVertex.Point.DistanceTo(e.StopVertex.Point)
+                    If d > lg Then lg = d
+                Catch
+                End Try
+            Next
+        Next
+    Catch
+    End Try
+    If lg = 0 Then
+        Dim rb As Box = p.ComponentDefinition.RangeBox
+        lg = Math.Max(Math.Max(rb.MaxPoint.X - rb.MinPoint.X, rb.MaxPoint.Y - rb.MinPoint.Y), rb.MaxPoint.Z - rb.MinPoint.Z)
+    End If
+    Return lg * 10
+End Function
+
+' Desarrollo de chapa con la cara A en la cara plana MAYOR. Una chapa hecha desde un solido
+' (STEP, derivada) a veces se desarrolla "de canto" (ancho = espesor): aqui se rehace.
+' Devuelve True si hay desarrollo valido.
+Function DesarrolloBien(sm As SheetMetalComponentDefinition) As Boolean
+    Try
+        Dim t As Double = sm.Thickness.Value
+        If sm.HasFlatPattern Then
+            Dim w As Double = Math.Min(sm.FlatPattern.Length, sm.FlatPattern.Width)
+            If w > 1.5 * t Then Return True
+            sm.FlatPattern.Delete()
+        End If
+        Dim big As Face = Nothing
+        Dim a As Double = 0
+        For Each f As Face In sm.SurfaceBodies.Item(1).Faces
+            If f.SurfaceType = SurfaceTypeEnum.kPlaneSurface AndAlso f.Evaluator.Area > a Then
+                a = f.Evaluator.Area
+                big = f
+            End If
+        Next
+        If big IsNot Nothing Then
+            For i As Integer = sm.ASideDefinitions.Count To 1 Step -1
+                Try : sm.ASideDefinitions.Item(i).Delete() : Catch : End Try
+            Next
+            Try : sm.ASideDefinitions.Add(big) : Catch : End Try
+        End If
+        sm.Unfold()
+        Try : sm.FlatPattern.ExitEdit() : Catch : End Try
+        Return sm.HasFlatPattern
+    Catch
+        Return False
+    End Try
+End Function
+
+' Plancha NO chapa, aunque este inclinada en el modelo: espesor = distancia entre las 2 caras
+' planas mayores (paralelas); ancho y largo medidos en el plano de la cara mayor.
+Sub DimsPlancha(p As PartDocument, ByRef t As Double, ByRef a As Double, ByRef l As Double)
+    Try
+        Dim b As SurfaceBody = p.ComponentDefinition.SurfaceBodies.Item(1)
+        Dim f1 As Face = Nothing
+        Dim a1 As Double = 0
+        For Each f As Face In b.Faces
+            If f.SurfaceType = SurfaceTypeEnum.kPlaneSurface AndAlso f.Evaluator.Area > a1 Then
+                a1 = f.Evaluator.Area
+                f1 = f
+            End If
+        Next
+        If f1 Is Nothing Then Exit Sub
+        Dim pl1 As Plane = CType(f1.Geometry, Plane)
+        Dim n As UnitVector = pl1.Normal
+        Dim e As Double = 0
+        For Each f As Face In b.Faces
+            If f Is f1 OrElse f.SurfaceType <> SurfaceTypeEnum.kPlaneSurface OrElse f.Evaluator.Area < 0.5 * a1 Then Continue For
+            Dim pl2 As Plane = CType(f.Geometry, Plane)
+            If Math.Abs(Math.Abs(n.DotProduct(pl2.Normal)) - 1) > 0.0001 Then Continue For
+            Dim d As Double = Math.Abs((pl2.RootPoint.X - pl1.RootPoint.X) * n.X + (pl2.RootPoint.Y - pl1.RootPoint.Y) * n.Y + (pl2.RootPoint.Z - pl1.RootPoint.Z) * n.Z)
+            If d > 0.00001 AndAlso (e = 0 OrElse d < e) Then e = d
+        Next
+        If e = 0 OrElse e > 0.25 * Math.Sqrt(a1) Then Exit Sub
+        ' plancha PLANA: volumen ~ area x espesor (una chapa plegada o con alas no entra aqui)
+        Dim vol As Double = b.Volume(0.001)
+        If Math.Abs(vol - a1 * e) > 0.15 * vol Then Exit Sub
+        ' eje u = arista recta mas larga de la cara mayor; v = n x u
+        Dim u As UnitVector = Nothing
+        Dim lu As Double = 0
+        For Each ed As Edge In f1.Edges
+            If ed.GeometryType <> CurveTypeEnum.kLineSegmentCurve Then Continue For
+            Dim ps As Point = ed.StartVertex.Point, pe As Point = ed.StopVertex.Point
+            Dim dd As Double = ps.DistanceTo(pe)
+            If dd > lu Then
+                lu = dd
+                u = ThisApplication.TransientGeometry.CreateUnitVector(pe.X - ps.X, pe.Y - ps.Y, pe.Z - ps.Z)
+            End If
+        Next
+        If u Is Nothing Then Exit Sub
+        Dim v As UnitVector = n.CrossProduct(u)
+        Dim mnU As Double = 1.0E+30, mxU As Double = -1.0E+30, mnV As Double = 1.0E+30, mxV As Double = -1.0E+30
+        For Each vx As Vertex In b.Vertices
+            Dim q As Point = vx.Point
+            Dim cu As Double = q.X * u.X + q.Y * u.Y + q.Z * u.Z
+            Dim cv As Double = q.X * v.X + q.Y * v.Y + q.Z * v.Z
+            mnU = Math.Min(mnU, cu) : mxU = Math.Max(mxU, cu)
+            mnV = Math.Min(mnV, cv) : mxV = Math.Max(mxV, cv)
+        Next
+        Dim d1 As Double = (mxU - mnU) * 10, d2 As Double = (mxV - mnV) * 10
+        t = e * 10
+        a = Math.Min(d1, d2)
+        l = Math.Max(d1, d2)
+    Catch
+    End Try
+End Sub
+
+' Firma de quiralidad (izquierda / derecha): "" si la pieza tiene un plano de simetria (su espejo
+' es ella misma girada: misma marca) o no se puede decidir; "|Q+" o "|Q-" si no. Dos piezas
+' iguales dan la misma firma; una pieza y su espejo, firmas opuestas.
+'  Ejes principales de inercia ordenados por momento; cada eje se orienta hacia donde la pieza
+'  tiene mas "masa" (signo del 3er momento de los vertices); la firma es el signo del triedro.
+Private quiralCache As New Dictionary(Of String, String)
+Function FirmaQuiral(p As PartDocument) As String
+    If quiralCache.ContainsKey(p.FullFileName) Then Return quiralCache(p.FullFileName)
+    Dim r As String = ""
+    Try
+        Dim mp As MassProperties = p.ComponentDefinition.MassProperties
+        Dim c As Point = mp.CenterOfMass
+        Dim ms(2) As Double
+        Dim ax(2) As Vector
+        EjesPrincipales(mp, ms, ax)
+        Array.Sort(ms, ax)
+        ' momentos casi iguales -> ejes indefinidos -> no se decide
+        For i As Integer = 0 To 1
+            If Math.Abs(ms(i + 1) - ms(i)) < 0.01 * Math.Max(Math.Abs(ms(i + 1)), 1.0E-12) Then
+                quiralCache(p.FullFileName) = ""
+                Return ""
+            End If
+        Next
+        Dim s3(2) As Double, sa(2) As Double
+        For Each b As SurfaceBody In p.ComponentDefinition.SurfaceBodies
+            For Each v As Vertex In b.Vertices
+                For k As Integer = 0 To 2
+                    Dim e As Vector = ax(k)
+                    Dim L As Double = Math.Sqrt(e.X * e.X + e.Y * e.Y + e.Z * e.Z)
+                    Dim x As Double = ((v.Point.X - c.X) * e.X + (v.Point.Y - c.Y) * e.Y + (v.Point.Z - c.Z) * e.Z) / L
+                    s3(k) += x * x * x
+                    sa(k) += Math.Abs(x * x * x)
+                Next
+            Next
+        Next
+        Dim sg(2) As Double
+        For k As Integer = 0 To 2
+            If sa(k) = 0 OrElse Math.Abs(s3(k)) < 0.001 * sa(k) Then
+                quiralCache(p.FullFileName) = ""
+                Return ""
+            End If
+            sg(k) = Math.Sign(s3(k))
+        Next
+        Dim u() As Double = {ax(0).X * sg(0), ax(0).Y * sg(0), ax(0).Z * sg(0)}
+        Dim v2() As Double = {ax(1).X * sg(1), ax(1).Y * sg(1), ax(1).Z * sg(1)}
+        Dim w() As Double = {ax(2).X * sg(2), ax(2).Y * sg(2), ax(2).Z * sg(2)}
+        Dim det As Double = u(0) * (v2(1) * w(2) - v2(2) * w(1)) - u(1) * (v2(0) * w(2) - v2(2) * w(0)) + u(2) * (v2(0) * w(1) - v2(1) * w(0))
+        r = If(det > 0, "|Q+", "|Q-")
+    Catch
+        r = ""
+    End Try
+    quiralCache(p.FullFileName) = r
+    Return r
+End Function
+
+' Ejes principales de inercia (del tensor XYZMomentsOfInertia; MassProperties no trae los ejes):
+' momentos m(0..2) y ejes ax(0..2) como vectores unitarios.
+Sub EjesPrincipales(mp As MassProperties, m() As Double, ax() As Vector)
+    Dim ixx As Double, iyy As Double, izz As Double, ixy As Double, iyz As Double, ixz As Double
+    mp.XYZMomentsOfInertia(ixx, iyy, izz, ixy, iyz, ixz)
+    Dim t(2, 2) As Double
+    t(0, 0) = ixx : t(1, 1) = iyy : t(2, 2) = izz
+    t(0, 1) = ixy : t(1, 0) = ixy : t(1, 2) = iyz : t(2, 1) = iyz : t(0, 2) = ixz : t(2, 0) = ixz
+    Dim v(2, 2) As Double
+    JacobiEV(t, m, v)
+    Dim tg As TransientGeometry = ThisApplication.TransientGeometry
+    For k As Integer = 0 To 2
+        ax(k) = tg.CreateVector(v(0, k), v(1, k), v(2, k))
+    Next
+End Sub
+
+' valores y vectores propios de una matriz simetrica 3x3 (vectores en columnas)
+Sub JacobiEV(a(,) As Double, d() As Double, v(,) As Double)
+    Dim m(2, 2) As Double
+    For i As Integer = 0 To 2
+        For j As Integer = 0 To 2
+            m(i, j) = a(i, j)
+            v(i, j) = If(i = j, 1, 0)
+        Next
+    Next
+    For it As Integer = 1 To 60
+        Dim p As Integer = 0, q As Integer = 1
+        Dim big As Double = Math.Abs(m(0, 1))
+        If Math.Abs(m(0, 2)) > big Then big = Math.Abs(m(0, 2)) : p = 0 : q = 2
+        If Math.Abs(m(1, 2)) > big Then big = Math.Abs(m(1, 2)) : p = 1 : q = 2
+        If big < 1.0E-12 * (Math.Abs(m(0, 0)) + Math.Abs(m(1, 1)) + Math.Abs(m(2, 2)) + 1.0E-30) Then Exit For
+        Dim th As Double = 0.5 * Math.Atan2(2 * m(p, q), m(q, q) - m(p, p))
+        Dim c As Double = Math.Cos(th), s As Double = Math.Sin(th)
+        For kk As Integer = 0 To 2
+            Dim mkp As Double = m(kk, p), mkq As Double = m(kk, q)
+            m(kk, p) = c * mkp - s * mkq
+            m(kk, q) = s * mkp + c * mkq
+        Next
+        For kk As Integer = 0 To 2
+            Dim mpk As Double = m(p, kk), mqk As Double = m(q, kk)
+            m(p, kk) = c * mpk - s * mqk
+            m(q, kk) = s * mpk + c * mqk
+        Next
+        For kk As Integer = 0 To 2
+            Dim vkp As Double = v(kk, p), vkq As Double = v(kk, q)
+            v(kk, p) = c * vkp - s * vkq
+            v(kk, q) = s * vkp + c * vkq
+        Next
+    Next
+    For i As Integer = 0 To 2
+        d(i) = m(i, i)
+    Next
+End Sub

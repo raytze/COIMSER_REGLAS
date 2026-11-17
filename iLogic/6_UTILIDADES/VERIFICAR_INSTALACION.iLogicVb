@@ -1,0 +1,192 @@
+' =====================================================================
+'  VERIFICAR_INSTALACION  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Revisa que las reglas COIMSER esten bien instaladas en ESTA PC:
+'   - carpetas de reglas externas configuradas en iLogic (que existan);
+'   - cada regla: VERSION (de su cabecera), carpeta y fecha;
+'   - reglas REPETIDAS (mismo nombre en dos lugares: iLogic puede tomar la vieja);
+'   - copias viejas sueltas (carpetas iLogic antiguas encima de la obra, archivos .bak);
+'   - datos (TABLA_MARCAS.csv, FORMATOS_PLANCHA.csv, NOTAS_FABRICACION.txt, TARIFAS.csv);
+'   - Git: cambios sin subir y si GitHub tiene algo nuevo sin bajar.
+'  Recuerda: iLogic guarda las reglas en memoria; despues de actualizar, REINICIA Inventor.
+'  Escribe el informe en <carpeta de reglas>\_VERIFICACION.txt y lo muestra.
+' =====================================================================
+Imports System.Collections.Generic
+
+Sub Main()
+    Dim sb As New System.Text.StringBuilder()
+    Dim alertas As New List(Of String)
+    sb.AppendLine("VERIFICACION DE INSTALACION COIMSER - " & DateTime.Now.ToString("yyyy-MM-dd HH:mm") & " - PC " & Environment.MachineName)
+    sb.AppendLine()
+
+    ' ---------- carpetas de reglas ----------
+    Dim raices As New List(Of String)
+    Try
+        For Each r As String In iLogicVb.Automation.FileOptions.ExternalRuleDirectories
+            raices.Add(r)
+        Next
+    Catch
+    End Try
+    sb.AppendLine("CARPETAS DE REGLAS EXTERNAS (Opciones de iLogic):")
+    If raices.Count = 0 Then alertas.Add("No hay carpetas de reglas externas configuradas en iLogic.")
+    For Each r As String In raices
+        Dim ok As Boolean = System.IO.Directory.Exists(r)
+        sb.AppendLine("  " & r & If(ok, "", "   <-- NO EXISTE"))
+        If Not ok Then alertas.Add("La carpeta de reglas " & r & " no existe (Herramientas > Opciones de iLogic).")
+    Next
+    sb.AppendLine()
+
+    ' ---------- reglas ----------
+    Dim porNombre As New Dictionary(Of String, List(Of String))(StringComparer.OrdinalIgnoreCase)
+    For Each r As String In raices
+        If Not System.IO.Directory.Exists(r) Then Continue For
+        For Each f As String In System.IO.Directory.GetFiles(r, "*.iLogicVb", System.IO.SearchOption.AllDirectories)
+            Dim x As String = f.ToLower()
+            If x.Contains("\_to_delete\") OrElse x.Contains("\oldversions\") Then Continue For
+            Dim n As String = System.IO.Path.GetFileNameWithoutExtension(f)
+            If n.StartsWith("_t_") Then Continue For
+            If Not porNombre.ContainsKey(n) Then porNombre(n) = New List(Of String)
+            porNombre(n).Add(f)
+        Next
+    Next
+    Dim nombres As New List(Of String)(porNombre.Keys)
+    nombres.Sort()
+    sb.AppendLine("REGLAS (" & nombres.Count & "):")
+    For Each n As String In nombres
+        For Each f As String In porNombre(n)
+            Dim rel As String = f
+            For Each r As String In raices
+                If f.ToLower().StartsWith(r.ToLower().TrimEnd("\"c) & "\") Then rel = f.Substring(r.TrimEnd("\"c).Length + 1)
+            Next
+            sb.AppendLine("  " & n.PadRight(24) & " " & Version(f).PadRight(7) & " " & System.IO.File.GetLastWriteTime(f).ToString("yyyy-MM-dd HH:mm") & "  " & rel)
+        Next
+        If porNombre(n).Count > 1 Then alertas.Add(n & " esta " & porNombre(n).Count & " veces (iLogic puede usar la equivocada): deja solo una.")
+    Next
+    For Each esencial As String In New String() {"MENU_COIMSER", "TEKLA_NUMERACION", "GENERAR_PLANOS", "CUT_LIST", "NUEVA_PIEZA", "INICIAR_CONJUNTO"}
+        If Not porNombre.ContainsKey(esencial) Then alertas.Add("Falta la regla " & esencial & ".")
+    Next
+    sb.AppendLine()
+
+    ' ---------- datos ----------
+    sb.AppendLine("DATOS:")
+    For Each dato As String In New String() {"TABLA_MARCAS.csv", "FORMATOS_PLANCHA.csv", "NOTAS_FABRICACION.txt", "TARIFAS.csv"}
+        Dim enc As New List(Of String)
+        For Each r As String In raices
+            If Not System.IO.Directory.Exists(r) Then Continue For
+            For Each f As String In System.IO.Directory.GetFiles(r, dato, System.IO.SearchOption.AllDirectories)
+                enc.Add(f)
+            Next
+        Next
+        sb.AppendLine("  " & dato.PadRight(24) & If(enc.Count = 0, "NO ENCONTRADO", String.Join(" | ", enc.ToArray())))
+        If enc.Count = 0 AndAlso dato <> "TARIFAS.csv" Then alertas.Add("Falta " & dato & " en la carpeta de reglas.")
+    Next
+    sb.AppendLine()
+
+    ' ---------- copias viejas fuera de Git ----------
+    sb.AppendLine("COPIAS VIEJAS (carpetas iLogic fuera de la carpeta de reglas):")
+    Dim viejas As Integer = 0
+    For Each r As String In raices
+        Dim padre As String = Nothing
+        Try
+            padre = System.IO.Directory.GetParent(System.IO.Directory.GetParent(r.TrimEnd("\"c)).FullName).FullName
+        Catch
+        End Try
+        If padre Is Nothing Then Continue For
+        For Each dirV As String In New String() {System.IO.Path.Combine(padre, "iLogic"), System.IO.Path.Combine(padre, "VAULT\iLogic")}
+            If System.IO.Directory.Exists(dirV) AndAlso Not dirV.ToLower().StartsWith(r.ToLower().TrimEnd("\"c)) Then
+                Dim n As Integer = System.IO.Directory.GetFiles(dirV, "*.iLogicVb", System.IO.SearchOption.AllDirectories).Length
+                If n > 0 Then
+                    viejas += 1
+                    sb.AppendLine("  " & dirV & "  (" & n & " reglas)")
+                    alertas.Add("Hay una carpeta vieja de reglas: " & dirV & " (" & n & "). Algunas reglas buscan TABLA_MARCAS / estilo subiendo carpetas y podrian tomar esa copia: renombrala a iLogic_ANTIGUO.")
+                End If
+            End If
+        Next
+    Next
+    If viejas = 0 Then sb.AppendLine("  ninguna")
+    sb.AppendLine()
+
+    ' ---------- Git ----------
+    sb.AppendLine("GIT:")
+    For Each r As String In raices
+        Dim repo As String = Nothing
+        Dim x As String = r.TrimEnd("\"c)
+        For i As Integer = 0 To 3
+            If x Is Nothing Then Exit For
+            If System.IO.Directory.Exists(System.IO.Path.Combine(x, ".git")) Then
+                repo = x
+                Exit For
+            End If
+            x = System.IO.Path.GetDirectoryName(x)
+        Next
+        If repo Is Nothing Then
+            sb.AppendLine("  " & r & ": no es un repositorio Git")
+            Continue For
+        End If
+        If System.IO.File.Exists(System.IO.Path.Combine(repo, ".git\MERGE_HEAD")) Then alertas.Add("Git tiene una union (merge) sin terminar en " & repo & ": git add -A, git commit --no-edit, git push.")
+        Dim st As String = Git(repo, "status --porcelain")
+        Dim cambios As Integer = 0
+        For Each ln As String In st.Split(New Char() {ControlChars.Lf}, StringSplitOptions.RemoveEmptyEntries)
+            If ln.Trim() <> "" Then cambios += 1
+        Next
+        sb.AppendLine("  repositorio: " & repo)
+        sb.AppendLine("  ultimo commit: " & Git(repo, "log -1 --format=%h %cd %s --date=format:%Y-%m-%d_%H:%M").Trim())
+        sb.AppendLine("  archivos con cambios sin subir: " & cambios)
+        If cambios > 0 Then alertas.Add(cambios & " archivos con cambios sin subir a GitHub: GUARDAR_CAMBIOS.bat (o git add -A, commit, push).")
+        Git(repo, "fetch --quiet")
+        Dim atras As String = Git(repo, "rev-list --count HEAD..@{u}").Trim()
+        Dim adelante As String = Git(repo, "rev-list --count @{u}..HEAD").Trim()
+        sb.AppendLine("  GitHub tiene " & atras & " commits que esta PC no tiene; esta PC tiene " & adelante & " sin subir")
+        If atras <> "" AndAlso atras <> "0" AndAlso IsNumeric(atras) Then alertas.Add("GitHub tiene " & atras & " cambios nuevos: ACTUALIZAR_REGLAS.bat y reinicia Inventor.")
+        If adelante <> "" AndAlso adelante <> "0" AndAlso IsNumeric(adelante) Then alertas.Add("Hay " & adelante & " commits sin subir: git push.")
+    Next
+    sb.AppendLine()
+
+    sb.AppendLine("RECUERDA: iLogic guarda las reglas en memoria. Despues de cualquier actualizacion, REINICIA Inventor.")
+    Dim txt As String = sb.ToString()
+    Dim salida As String = ""
+    Try
+        If raices.Count > 0 AndAlso System.IO.Directory.Exists(raices(0)) Then
+            salida = System.IO.Path.Combine(raices(0), "_VERIFICACION.txt")
+            System.IO.File.WriteAllText(salida, If(alertas.Count > 0, "ALERTAS:" & vbCrLf & " - " & String.Join(vbCrLf & " - ", alertas.ToArray()) & vbCrLf & vbCrLf, "SIN ALERTAS" & vbCrLf & vbCrLf) & txt, System.Text.Encoding.UTF8)
+        End If
+    Catch
+    End Try
+    Dim msg As String = If(alertas.Count = 0, "Instalacion OK: " & nombres.Count & " reglas, sin repetidas ni copias viejas, Git al dia.", alertas.Count & " ALERTAS:" & vbCrLf & vbCrLf & " - " & String.Join(vbCrLf & " - ", alertas.ToArray()))
+    If salida <> "" Then msg &= vbCrLf & vbCrLf & "Informe completo (versiones de cada regla): " & salida
+    If Not RuleArguments.Exists("silencioso") Then MessageBox.Show(msg, "VERIFICAR_INSTALACION")
+End Sub
+
+' Version de la cabecera: "'  NOMBRE  v1.2  -  ..."
+Function Version(f As String) As String
+    Try
+        Using rd As New System.IO.StreamReader(f)
+            For i As Integer = 0 To 4
+                Dim ln As String = rd.ReadLine()
+                If ln Is Nothing Then Exit For
+                Dim m As System.Text.RegularExpressions.Match = System.Text.RegularExpressions.Regex.Match(ln, "\sv(\d+\.\d+)\s")
+                If m.Success Then Return "v" & m.Groups(1).Value
+            Next
+        End Using
+    Catch
+    End Try
+    Return "?"
+End Function
+
+Function Git(repo As String, args As String) As String
+    Try
+        Dim psi As New System.Diagnostics.ProcessStartInfo("git", "-C """ & repo & """ " & args)
+        psi.UseShellExecute = False
+        psi.RedirectStandardOutput = True
+        psi.RedirectStandardError = True
+        psi.CreateNoWindow = True
+        psi.EnvironmentVariables("GIT_TERMINAL_PROMPT") = "0"
+        Dim p As System.Diagnostics.Process = System.Diagnostics.Process.Start(psi)
+        If Not p.WaitForExit(15000) Then
+            Try : p.Kill() : Catch : End Try
+            Return ""
+        End If
+        Return p.StandardOutput.ReadToEnd()
+    Catch
+        Return ""
+    End Try
+End Function

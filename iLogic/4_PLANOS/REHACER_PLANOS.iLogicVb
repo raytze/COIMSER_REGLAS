@@ -1,0 +1,33 @@
+' =====================================================================
+'  REHACER_PLANOS  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Corre GENERAR_PLANOS con rehacer=SI: TODAS las hojas del plano de la fase se vuelven a dibujar
+'  (vistas en los ejes propios del modelo, escalas, desarrollos). Lo agregado a mano en esas
+'  hojas (cotas, notas) se pierde: usalo cuando el plano salio mal, no para actualizar marcas.
+'  Para solo actualizar (marcas, cantidades, hojas nuevas) usa GENERAR_PLANOS.
+' =====================================================================
+Imports System.Collections.Generic
+
+Sub Main()
+    Dim d As Document = ThisDoc.Document
+    If d Is Nothing OrElse d.DocumentType <> DocumentTypeEnum.kAssemblyDocumentObject Then
+        MessageBox.Show("Abre la FASE (o el conjunto) y ejecuta la regla.", "REHACER_PLANOS")
+        Exit Sub
+    End If
+    If MessageBox.Show("Se REDIBUJAN todas las hojas del plano de " & d.DisplayName & "." & vbCrLf & _
+        "Las cotas y notas que agregaste a mano en esas hojas se pierden." & vbCrLf & vbCrLf & "Continuar?", _
+        "REHACER_PLANOS", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) <> DialogResult.Yes Then Exit Sub
+    Dim ruta As String = ""
+    For Each raiz As String In iLogicVb.Automation.FileOptions.ExternalRuleDirectories
+        If Not System.IO.Directory.Exists(raiz) Then Continue For
+        For Each f As String In System.IO.Directory.GetFiles(raiz, "GENERAR_PLANOS.iLogicVb", System.IO.SearchOption.AllDirectories)
+            If ruta = "" AndAlso Not f.ToLower().Contains("\_to_delete\") Then ruta = f
+        Next
+    Next
+    If ruta = "" Then
+        MessageBox.Show("No encuentro GENERAR_PLANOS.iLogicVb.", "REHACER_PLANOS")
+        Exit Sub
+    End If
+    Dim m As NameValueMap = ThisApplication.TransientObjects.CreateNameValueMap()
+    m.Add("rehacer", "SI")
+    iLogicVb.Automation.RunExternalRuleWithArguments(d, ruta, m)
+End Sub

@@ -1,0 +1,643 @@
+' =====================================================================
+'  AGRUPAR_EN_CONJUNTO  v1.3  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Junta piezas sueltas de una fase (o de un conjunto) en un CONJUNTO NUEVO, con el mismo
+'  orden que INICIAR_CONJUNTO, como un "Degradar" de Inventor pero con nombres COIMSER:
+'
+'     PLCAY-CP1\Piezas\PLCAY-CP1-PL-003.ipt  +  PLCAY-CP1-PL-004.ipt    (sueltas en la fase)
+'        ->  PLCAY-CP1\PLCAY-CP1-BS-001.iam
+'            PLCAY-CP1\PLCAY-CP1-BS-001\Piezas\PLCAY-CP1-BS-001-PL-001.ipt, -PL-002.ipt
+'
+'  - Seleccionas las piezas en la fase y ejecutas la regla. Eliges el TIPO de conjunto
+'    (A0.61 / TABLA_MARCAS.csv), igual que INICIAR_CONJUNTO, y se crea <FASE>-<PREF>-nnn.iam
+'    con PROYECTO, PLANTA, PREFIJO, TIPO_CONJUNTO y Descripcion.
+'  - Cada pieza pasa a la carpeta Piezas del conjunto nuevo con el nombre en serie del conjunto
+'    (se conserva su prefijo PL / CH / MQ ...). Quedan en la MISMA POSICION y fijas.
+'  - Si una pieza tambien se usa en otro lugar (otra instancia que no elegiste, otro conjunto,
+'    una pieza derivada de ella) el conjunto usa una COPIA y la original se queda donde estaba.
+'    Si no, la original va a <obra>\_to_delete\<fecha>\ y los planos que la usaban se re-enlazan.
+'  - Borra MARCA y numeracion de las piezas movidas: TEKLA las numera dentro del conjunto.
+'  - Las restricciones entre las piezas elegidas y el resto se pierden (avisa cuantas).
+'  - No mueve: piezas de biblioteca, REFERENCIAS (STEP, skeleton, forma), patrones, ni
+'    ensambles (Frame Generator incluido). Las lista al final.
+'  - Guarda la fase al terminar. Registro en <obra>\_AGRUPADOS.csv.
+'  v1.1 - Tambien a un CONJUNTO QUE YA EXISTE: selecciona las piezas y ese conjunto (o eligelo de
+'         la lista). Las piezas entran a <conjunto>\Piezas con el siguiente numero de su serie.
+'         Argumento conjunto=<nombre> para pruebas.
+'  v1.2 - Si la pieza tambien se usa en OTRA FASE de la obra, se copia (antes solo miraba la fase).
+'  NO usar con archivos con check-in en Vault (solo lectura): se detiene.
+'  PRUEBALO PRIMERO EN UNA OBRA DE PRUEBA.   Argumentos: silencioso, tipo=<PREF>, objetos=a;b;c
+' =====================================================================
+Imports System.Collections.Generic
+
+Sub Main()
+    silencioso = RuleArguments.Exists("silencioso")
+    Dim top As AssemblyDocument = Nothing
+    Try
+        top = TryCast(ThisDoc.Document, AssemblyDocument)
+    Catch
+    End Try
+    If top Is Nothing Then top = TryCast(ThisApplication.ActiveDocument, AssemblyDocument)
+    ' editando un conjunto EN EL SITIO: iLogic entrega el conjunto editado; el de arriba es el abierto
+    Try
+        Dim act As AssemblyDocument = TryCast(ThisApplication.ActiveDocument, AssemblyDocument)
+        If act IsNot Nothing AndAlso top IsNot Nothing AndAlso Not (act Is top) AndAlso ThisApplication.ActiveEditDocument Is top Then top = act
+    Catch
+    End Try
+    If top Is Nothing Then
+        MessageBox.Show("Abre la FASE (o el conjunto), selecciona las piezas y ejecuta la regla.", "AGRUPAR_EN_CONJUNTO")
+        Exit Sub
+    End If
+    Dim destino As AssemblyDocument = top
+    Try
+        If top Is ThisApplication.ActiveDocument AndAlso ThisApplication.ActiveEditDocument.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then destino = CType(ThisApplication.ActiveEditDocument, AssemblyDocument)
+    Catch
+    End Try
+    If EsGeneral(destino) Then
+        MessageBox.Show("En el ensamble GENERAL no van conjuntos: abre la FASE.", "AGRUPAR_EN_CONJUNTO")
+        Exit Sub
+    End If
+    If destino.FullFileName = "" Then
+        MessageBox.Show("Guarda primero el ensamble.", "AGRUPAR_EN_CONJUNTO")
+        Exit Sub
+    End If
+    For Each dd As Document In ThisApplication.Documents
+        If dd.DocumentType = DocumentTypeEnum.kDrawingDocumentObject Then
+            MessageBox.Show("Cierra los planos abiertos antes de agrupar (" & System.IO.Path.GetFileName(dd.FullFileName) & ").", "AGRUPAR_EN_CONJUNTO")
+            Exit Sub
+        End If
+    Next
+    Dim nomEns As String = NomSin(destino)
+    Dim obra As String = CarpetaObra(destino.FullFileName)
+    If obra = "" Then obra = System.IO.Path.GetDirectoryName(destino.FullFileName)
+
+    ' ---------- piezas elegidas (hijas directas del ensamble destino) ----------
+    Dim elegidas As New List(Of ComponentOccurrence)
+    Dim noVan As New List(Of String)
+    Dim cand As New List(Of ComponentOccurrence)
+    Dim occExist As ComponentOccurrence = Nothing
+    Dim objs As String = Arg("objetos")
+    If objs <> "" Then
+        For Each nm As String In objs.Split(";"c)
+            For Each oc As ComponentOccurrence In destino.ComponentDefinition.Occurrences
+                If oc.Name.ToLower() = nm.Trim().ToLower() OrElse NomSin(oc.Definition.Document).ToLower() = nm.Trim().ToLower() Then cand.Add(oc)
+            Next
+        Next
+    Else
+        Try
+            For Each o As Object In top.SelectSet
+                Dim oc As ComponentOccurrence = TryCast(o, ComponentOccurrence)
+                If oc Is Nothing Then Continue For
+                Try
+                    If TypeOf oc Is ComponentOccurrenceProxy Then oc = CType(oc, ComponentOccurrenceProxy).NativeObject
+                Catch
+                End Try
+                cand.Add(oc)
+            Next
+        Catch
+        End Try
+    End If
+    For Each oc As ComponentOccurrence In cand
+        Dim nm As String = oc.Name
+        Dim padreOk As Boolean = False
+        Try
+            padreOk = (oc.Parent.Document Is destino)
+        Catch
+        End Try
+        If Not padreOk Then
+            noVan.Add(nm & " (no esta directamente en " & nomEns & ")")
+        ElseIf oc.DefinitionDocumentType <> DocumentTypeEnum.kPartDocumentObject Then
+            If UProp(oc.Definition.Document, "PREFIJO") <> "" AndAlso occExist Is Nothing Then
+                occExist = oc      ' conjunto destino elegido
+            Else
+                noVan.Add(nm & " (es un ensamble: muevelo a mano)")
+            End If
+        ElseIf oc.IsPatternElement Then
+            noVan.Add(nm & " (es parte de un patron)")
+        Else
+            Dim d As Document = oc.Definition.Document
+            If CType(d, PartDocument).ComponentDefinition.IsContentMember Then
+                noVan.Add(nm & " (biblioteca: se agrega tal cual)")
+                elegidas.Add(oc)
+            ElseIf UProp(d, "REFERENCIA").ToUpper() = "SI" OrElse UProp(d, "TIPO_REFERENCIA") <> "" Then
+                noVan.Add(nm & " (es REFERENCIA)")
+            ElseIf Not elegidas.Contains(oc) Then
+                elegidas.Add(oc)
+            End If
+        End If
+    Next
+    If elegidas.Count = 0 Then
+        MessageBox.Show("Selecciona en " & nomEns & " las piezas a juntar y vuelve a ejecutar." & If(noVan.Count > 0, vbCrLf & vbCrLf & String.Join(vbCrLf, noVan.ToArray()), ""), "AGRUPAR_EN_CONJUNTO")
+        Exit Sub
+    End If
+
+    ' ---------- conjunto NUEVO o uno que YA EXISTE ----------
+    Dim existentes As New Dictionary(Of String, ComponentOccurrence)
+    For Each oc As ComponentOccurrence In destino.ComponentDefinition.Occurrences
+        Try
+            If oc.DefinitionDocumentType = DocumentTypeEnum.kAssemblyDocumentObject AndAlso UProp(oc.Definition.Document, "PREFIJO") <> "" Then
+                Dim nm As String = NomSin(oc.Definition.Document)
+                If Not existentes.ContainsKey(nm) Then existentes.Add(nm, oc)
+            End If
+        Catch
+        End Try
+    Next
+    If occExist Is Nothing AndAlso Arg("conjunto") <> "" Then
+        For Each kv As KeyValuePair(Of String, ComponentOccurrence) In existentes
+            If kv.Key.ToUpper() = Arg("conjunto").ToUpper() Then occExist = kv.Value
+        Next
+    End If
+    If occExist Is Nothing AndAlso existentes.Count > 0 AndAlso Not silencioso Then
+        Dim ops As New List(Of String)
+        ops.Add("CREAR CONJUNTO NUEVO")
+        Dim ks As New List(Of String)(existentes.Keys)
+        ks.Sort()
+        For Each k As String In ks
+            ops.Add("A " & k & "  (" & UProp(existentes(k).Definition.Document, "TIPO_CONJUNTO") & ")")
+        Next
+        Dim r0 As String = InputListBox("Meter " & elegidas.Count & " piezas de " & nomEns & " en:", ops, ops(0), "AGRUPAR_EN_CONJUNTO", "Conjunto")
+        If r0 Is Nothing OrElse r0 = "" Then Exit Sub
+        If r0 <> ops(0) Then occExist = existentes(r0.Substring(2, r0.IndexOf("  (") - 2))
+    End If
+    Dim enExistente As Boolean = (occExist IsNot Nothing)
+    Dim aEx As AssemblyDocument = Nothing
+    If enExistente Then
+        aEx = CType(occExist.Definition.Document, AssemblyDocument)
+        If aEx.FullFileName = "" OrElse (System.IO.File.GetAttributes(aEx.FullFileName) And System.IO.FileAttributes.ReadOnly) = System.IO.FileAttributes.ReadOnly Then
+            MessageBox.Show(NomSin(aEx) & " es de solo lectura (Vault?): haz check-out y vuelve a ejecutar.", "AGRUPAR_EN_CONJUNTO")
+            Exit Sub
+        End If
+    End If
+
+    ' ---------- tipo de conjunto ----------
+    Dim tipos As List(Of String) = CargarTipos(destino)
+    If enExistente Then tipos.Insert(0, UProp(aEx, "PREFIJO") & " - " & UProp(aEx, "TIPO_CONJUNTO"))
+    If tipos.Count = 0 Then
+        MessageBox.Show("No encuentro TABLA_MARCAS.csv (carpeta del ensamble, superiores o \iLogic).", "AGRUPAR_EN_CONJUNTO")
+        Exit Sub
+    End If
+    Dim elegido As String = ""
+    Dim pa As String = Arg("tipo").ToUpper()
+    If pa <> "" Then
+        For Each t As String In tipos
+            If t.StartsWith(pa & " - ") Then elegido = t
+        Next
+    End If
+    If enExistente Then elegido = tipos(0)
+    If elegido = "" Then
+        If silencioso Then Exit Sub
+        elegido = InputListBox("Juntar " & elegidas.Count & " piezas en un conjunto nuevo de " & nomEns & "." & vbCrLf & "Tipo de conjunto (A0.61 MARCACION):", tipos, tipos(0), "AGRUPAR_EN_CONJUNTO", "Tipo")
+    End If
+    If elegido Is Nothing OrElse elegido = "" Then Exit Sub
+    Dim pref As String = elegido.Substring(0, elegido.IndexOf(" - ")).Trim()
+    Dim desc As String = elegido.Substring(elegido.IndexOf(" - ") + 3).Trim()
+    Dim esSistema As Boolean = desc.EndsWith("[SISTEMA]")
+    desc = desc.Replace("[SISTEMA]", "").Trim()
+    Dim proy As String = Primero(UProp(destino, "PROYECTO"), UProp(top, "PROYECTO"))
+    Dim planta As String = Primero(UProp(destino, "PLANTA"), UProp(top, "PLANTA"))
+
+    ' ---------- nombre del conjunto ----------
+    Dim carpeta As String = CarpetaHija(destino)
+    System.IO.Directory.CreateDirectory(carpeta)
+    Dim n As Integer = 1
+    Dim rutaC As String
+    Do
+        rutaC = System.IO.Path.Combine(carpeta, nomEns & "-" & pref & "-" & n.ToString("000") & ".iam")
+        If Not System.IO.File.Exists(rutaC) AndAlso Not System.IO.Directory.Exists(System.IO.Path.Combine(carpeta, System.IO.Path.GetFileNameWithoutExtension(rutaC))) Then Exit Do
+        n += 1
+    Loop
+    If enExistente Then rutaC = aEx.FullFileName
+    Dim nomC As String = System.IO.Path.GetFileNameWithoutExtension(rutaC)
+    Dim carpPiezas As String = System.IO.Path.Combine(carpeta, nomC, "Piezas")
+    If enExistente Then carpPiezas = System.IO.Path.Combine(CarpetaHija(aEx), "Piezas")
+
+    ' ---------- que archivo se mueve y cual se copia ----------
+    Dim srcs As New List(Of String)
+    For Each oc As ComponentOccurrence In elegidas
+        Dim f As String = oc.Definition.Document.FullFileName
+        If Not srcs.Contains(f) Then srcs.Add(f)
+    Next
+    Dim usos As Dictionary(Of String, Integer) = ContarUsos(top, destino, elegidas)
+    ' v1.2: la misma pieza usada en OTRA FASE (u otro ensamble de la obra no abierto) -> se copia
+    Dim yaVistos As New List(Of String)
+    yaVistos.Add(top.FullFileName.ToLower())
+    For Each d0 As Document In top.AllReferencedDocuments
+        yaVistos.Add(d0.FullFileName.ToLower())
+    Next
+    For Each f As String In srcs
+        Dim otro As String = UsadoEnObra(f, obra, yaVistos)
+        If otro <> "" Then
+            usos(f) = If(usos.ContainsKey(f), usos(f), 0) + 1
+            noVan.Add(System.IO.Path.GetFileName(f) & " tambien se usa en " & otro & ": se COPIA, la original se queda")
+        End If
+    Next
+    Dim mapa As New Dictionary(Of String, String)(StringComparer.OrdinalIgnoreCase)   ' original -> nuevo
+    Dim mover As New List(Of String)
+    Dim nPref As New Dictionary(Of String, Integer)
+    Dim ro As New List(Of String)
+    For Each f As String In srcs
+        Dim d As PartDocument = CType(ThisApplication.Documents.ItemByName(f), PartDocument)
+        If d.ComponentDefinition.IsContentMember OrElse Not f.ToLower().StartsWith(obra.ToLower() & "\") Then Continue For
+        Dim p As String = Prefijo(d)
+        If Not nPref.ContainsKey(p) Then nPref(p) = 0
+        Dim nuevo As String
+        Do
+            nPref(p) += 1
+            nuevo = System.IO.Path.Combine(carpPiezas, nomC & "-" & p & "-" & nPref(p).ToString("000") & ".ipt")
+        Loop While System.IO.File.Exists(nuevo)
+        mapa(f) = nuevo
+        If Not usos.ContainsKey(f) OrElse usos(f) = 0 Then
+            mover.Add(f)
+            If (System.IO.File.GetAttributes(f) And System.IO.FileAttributes.ReadOnly) = System.IO.FileAttributes.ReadOnly Then ro.Add(System.IO.Path.GetFileName(f))
+        End If
+    Next
+    If ro.Count > 0 Then
+        MessageBox.Show("Estas piezas son de solo lectura (check-in en Vault?):" & vbCrLf & String.Join(vbCrLf, ro.ToArray()) & vbCrLf & vbCrLf & "Haz check-out y vuelve a ejecutar.", "AGRUPAR_EN_CONJUNTO")
+        Exit Sub
+    End If
+    Dim nRestr As Integer = 0
+    For Each oc As ComponentOccurrence In elegidas
+        Try
+            For Each c As AssemblyConstraint In oc.Constraints
+                Dim otra As ComponentOccurrence = Nothing
+                Try
+                    otra = If(c.OccurrenceOne Is oc, c.OccurrenceTwo, c.OccurrenceOne)
+                Catch
+                End Try
+                If otra Is Nothing OrElse Not elegidas.Contains(otra) Then nRestr += 1
+            Next
+        Catch
+        End Try
+    Next
+
+    If Not silencioso Then
+        Dim t As String = If(enExistente, "Meter " & elegidas.Count & " piezas de " & nomEns & " en " & nomC & " (" & desc & ")?", "Crear " & nomC & ".iam (" & desc & ") con " & elegidas.Count & " piezas de " & nomEns & "?") & vbCrLf & vbCrLf
+        For Each f As String In srcs
+            If mapa.ContainsKey(f) Then
+                t &= "  " & System.IO.Path.GetFileName(f) & "  ->  " & System.IO.Path.GetFileName(mapa(f)) & If(mover.Contains(f), "", "   (COPIA: se usa en otro lugar)") & vbCrLf
+            Else
+                t &= "  " & System.IO.Path.GetFileName(f) & "   (biblioteca / fuera de la obra: se usa tal cual)" & vbCrLf
+            End If
+        Next
+        If nRestr > 0 Then t &= vbCrLf & nRestr & " restricciones con el resto de " & nomEns & " se perderan (las piezas quedan fijas en su sitio)." & vbCrLf
+        If noVan.Count > 0 Then t &= vbCrLf & "No se incluyen:" & vbCrLf & "  " & String.Join(vbCrLf & "  ", noVan.ToArray()) & vbCrLf
+        t &= vbCrLf & "Se guardara " & nomEns & ". Continuar?"
+        If MessageBox.Show(t, "AGRUPAR_EN_CONJUNTO", MessageBoxButtons.YesNo, MessageBoxIcon.Question) <> DialogResult.Yes Then Exit Sub
+    End If
+
+    Dim errores As New List(Of String)
+    ' ---------- 1) copias con nombre nuevo ----------
+    System.IO.Directory.CreateDirectory(carpPiezas)
+    For Each kv As KeyValuePair(Of String, String) In mapa
+        Try
+            Dim d As Document = ThisApplication.Documents.ItemByName(kv.Key)
+            d.SaveAs(kv.Value, True)
+            Try
+                System.IO.File.SetAttributes(kv.Value, System.IO.File.GetAttributes(kv.Value) And Not System.IO.FileAttributes.ReadOnly)
+            Catch
+            End Try
+            Dim cp As Document = ThisApplication.Documents.Open(kv.Value, False)
+            For Each pn As String In New String() {"MARCA", "MARCA_ANTERIOR", "CONJUNTO", "ENSAMBLE", "PADRE", "RUTA", "NIVEL", "PERTENECE_A", "BLOQUEADO", "TAG", "TAG_LOCAL", "TAGS"}
+                If UProp(cp, pn) <> "" Then EscribirProp(cp, pn, "")
+            Next
+            If Not mover.Contains(kv.Key) Then EscribirProp(cp, "COPIA_DE", NomSin(d))
+            If planta <> "" Then EscribirProp(cp, "PLANTA", planta)
+            Try
+                cp.PropertySets.Item("Design Tracking Properties").Item("Part Number").Value = System.IO.Path.GetFileNameWithoutExtension(kv.Value)
+            Catch
+            End Try
+            cp.Save()
+        Catch ex As Exception
+            errores.Add(System.IO.Path.GetFileName(kv.Key) & ": " & ex.Message)
+        End Try
+    Next
+
+    ' ---------- 2) conjunto (nuevo o existente) con las piezas en su sitio ----------
+    Dim a As AssemblyDocument
+    Dim invC As Matrix = Nothing
+    If enExistente Then
+        a = aEx
+        invC = occExist.Transformation.Copy()
+        invC.Invert()
+    Else
+        a = CType(ThisApplication.Documents.Add(DocumentTypeEnum.kAssemblyDocumentObject, PlantillaEnsamble(), False), AssemblyDocument)
+    End If
+    If Not enExistente Then EscribirProp(a, "PROYECTO", proy)
+    If Not enExistente Then
+        EscribirProp(a, "PLANTA", planta)
+        EscribirProp(a, "PREFIJO", pref)
+        EscribirProp(a, "TIPO_CONJUNTO", desc)
+        EscribirProp(a, "SISTEMA", If(esSistema, "SI", ""))
+        Try
+            Dim dt As PropertySet = a.PropertySets.Item("Design Tracking Properties")
+            dt.Item("Description").Value = desc
+            If proy <> "" Then dt.Item("Project").Value = proy
+        Catch
+        End Try
+        Try
+            a.ComponentDefinition.BOMStructure = BOMStructureEnum.kNormalBOMStructure
+        Catch
+        End Try
+    End If
+    For Each oc As ComponentOccurrence In elegidas
+        Dim f As String = oc.Definition.Document.FullFileName
+        Dim r As String = If(mapa.ContainsKey(f), mapa(f), f)
+        Try
+            Dim mt As Matrix = oc.Transformation.Copy()
+            If invC IsNot Nothing Then
+                Dim mm As Matrix = invC.Copy()
+                mm.PostMultiplyBy(mt)
+                mt = mm
+            End If
+            Dim nueva As ComponentOccurrence = a.ComponentDefinition.Occurrences.Add(r, mt)
+            Try : nueva.Grounded = True : Catch : End Try
+            Try : nueva.BOMStructure = oc.BOMStructure : Catch : End Try
+        Catch ex As Exception
+            errores.Add(oc.Name & ": " & ex.Message)
+        End Try
+    Next
+    If enExistente Then
+        a.Save()
+    Else
+        a.SaveAs(rutaC, False)
+    End If
+
+    ' ---------- 3) en la fase: entra el conjunto, salen las piezas ----------
+    Dim occC As ComponentOccurrence = occExist
+    If Not enExistente Then
+        Try
+            occC = destino.ComponentDefinition.Occurrences.Add(rutaC, ThisApplication.TransientGeometry.CreateMatrix())
+            Try : occC.Grounded = True : Catch : End Try
+        Catch ex As Exception
+            errores.Add("No pude insertar " & nomC & " en " & nomEns & ": " & ex.Message)
+        End Try
+    End If
+    If occC IsNot Nothing Then
+        For Each oc As ComponentOccurrence In elegidas
+            Try
+                oc.Delete()
+            Catch ex As Exception
+                errores.Add("No pude quitar " & oc.Name & " de " & nomEns & ": " & ex.Message)
+            End Try
+        Next
+    End If
+    If Not enExistente Then a.Close(True)
+    Try
+        destino.Save()
+        If Not (destino Is top) Then top.Save()
+    Catch ex As Exception
+        errores.Add("Guardar " & nomEns & ": " & ex.Message)
+    End Try
+
+    ' ---------- 4) planos re-enlazados y originales a _to_delete ----------
+    Dim nPlanos As Integer = 0
+    Dim pendientes As Integer = 0
+    If mover.Count > 0 AndAlso occC IsNot Nothing Then
+        Dim mapaMov As New Dictionary(Of String, String)(StringComparer.OrdinalIgnoreCase)
+        For Each f As String In mover
+            mapaMov(f) = mapa(f)
+        Next
+        For Each idw As String In BuscarPlanos(obra)
+            Dim dp As Document = Nothing
+            Try
+                dp = ThisApplication.Documents.Open(idw, False)
+                Dim cambio As Boolean = False
+                For Each fd As FileDescriptor In dp.File.ReferencedFileDescriptors
+                    If mapaMov.ContainsKey(fd.FullFileName) Then
+                        fd.ReplaceReference(mapaMov(fd.FullFileName))
+                        cambio = True
+                    End If
+                Next
+                If cambio Then
+                    dp.Save()
+                    nPlanos += 1
+                End If
+            Catch ex As Exception
+                errores.Add(System.IO.Path.GetFileName(idw) & ": " & ex.Message)
+            End Try
+            Try
+                If dp IsNot Nothing Then dp.Close(True)
+            Catch
+            End Try
+        Next
+        Dim papelera As String = System.IO.Path.Combine(obra, "_to_delete", DateTime.Now.ToString("yyyyMMdd_HHmm"))
+        For Each f As String In mover
+            Try
+                Dim dd As Document = Nothing
+                Try
+                    dd = ThisApplication.Documents.ItemByName(f)
+                Catch
+                End Try
+                If dd IsNot Nothing AndAlso dd.ReferenceCount = 0 Then dd.Close(True)
+            Catch
+            End Try
+            Try
+                Dim dest As String = System.IO.Path.Combine(papelera, f.Substring(obra.Length + 1))
+                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(dest))
+                System.IO.File.Move(f, dest)
+            Catch
+                pendientes += 1
+            End Try
+        Next
+    End If
+
+    Try
+        Dim reg As String = System.IO.Path.Combine(obra, "_AGRUPADOS.csv")
+        If Not System.IO.File.Exists(reg) Then System.IO.File.AppendAllText(reg, "FECHA;CONJUNTO;ORIGINAL;NUEVO;ACCION" & vbCrLf, System.Text.Encoding.Default)
+        Dim sb As New System.Text.StringBuilder()
+        For Each kv As KeyValuePair(Of String, String) In mapa
+            sb.AppendLine(DateTime.Now.ToString("yyyy-MM-dd HH:mm") & ";" & nomC & ";" & System.IO.Path.GetFileName(kv.Key) & ";" & System.IO.Path.GetFileName(kv.Value) & ";" & If(mover.Contains(kv.Key), "MOVIDA", "COPIA"))
+        Next
+        System.IO.File.AppendAllText(reg, sb.ToString(), System.Text.Encoding.Default)
+    Catch
+    End Try
+
+    Dim msg As String = If(enExistente, elegidas.Count & " piezas metidas en " & nomC & " (" & desc & ").", "Conjunto " & nomC & " (" & desc & ") creado en " & nomEns & " con " & elegidas.Count & " piezas.") & vbCrLf & _
+        mover.Count & " piezas movidas, " & (mapa.Count - mover.Count) & " copiadas, " & nPlanos & " planos re-enlazados." & vbCrLf & _
+        "Las piezas quedaron FIJAS en su sitio dentro del conjunto. " & nomEns & " guardado." & vbCrLf & _
+        "Siguiente: REVISAR_JERARQUIA y TEKLA_NUMERACION."
+    If nRestr > 0 Then msg &= vbCrLf & nRestr & " restricciones con el resto de la fase se perdieron."
+    If pendientes > 0 Then msg &= vbCrLf & pendientes & " archivos viejos no se pudieron mover (en uso): cierra Inventor y muevelos a _to_delete."
+    If noVan.Count > 0 Then msg &= vbCrLf & vbCrLf & "No incluidas:" & vbCrLf & String.Join(vbCrLf, noVan.ToArray())
+    If errores.Count > 0 Then msg &= vbCrLf & vbCrLf & "REVISAR:" & vbCrLf & String.Join(vbCrLf, errores.ToArray())
+    If Not silencioso Then MessageBox.Show(msg, "AGRUPAR_EN_CONJUNTO")
+End Sub
+
+Private silencioso As Boolean
+
+' Usos de cada pieza FUERA de las instancias elegidas: otras instancias, otros ensambles,
+' piezas derivadas de ella. 0 = se puede mover.
+Function ContarUsos(top As AssemblyDocument, destino As AssemblyDocument, elegidas As List(Of ComponentOccurrence)) As Dictionary(Of String, Integer)
+    Dim r As New Dictionary(Of String, Integer)(StringComparer.OrdinalIgnoreCase)
+    For Each oc As ComponentOccurrence In destino.ComponentDefinition.Occurrences
+        If elegidas.Contains(oc) Then Continue For
+        Try
+            Dim f As String = oc.Definition.Document.FullFileName
+            r(f) = If(r.ContainsKey(f), r(f), 0) + 1
+        Catch
+        End Try
+    Next
+    Dim docs As New List(Of Document)
+    docs.Add(top)
+    For Each d As Document In top.AllReferencedDocuments
+        docs.Add(d)
+    Next
+    For Each d As Document In docs
+        If d Is destino Then Continue For
+        Try
+            For Each fd As FileDescriptor In d.File.ReferencedFileDescriptors
+                Dim f As String = fd.FullFileName
+                r(f) = If(r.ContainsKey(f), r(f), 0) + 1
+            Next
+        Catch
+        End Try
+    Next
+    Return r
+End Function
+
+Function BuscarPlanos(obra As String) As List(Of String)
+    Dim r As New List(Of String)
+    For Each f As String In System.IO.Directory.GetFiles(obra, "*.idw", System.IO.SearchOption.AllDirectories)
+        Dim x As String = f.ToLower()
+        If x.Contains("\_to_delete\") OrElse x.Contains("\oldversions\") OrElse x.Contains("\_obsoleto") Then Continue For
+        r.Add(f)
+    Next
+    Return r
+End Function
+
+' Prefijo de la serie: el de la original (...-PL-002 -> PL); si no tiene, segun su tipo
+Function Prefijo(p As PartDocument) As String
+    Dim m As System.Text.RegularExpressions.Match = System.Text.RegularExpressions.Regex.Match(NomSin(p).ToUpper(), "-([A-Z]{1,4})-\d{2,4}$")
+    If m.Success Then Return m.Groups(1).Value
+    If p.SubType = "{9C464203-9BAE-11D3-8BAD-0060B0CE6BB4}" Then Return "CH"
+    Dim nat As String = UProp(p, "NATURALEZA").ToUpper()
+    If nat.Contains("MECANIZ") OrElse UProp(p, "CODIGO").ToLower() = "mq" Then Return "MQ"
+    If nat.Contains("PLANCHA") Then Return "PL"
+    If UProp(p, "PERFIL") <> "" Then Return "PF"
+    Return "PZ"
+End Function
+
+Function CargarTipos(asm As Document) As List(Of String)
+    Dim l As New List(Of String)
+    Dim dir As String = System.IO.Path.GetDirectoryName(asm.FullFileName)
+    Dim archivo As String = ""
+    For lvl As Integer = 0 To 6
+        If dir Is Nothing Then Exit For
+        For Each sd As String In New String() {"", "iLogic"}
+            Dim p As String = System.IO.Path.Combine(System.IO.Path.Combine(dir, sd), "TABLA_MARCAS.csv")
+            If archivo = "" AndAlso System.IO.File.Exists(p) Then archivo = p
+        Next
+        dir = System.IO.Path.GetDirectoryName(dir)
+    Next
+    If archivo = "" Then
+        Try
+            For Each p As String In ThisApplication.FileOptions.ExternalRuleDirectories
+                If System.IO.File.Exists(System.IO.Path.Combine(p, "TABLA_MARCAS.csv")) Then archivo = System.IO.Path.Combine(p, "TABLA_MARCAS.csv")
+            Next
+        Catch
+        End Try
+    End If
+    If archivo = "" Then Return l
+    For Each ln As String In System.IO.File.ReadAllLines(archivo, System.Text.Encoding.UTF8)
+        Dim c() As String = ln.Split(";"c)
+        If c.Length >= 3 AndAlso c(0).Trim().ToUpper().EndsWith("CONJUNTO") AndAlso c(1).Trim() <> "" Then
+            Dim sis As Boolean = c.Length >= 5 AndAlso c(4).Trim().ToUpper() = "SI"
+            l.Add(c(1).Trim().ToUpper() & " - " & c(2).Trim() & If(sis, "  [SISTEMA]", ""))
+        End If
+    Next
+    l.Sort()
+    Return l
+End Function
+
+Function PlantillaEnsamble() As String
+    Try
+        Dim raiz As String = ThisApplication.FileOptions.TemplatesPath
+        For Each f As String In System.IO.Directory.GetFiles(raiz, "Standard (mm).iam", System.IO.SearchOption.AllDirectories)
+            Return f
+        Next
+        For Each f As String In System.IO.Directory.GetFiles(raiz, "Standard*.iam", System.IO.SearchOption.AllDirectories)
+            Return f
+        Next
+    Catch
+    End Try
+    Return ThisApplication.FileManager.GetTemplateFile(DocumentTypeEnum.kAssemblyDocumentObject)
+End Function
+
+Function EsGeneral(d As Document) As Boolean
+    If UProp(d, "TIPO_ENSAMBLE").ToUpper() = "GENERAL" Then Return True
+    Return NomSin(d).ToUpper().EndsWith("-GENERAL")
+End Function
+
+Function CarpetaObra(ruta As String) As String
+    Dim x As String = System.IO.Path.GetDirectoryName(ruta)
+    For i As Integer = 0 To 8
+        If x Is Nothing OrElse x = "" Then Exit For
+        If System.IO.File.Exists(System.IO.Path.Combine(x, "_OBRA.txt")) Then Return x
+        x = System.IO.Path.GetDirectoryName(x)
+    Next
+    Return ""
+End Function
+
+' Carpeta para los hijos de un ensamble: <carpeta>\<NOMBRE>\ ; una FASE que ya vive en su propia
+' carpeta usa esa misma carpeta.
+Function CarpetaHija(d As Document) As String
+    Dim dir As String = System.IO.Path.GetDirectoryName(d.FullFileName)
+    Dim nom As String = System.IO.Path.GetFileNameWithoutExtension(d.FullFileName)
+    If UProp(d, "TIPO_ENSAMBLE").ToUpper() = "PLANTA" AndAlso System.IO.Path.GetFileName(dir).ToUpper() = nom.ToUpper() Then Return dir
+    Return System.IO.Path.Combine(dir, nom)
+End Function
+
+Function Primero(ParamArray v() As String) As String
+    For Each s As String In v
+        If s IsNot Nothing AndAlso s.Trim() <> "" Then Return s.Trim()
+    Next
+    Return ""
+End Function
+
+Function NomSin(d As Document) As String
+    Return System.IO.Path.GetFileNameWithoutExtension(d.FullFileName)
+End Function
+
+Function Arg(n As String) As String
+    Try
+        If RuleArguments.Exists(n) Then Return CStr(RuleArguments.Value(n))
+    Catch
+    End Try
+    Return ""
+End Function
+
+Function UProp(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Inventor User Defined Properties").Item(n).Value).Trim()
+    Catch
+    End Try
+    Return ""
+End Function
+
+Sub EscribirProp(d As Document, n As String, v As String)
+    Dim ps As PropertySet = d.PropertySets.Item("Inventor User Defined Properties")
+    Try
+        ps.Item(n).Value = v
+    Catch
+        ps.Add(v, n)
+    End Try
+End Sub
+
+' Busca otro ensamble de la obra (no abierto en esta sesion: otra fase, el GENERAL...) que use
+' el archivo. Revisa los .iam de la obra buscando el nombre del archivo dentro (sin abrirlos).
+Function UsadoEnObra(f As String, obra As String, excluir As List(Of String)) As String
+    Dim nom As String = System.IO.Path.GetFileName(f).ToLower()
+    Try
+        For Each iam As String In System.IO.Directory.GetFiles(obra, "*.iam", System.IO.SearchOption.AllDirectories)
+            Dim x As String = iam.ToLower()
+            If x.Contains("\_to_delete\") OrElse x.Contains("\oldversions\") OrElse x.Contains("\_obsoleto") Then Continue For
+            If excluir.Contains(x) Then Continue For
+            Dim b() As Byte = System.IO.File.ReadAllBytes(iam)
+            For desfase As Integer = 0 To 1
+                Dim t As String = System.Text.Encoding.Unicode.GetString(b, desfase, b.Length - desfase - ((b.Length - desfase) Mod 2))
+                If t.ToLower().Contains(nom) Then Return System.IO.Path.GetFileName(iam)
+            Next
+        Next
+    Catch
+    End Try
+    Return ""
+End Function

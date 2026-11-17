@@ -1,0 +1,230 @@
+' =====================================================================
+'  CATALOGO_PERFILES  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Arma PERFILES_CATALOGO.csv (carpeta de reglas) leyendo el CONTENT CENTER de este Inventor:
+'  por cada perfil guarda AREA (cm2) e INERCIAS PRINCIPALES Imax / Imin (cm4).
+'  EXTRAER_PIEZA lo usa para RECONOCER el perfil de un cuerpo del STEP por su area neta e
+'  inercias (no por el nombre), y avisa si la designacion escrita no coincide con el cuerpo.
+'
+'  - Familias: por defecto las normas ANSI / AISC / ASTM (W, S, HP, M, C, MC, L, HSS, tubos, WT...).
+'    Puedes agregar otras (DIN, EN, IPE, HE, UPN, JIS...) escribiendolas separadas por |.
+'  - Area: columna de seccion, o masa por metro (kg/m / 7850), o geometria.
+'  - Inercias: Ix / Iy de la tabla; angulos y tubos redondos (que no la traen) se calculan
+'    con sus medidas (angulo sin radios, ajustado a su area real).
+'  - Se ejecuta UNA vez (y cuando cambies de normas). No toca ningun modelo.
+'  Argumentos: familias=ANSI|AISC|ASTM|DIN 1025   silencioso
+' =====================================================================
+Imports System.Collections.Generic
+
+Sub Main()
+    Dim silencioso As Boolean = RuleArguments.Exists("silencioso")
+    Dim filtro As String = "ANSI|AISC|ASTM"
+    If RuleArguments.Exists("familias") Then filtro = CStr(RuleArguments.Value("familias"))
+    If Not silencioso Then
+        Dim r As String = InputBox("Normas / familias del Content Center a incluir (separadas por |):" & vbCrLf & vbCrLf & _
+            "ANSI|AISC|ASTM  = americanas (W, C, L, HSS, tubos...)" & vbCrLf & _
+            "agrega por ejemplo  |DIN 1025|DIN 1026|EN 10056|IPE|HE  para europeas", "CATALOGO_PERFILES", filtro)
+        If r Is Nothing OrElse r.Trim() = "" Then Exit Sub
+        filtro = r.Trim()
+    End If
+    Dim rx As New System.Text.RegularExpressions.Regex(filtro, System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+
+    Dim sb As New System.Text.StringBuilder()
+    sb.AppendLine("DESIGNACION;FAMILIA;A_cm2;Imax_cm4;Imin_cm4;FUENTE")
+    Dim vistos As New HashSet(Of String)
+    Dim nFam As Integer = 0, nFil As Integer = 0, nSin As Integer = 0
+    Dim t0 As DateTime = DateTime.Now
+    Dim top As Object = ThisApplication.ContentCenter.TreeViewTopNode
+    For Each cat As Object In top.ChildNodes
+        Dim nc As String = CStr(cat.DisplayName).ToUpper()
+        If Not (nc.Contains("PERFIL") OrElse nc.Contains("STRUCTURAL") OrElse nc.Contains("PROFIL")) Then Continue For
+        Dim nodos As New List(Of Object)
+        Juntar(cat, nodos)
+        For Each nd As Object In nodos
+            For Each fm As Object In nd.Families
+                Dim fn As String = CStr(fm.DisplayName)
+                If Not rx.IsMatch(fn) Then Continue For
+                nFam += 1
+                ' columnas
+                Dim col As New Dictionary(Of String, Integer)(StringComparer.OrdinalIgnoreCase)
+                Dim uni As New Dictionary(Of String, String)(StringComparer.OrdinalIgnoreCase)
+                Dim i As Integer = 1
+                For Each c As Object In fm.TableColumns
+                    Try
+                        col(CStr(c.InternalName)) = i
+                        uni(CStr(c.InternalName)) = CStr(c.Units)
+                    Catch
+                    End Try
+                    i += 1
+                Next
+                For Each row As Object In fm.TableRows
+                    Try
+                        Dim des As String = Celda(row, col, "SIZE")
+                        If des = "" Then des = Celda(row, col, "SIZE_SEL")
+                        If des = "" Then des = Celda(row, col, "STOCKNUMBER")
+                        des = des.Trim().Trim("("c, ")"c).Trim()
+                        If des = "" Then Continue For
+                        If Char.IsDigit(des(0)) Then des = Prefijo(CStr(nd.DisplayName).ToUpper()) & des
+                        Dim key As String = des.ToUpper().Replace(" ", "")
+                        If vistos.Contains(key) Then Continue For
+
+                        ' ---- area ----
+                        Dim A As Double = 0
+                        For Each n As String In New String() {"Section", "AREA", "G_A"}
+                            If A = 0 AndAlso col.ContainsKey(n) Then A = Num(Celda(row, col, n)) * Factor(uni(n))
+                        Next
+                        If A = 0 AndAlso col.ContainsKey("MAS") Then A = Num(Celda(row, col, "MAS")) * FactorMasa(uni("MAS")) / 0.785
+                        ' ---- inercias ----
+                        Dim ix As Double = 0, iy As Double = 0, fuente As String = "tabla"
+                        If col.ContainsKey("Jx") Then ix = Num(Celda(row, col, "Jx")) * Factor(uni("Jx"))
+                        If col.ContainsKey("Jy") Then iy = Num(Celda(row, col, "Jy")) * Factor(uni("Jy"))
+                        Dim h As Double = If(col.ContainsKey("G_H"), Num(Celda(row, col, "G_H")) * Factor(uni("G_H")), 0)
+                        Dim w As Double = If(col.ContainsKey("G_W"), Num(Celda(row, col, "G_W")) * Factor(uni("G_W")), 0)
+                        Dim tt As Double = If(col.ContainsKey("G_T"), Num(Celda(row, col, "G_T")) * Factor(uni("G_T")), 0)
+                        Dim imax As Double = 0, imin As Double = 0
+                        If ix > 0 AndAlso iy > 0 Then
+                            imax = Math.Max(ix, iy) : imin = Math.Min(ix, iy)
+                        ElseIf ix > 0 AndAlso (fn.ToUpper().Contains("CUADRADO") OrElse fn.ToUpper().Contains("SQUARE") OrElse (h > 0 AndAlso Math.Abs(h - w) < 0.001)) Then
+                            imax = ix : imin = ix
+                        ElseIf des.ToUpper().StartsWith("L") AndAlso h > 0 AndAlso tt > 0 Then
+                            If w = 0 Then w = h
+                            Dim ag As Double = 0
+                            Angulo(h, w, tt, ag, imax, imin)
+                            If A > 0 AndAlso ag > 0 Then
+                                imax *= A / ag : imin *= A / ag
+                            Else
+                                A = ag
+                            End If
+                            fuente = "geometria"
+                        ElseIf des.StartsWith("TUBO") AndAlso h > 0 AndAlso tt > 0 AndAlso tt < h / 2 Then
+                            Dim d As Double = h - 2 * tt
+                            imax = Math.PI / 64 * (h ^ 4 - d ^ 4) : imin = imax
+                            If A = 0 Then A = Math.PI / 4 * (h * h - d * d)
+                            fuente = "geometria"
+                        End If
+                        If A <= 0 OrElse imax <= 0 OrElse imin <= 0 Then
+                            nSin += 1
+                            Continue For
+                        End If
+                        vistos.Add(key)
+                        Dim ci As System.Globalization.CultureInfo = System.Globalization.CultureInfo.InvariantCulture
+                        sb.AppendLine(des.Replace(";", ",") & ";" & fn.Replace(";", ",") & ";" & A.ToString("G6", ci) & ";" & imax.ToString("G6", ci) & ";" & imin.ToString("G6", ci) & ";" & fuente)
+                        nFil += 1
+                    Catch
+                    End Try
+                Next
+            Next
+        Next
+    Next
+    If nFil = 0 Then
+        MessageBox.Show("No encontre perfiles con ese filtro (" & filtro & ").", "CATALOGO_PERFILES")
+        Exit Sub
+    End If
+    Dim ruta As String = RutaCatalogo()
+    System.IO.File.WriteAllText(ruta, sb.ToString(), System.Text.Encoding.UTF8)
+    If Not silencioso Then MessageBox.Show(nFil & " perfiles de " & nFam & " familias (" & nSin & " filas sin datos de seccion)." & vbCrLf & _
+        "Tiempo: " & (DateTime.Now - t0).TotalSeconds.ToString("0") & " s" & vbCrLf & vbCrLf & ruta, "CATALOGO_PERFILES")
+End Sub
+
+' designaciones que empiezan con numero (tubos, barras): prefijo segun la categoria
+Function Prefijo(cat As String) As String
+    If cat.Contains("TUB") OrElse cat.Contains("TUBE") OrElse cat.Contains("HSS") Then
+        If cat.Contains("REDOND") OrElse cat.Contains("ROUND") OrElse cat.Contains("PIPE") Then Return "TUBO "
+        Return "HSS "
+    End If
+    If cat.Contains("BARRA") OrElse cat.Contains("BAR") Then Return "BARRA "
+    Return ""
+End Function
+
+Sub Juntar(n As Object, l As List(Of Object))
+    l.Add(n)
+    Try
+        For Each c As Object In n.ChildNodes
+            Juntar(c, l)
+        Next
+    Catch
+    End Try
+End Sub
+
+Function Celda(row As Object, col As Dictionary(Of String, Integer), n As String) As String
+    If Not col.ContainsKey(n) Then Return ""
+    Try
+        Return CStr(row.Item(col(n)).Value)
+    Catch
+        Return ""
+    End Try
+End Function
+
+' Angulo de alas h, w y espesor t (sin radios): area e inercias principales.
+Sub Angulo(h As Double, w As Double, t As Double, ByRef A As Double, ByRef imax As Double, ByRef imin As Double)
+    Dim a1 As Double = w * t, x1 As Double = w / 2, y1 As Double = t / 2
+    Dim a2 As Double = t * (h - t), x2 As Double = t / 2, y2 As Double = t + (h - t) / 2
+    A = a1 + a2
+    Dim xc As Double = (a1 * x1 + a2 * x2) / A, yc As Double = (a1 * y1 + a2 * y2) / A
+    Dim ixx As Double = w * t ^ 3 / 12 + a1 * (y1 - yc) ^ 2 + t * (h - t) ^ 3 / 12 + a2 * (y2 - yc) ^ 2
+    Dim iyy As Double = t * w ^ 3 / 12 + a1 * (x1 - xc) ^ 2 + (h - t) * t ^ 3 / 12 + a2 * (x2 - xc) ^ 2
+    Dim ixy As Double = a1 * (x1 - xc) * (y1 - yc) + a2 * (x2 - xc) * (y2 - yc)
+    Dim m As Double = (ixx + iyy) / 2, rr As Double = Math.Sqrt(((ixx - iyy) / 2) ^ 2 + ixy ^ 2)
+    imax = m + rr : imin = m - rr
+End Sub
+
+' factor a cm^n desde "inch^4", "in^2", "mm^4", "cm", "m"...
+Function Factor(u As String) As Double
+    u = u.Trim().ToLower()
+    Dim n As Integer = 1
+    Dim k As Integer = u.IndexOf("^")
+    If k > 0 Then
+        Integer.TryParse(u.Substring(k + 1), n)
+        u = u.Substring(0, k)
+    End If
+    Dim f As Double = 1
+    Select Case u
+        Case "inch", "in" : f = 2.54
+        Case "mm" : f = 0.1
+        Case "cm" : f = 1
+        Case "m" : f = 100
+        Case "foot", "ft" : f = 30.48
+    End Select
+    Return f ^ n
+End Function
+
+' a kg/m
+Function FactorMasa(u As String) As Double
+    u = u.Trim().ToLower()
+    If u.Contains("pound") OrElse u.Contains("lb") Then Return 1.48816394
+    If u = "kg/mm" Then Return 1000
+    If u = "kg/cm" Then Return 100
+    Return 1
+End Function
+
+Function Num(s As String) As Double
+    s = s.Trim()
+    Dim ci As System.Globalization.CultureInfo = System.Globalization.CultureInfo.InvariantCulture
+    Dim v As Double = 0
+    If Double.TryParse(s, System.Globalization.NumberStyles.Float, ci, v) Then Return v
+    Try
+        Dim tot As Double = 0
+        For Each pz As String In s.Split(" "c)
+            If pz.Contains("/") Then
+                Dim q() As String = pz.Split("/"c)
+                tot += Double.Parse(q(0), ci) / Double.Parse(q(1), ci)
+            ElseIf pz <> "" Then
+                tot += Double.Parse(pz.Replace(",", "."), ci)
+            End If
+        Next
+        Return tot
+    Catch
+        Return 0
+    End Try
+End Function
+
+Function RutaCatalogo() As String
+    Dim dir As String = ""
+    For Each rd As String In iLogicVb.Automation.FileOptions.ExternalRuleDirectories
+        If Not System.IO.Directory.Exists(rd) Then Continue For
+        If dir = "" Then dir = rd
+        For Each f As String In System.IO.Directory.GetFiles(rd, "PERFILES_CATALOGO.csv", System.IO.SearchOption.AllDirectories)
+            Return f
+        Next
+    Next
+    Return System.IO.Path.Combine(dir, "PERFILES_CATALOGO.csv")
+End Function

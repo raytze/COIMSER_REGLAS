@@ -1,0 +1,346 @@
+' =====================================================================
+'  REPORTE_COSTO  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Costo estimado de fabricacion desde el modelo (para cotizar), en la FASE o un conjunto:
+'
+'   RESUMEN  : kg de PERFILES, PLANCHAS, MECANIZADO y OTROS (con su merma), unidades de PERNERIA
+'              y m2 de PINTURA  x  la TARIFA de cada concepto  = subtotal y TOTAL (con formulas,
+'              puedes cambiar tarifas o mermas en el Excel y se recalcula).
+'   CONJUNTOS: lo mismo por conjunto (cada conjunto de primer nivel).
+'
+'  Tarifas en TARIFAS.csv (carpeta de reglas; se crea con valores en 0 la primera vez):
+'     CONCEPTO;UNIDAD;TARIFA;MERMA_%;NOTA
+'     PERFIL;kg;0;5;material + habilitado ...
+'  Clasificacion: perfil = Frame / Content Center / propiedad PERFIL / naturaleza Perfil;
+'  plancha = chapa o naturaleza Plancha / Chapa / Platina; mecanizado = CODIGO mq o MECANICA;
+'  perneria = Content Center / Comprado con "perno, tuerca, arandela, esparrago, anclaje...".
+'  Area de pintura = todas las caras de las piezas fabricadas (sin perneria).
+'  No incluye soldadura ni montaje.
+'  Salida: <fase>\PLANOS\REPORTES\<ENSAMBLE>-COSTO_<fecha>.xlsx   Argumentos: silencioso
+' =====================================================================
+Imports System.Collections.Generic
+
+Sub Main()
+    silencioso = RuleArguments.Exists("silencioso")
+    Dim asm As AssemblyDocument = TryCast(ThisDoc.Document, AssemblyDocument)
+    If asm Is Nothing Then
+        MessageBox.Show("Abre la FASE (o un conjunto) y ejecuta la regla.", "REPORTE_COSTO")
+        Exit Sub
+    End If
+    If UProp(asm, "TIPO_ENSAMBLE").ToUpper() = "GENERAL" Then
+        MessageBox.Show("Ejecutala en cada FASE (o usa EJECUTAR_FASES).", "REPORTE_COSTO")
+        Exit Sub
+    End If
+    Dim tarifas As Dictionary(Of String, String()) = LeerTarifas()
+
+    ' ---------- recorrido ----------
+    Dim total As New Dictionary(Of String, Double)
+    Dim porConj As New SortedDictionary(Of String, Dictionary(Of String, Double))
+    Dim pernos As New SortedDictionary(Of String, Double)
+    For Each o As ComponentOccurrence In asm.ComponentDefinition.Occurrences
+        If o.Suppressed Then Continue For
+        Dim nom As String = "(sueltas en " & asm.DisplayName.Replace(".iam", "") & ")"
+        If o.DefinitionDocumentType = DocumentTypeEnum.kAssemblyDocumentObject AndAlso UProp(o.Definition.Document, "PREFIJO") <> "" Then
+            nom = System.IO.Path.GetFileNameWithoutExtension(o.Definition.Document.FullFileName)
+            Dim mk As String = UProp(o.Definition.Document, "MARCA")
+            If mk <> "" Then nom = mk & "  " & nom
+        End If
+        If Not porConj.ContainsKey(nom) Then porConj(nom) = New Dictionary(Of String, Double)
+        Sumar(o, porConj(nom), total, pernos)
+    Next
+
+    ' ---------- Excel ----------
+    Dim conceptos() As String = {"PERFIL", "PLANCHA", "MECANIZADO", "OTRO", "PERNERIA", "PINTURA"}
+    Dim filas As New List(Of Object())
+    filas.Add(New Object() {"CONCEPTO", "CANTIDAD", "UNIDAD", "MERMA %", "CANT. CON MERMA", "TARIFA", "SUBTOTAL", "NOTA"})
+    Dim r As Integer = 2
+    For Each c As String In conceptos
+        Dim t() As String = tarifas(c)
+        Dim q As Double = If(total.ContainsKey(c), total(c), 0)
+        filas.Add(New Object() {c, Math.Round(q, 2), t(0), Num(t(2)), "=B" & r & "*(1+D" & r & "/100)", Num(t(1)), "=E" & r & "*F" & r, t(3)})
+        r += 1
+    Next
+    filas.Add(New Object() {"TOTAL", Nothing, Nothing, Nothing, Nothing, Nothing, "=SUM(G2:G" & (r - 1) & ")", "sin soldadura ni montaje"})
+
+    Dim filasC As New List(Of Object())
+    filasC.Add(New Object() {"CONJUNTO", "PERFIL kg", "PLANCHA kg", "MECANIZADO kg", "OTRO kg", "PERNERIA und", "PINTURA m2", "PESO kg", "COSTO"})
+    Dim rc As Integer = 2
+    For Each kv As KeyValuePair(Of String, Dictionary(Of String, Double)) In porConj
+        Dim v As Dictionary(Of String, Double) = kv.Value
+        Dim f(8) As Object
+        f(0) = kv.Key
+        For i As Integer = 0 To 5
+            f(i + 1) = Math.Round(If(v.ContainsKey(conceptos(i)), v(conceptos(i)), 0), 2)
+        Next
+        f(7) = "=B" & rc & "+C" & rc & "+D" & rc & "+E" & rc
+        f(8) = "=B" & rc & "*(1+RESUMEN!D2/100)*RESUMEN!F2+C" & rc & "*(1+RESUMEN!D3/100)*RESUMEN!F3+D" & rc & "*(1+RESUMEN!D4/100)*RESUMEN!F4+E" & rc & "*(1+RESUMEN!D5/100)*RESUMEN!F5+F" & rc & "*(1+RESUMEN!D6/100)*RESUMEN!F6+G" & rc & "*(1+RESUMEN!D7/100)*RESUMEN!F7"
+        filasC.Add(f)
+        rc += 1
+    Next
+    Dim filasP As New List(Of Object())
+    filasP.Add(New Object() {"PERNERIA", "CANTIDAD"})
+    For Each kv As KeyValuePair(Of String, Double) In pernos
+        filasP.Add(New Object() {kv.Key, kv.Value})
+    Next
+
+    Dim dirRep As String = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(asm.FullFileName), "PLANOS\REPORTES")
+    System.IO.Directory.CreateDirectory(dirRep)
+    Dim nomA As String = System.IO.Path.GetFileNameWithoutExtension(asm.FullFileName)
+    Dim fecha As String = DateTime.Now.ToString("yyyyMMdd_HHmm")
+    Dim wb As Object = NuevoLibro()
+    If wb IsNot Nothing Then
+        Dim ws As Object = Hoja(wb, "RESUMEN", True)
+        Tabla(ws, 1, filas)
+        Try
+            ws.Range("F2:G" & (r)).NumberFormat = "#,##0.00"
+            ws.Range("A" & r & ":H" & r).Font.Bold = True
+        Catch
+        End Try
+        Tabla(Hoja(wb, "CONJUNTOS", False), 1, filasC)
+        If filasP.Count > 1 Then Tabla(Hoja(wb, "PERNERIA", False), 1, filasP)
+        GuardarLibro(wb, System.IO.Path.Combine(dirRep, nomA & "-COSTO_" & fecha & ".xlsx"))
+    Else
+        GuardarCsv(System.IO.Path.Combine(dirRep, nomA & "-COSTO_" & fecha & ".csv"), filas)
+    End If
+
+    Dim sinTarifa As Boolean = True
+    For Each c As String In conceptos
+        If Num(tarifas(c)(1)) > 0 Then sinTarifa = False
+    Next
+    Dim msg As String = "Costo de " & nomA & ":" & vbCrLf
+    For Each c As String In conceptos
+        msg &= "  " & c.PadRight(11) & (If(total.ContainsKey(c), total(c), 0)).ToString("#,##0.0") & " " & tarifas(c)(0) & vbCrLf
+    Next
+    msg &= vbCrLf & "Excel: " & rutaSalida
+    If sinTarifa Then msg &= vbCrLf & vbCrLf & "Las tarifas estan en 0: ponlas en TARIFAS.csv (" & rutaTarifas & ") o en el Excel."
+    If Not silencioso Then MessageBox.Show(msg, "REPORTE_COSTO")
+End Sub
+
+Private silencioso As Boolean
+Private xl As Object
+Private rutaSalida As String = ""
+Private rutaTarifas As String = ""
+
+Sub Sumar(o As ComponentOccurrence, conj As Dictionary(Of String, Double), total As Dictionary(Of String, Double), pernos As SortedDictionary(Of String, Double))
+    Try
+        If o.Suppressed Then Exit Sub
+        Dim d As Document = o.Definition.Document
+        Dim bs As BOMStructureEnum = o.BOMStructure
+        If bs = BOMStructureEnum.kReferenceBOMStructure Then Exit Sub
+        If UProp(d, "REFERENCIA").ToUpper() = "SI" OrElse UProp(d, "TIPO_REFERENCIA") <> "" Then Exit Sub
+        If o.DefinitionDocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+            For Each s As ComponentOccurrence In o.SubOccurrences
+                Sumar(s, conj, total, pernos)
+            Next
+            Exit Sub
+        End If
+        If bs = BOMStructureEnum.kPhantomBOMStructure Then Exit Sub
+        Dim p As PartDocument = CType(d, PartDocument)
+        Dim desc As String = ""
+        Try
+            desc = CStr(p.PropertySets.Item("Design Tracking Properties").Item("Description").Value)
+        Catch
+        End Try
+        Dim comprado As Boolean = p.ComponentDefinition.IsContentMember OrElse bs = BOMStructureEnum.kPurchasedBOMStructure
+        If comprado AndAlso System.Text.RegularExpressions.Regex.IsMatch((desc & " " & NomSin(p)).ToUpper(), "PERNO|TUERCA|ARANDELA|ESPARRAGO|ANCLAJE|BOLT|NUT|WASHER|SCREW|TORNILLO|ISO |DIN |ANSI B18|ASTM A325|A490") Then
+            Add(conj, total, "PERNERIA", 1)
+            Dim k As String = If(desc <> "", desc, NomSin(p))
+            pernos(k) = If(pernos.ContainsKey(k), pernos(k), 0) + 1
+            Exit Sub
+        End If
+        Dim kg As Double = 0
+        Try
+            kg = p.ComponentDefinition.MassProperties.Mass
+        Catch
+        End Try
+        Dim c As String = Concepto(p)
+        Add(conj, total, c, kg)
+        If Not comprado Then
+            Dim a As Double = 0
+            Try
+                For Each b As SurfaceBody In p.ComponentDefinition.SurfaceBodies
+                    For Each f As Face In b.Faces
+                        a += f.Evaluator.Area
+                    Next
+                Next
+            Catch
+            End Try
+            Add(conj, total, "PINTURA", a / 10000)
+        End If
+    Catch
+    End Try
+End Sub
+
+Function Concepto(p As PartDocument) As String
+    Dim nat As String = UProp(p, "NATURALEZA").ToUpper()
+    Dim cod As String = UProp(p, "CODIGO").ToLower()
+    If cod = "mq" OrElse System.Text.RegularExpressions.Regex.IsMatch(NomSin(p).ToUpper(), "-MQ-\d") OrElse UProp(p, "TIPO_PIEZA").ToUpper() = "MECANICA" OrElse nat.Contains("MECANIZ") Then Return "MECANIZADO"
+    If TieneParam(p, "G_L") OrElse TieneParam(p, "B_L") OrElse UProp(p, "PERFIL") <> "" OrElse nat.Contains("PERFIL") OrElse EsFG(p) Then Return "PERFIL"
+    If p.SubType = "{9C464203-9BAE-11D3-8BAD-0060B0CE6BB4}" OrElse nat.Contains("PLANCHA") OrElse nat.Contains("CHAPA") OrElse nat.Contains("PLATINA") Then Return "PLANCHA"
+    Return "OTRO"
+End Function
+
+Sub Add(conj As Dictionary(Of String, Double), total As Dictionary(Of String, Double), c As String, v As Double)
+    conj(c) = If(conj.ContainsKey(c), conj(c), 0) + v
+    total(c) = If(total.ContainsKey(c), total(c), 0) + v
+End Sub
+
+' TARIFAS.csv: CONCEPTO;UNIDAD;TARIFA;MERMA_%;NOTA  -> {unidad, tarifa, merma, nota}
+Function LeerTarifas() As Dictionary(Of String, String())
+    Dim r As New Dictionary(Of String, String())(StringComparer.OrdinalIgnoreCase)
+    r("PERFIL") = New String() {"kg", "0", "5", "perfil: material + habilitado"}
+    r("PLANCHA") = New String() {"kg", "0", "15", "plancha: material + corte"}
+    r("MECANIZADO") = New String() {"kg", "0", "0", "pieza mecanizada"}
+    r("OTRO") = New String() {"kg", "0", "5", "otras piezas fabricadas"}
+    r("PERNERIA") = New String() {"und", "0", "0", "precio promedio por perno"}
+    r("PINTURA") = New String() {"m2", "0", "10", "preparacion + pintura"}
+    Dim dir As String = ""
+    Try
+        For Each rd As String In iLogicVb.Automation.FileOptions.ExternalRuleDirectories
+            If dir = "" AndAlso System.IO.Directory.Exists(rd) Then dir = rd
+            If Not System.IO.Directory.Exists(rd) Then Continue For
+            For Each f As String In System.IO.Directory.GetFiles(rd, "TARIFAS.csv", System.IO.SearchOption.AllDirectories)
+                If rutaTarifas = "" Then rutaTarifas = f
+            Next
+        Next
+    Catch
+    End Try
+    If rutaTarifas = "" AndAlso dir <> "" Then
+        rutaTarifas = System.IO.Path.Combine(dir, "TARIFAS.csv")
+        Try
+            Dim sb As New System.Text.StringBuilder()
+            sb.AppendLine("CONCEPTO;UNIDAD;TARIFA;MERMA_%;NOTA")
+            For Each kv As KeyValuePair(Of String, String()) In r
+                sb.AppendLine(kv.Key & ";" & String.Join(";", kv.Value))
+            Next
+            System.IO.File.WriteAllText(rutaTarifas, sb.ToString(), System.Text.Encoding.UTF8)
+        Catch
+        End Try
+    ElseIf rutaTarifas <> "" Then
+        Try
+            For Each ln As String In System.IO.File.ReadAllLines(rutaTarifas, System.Text.Encoding.UTF8)
+                Dim c() As String = ln.Split(";"c)
+                If c.Length >= 3 AndAlso r.ContainsKey(c(0).Trim()) Then
+                    r(c(0).Trim().ToUpper()) = New String() {c(1).Trim(), c(2).Trim(), If(c.Length > 3, c(3).Trim(), "0"), If(c.Length > 4, c(4).Trim(), "")}
+                End If
+            Next
+        Catch
+        End Try
+    End If
+    Return r
+End Function
+
+Function TieneParam(p As PartDocument, n As String) As Boolean
+    Try
+        Return p.ComponentDefinition.Parameters.Item(n).Value > 0
+    Catch
+        Return False
+    End Try
+End Function
+
+Function EsFG(d As Document) As Boolean
+    Try
+        For Each di As DocumentInterest In d.DocumentInterests
+            If di.ClientId = "{AC211AE0-A7A5-4589-916D-81C529DA6D17}" AndAlso di.Name = "FrameMemberDoc" Then Return True
+        Next
+    Catch
+    End Try
+    Return False
+End Function
+
+Function NomSin(d As Document) As String
+    Return System.IO.Path.GetFileNameWithoutExtension(d.FullFileName)
+End Function
+
+Function Num(s As String) As Double
+    Dim v As Double = 0
+    Double.TryParse(s.Replace(",", "."), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, v)
+    Return v
+End Function
+
+Function UProp(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Inventor User Defined Properties").Item(n).Value).Trim()
+    Catch
+    End Try
+    Return ""
+End Function
+
+Function Limpia(s As String) As String
+    Return s.Replace(";", ",").Replace(vbCr, " ").Replace(vbLf, " ")
+End Function
+
+' ===================== Excel (si no hay Excel se guarda CSV) =====================
+Function NuevoLibro() As Object
+    Try
+        xl = CreateObject("Excel.Application")
+        xl.Visible = False
+        xl.DisplayAlerts = False
+        Dim wb As Object = xl.Workbooks.Add()
+        Do While wb.Worksheets.Count > 1
+            wb.Worksheets(wb.Worksheets.Count).Delete()
+        Loop
+        Return wb
+    Catch
+        xl = Nothing
+        Return Nothing
+    End Try
+End Function
+
+Function Hoja(wb As Object, nombre As String, primera As Boolean) As Object
+    Dim ws As Object
+    If primera Then
+        ws = wb.Worksheets(1)
+    Else
+        ws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count))
+    End If
+    ws.Name = nombre
+    Return ws
+End Function
+
+Function Tabla(ws As Object, filaIni As Integer, filas As List(Of Object())) As Integer
+    Dim r As Integer = filaIni
+    For Each f() As Object In filas
+        For c As Integer = 0 To f.Length - 1
+            If f(c) Is Nothing Then Continue For
+            ws.Cells(r, c + 1).Value = f(c)
+        Next
+        r += 1
+    Next
+    Try
+        Dim nc As Integer = filas(0).Length
+        ws.Range(ws.Cells(filaIni, 1), ws.Cells(filaIni, nc)).Font.Bold = True
+        ws.Range(ws.Cells(filaIni, 1), ws.Cells(filaIni, nc)).Interior.Color = 14277081
+        ws.Columns.AutoFit()
+    Catch
+    End Try
+    Return r - 1
+End Function
+
+Sub GuardarLibro(wb As Object, ruta As String)
+    Try
+        If System.IO.File.Exists(ruta) Then System.IO.File.Delete(ruta)
+    Catch
+        ruta = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(ruta), System.IO.Path.GetFileNameWithoutExtension(ruta) & "_" & DateTime.Now.ToString("HHmmss") & ".xlsx")
+    End Try
+    wb.Worksheets(1).Activate()
+    wb.SaveAs(ruta, 51)
+    wb.Close(False)
+    xl.Quit()
+    System.Runtime.InteropServices.Marshal.ReleaseComObject(wb)
+    System.Runtime.InteropServices.Marshal.ReleaseComObject(xl)
+    xl = Nothing
+    rutaSalida = ruta
+End Sub
+
+Sub GuardarCsv(ruta As String, filas As List(Of Object()))
+    Dim sb As New System.Text.StringBuilder()
+    For Each f() As Object In filas
+        Dim l As New List(Of String)
+        For Each v As Object In f
+            l.Add(If(v Is Nothing, "", Limpia(CStr(v))))
+        Next
+        sb.AppendLine(String.Join(";", l))
+    Next
+    System.IO.File.WriteAllText(ruta, sb.ToString(), System.Text.Encoding.UTF8)
+    rutaSalida = ruta
+End Sub
