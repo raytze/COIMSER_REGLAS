@@ -1,5 +1,5 @@
 ' =====================================================================
-'  GENERAR_PLANOS  v2.12  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  GENERAR_PLANOS  v2.17  -  Regla externa iLogic (Inventor 2026) - COIMSER
 '  Genera el juego de planos de FABRICACION y HABILITADO de un ensamble
 '  ya numerado con TEKLA_NUMERACION, en un solo .idw con una hoja por plano,
 '  siguiendo la jerarquia:
@@ -34,6 +34,20 @@
 '         NOTAS DE FABRICACION leido de NOTAS_FABRICACION.txt (secciones [GENERAL],
 '         [CONJUNTO], [HABILITADO]); se edita el .txt y se vuelve a ejecutar la regla.
 '
+'  v2.17 - PLANO JERARQUICO (por defecto): cada ensamble lleva SU plano con su disposicion, los
+'         habilitados de SUS piezas y una hoja por subconjunto directo ("DETALLE Y HABILITADOS EN PLANO
+'         <sub>-FAB"). En la misma corrida se genera el plano de CADA conjunto y subconjunto (cualquier
+'         nivel, con PREFIJO y MARCA) en su carpeta <conjunto>\PLANOS. La fase queda corta (general +
+'         una hoja por conjunto + piezas sueltas). Las hojas que pasan a otro plano se quitan, con copia
+'         previa del .idw / .pdf en PLANOS\_SUPERADOS\<fecha>. Argumentos: detalle=COMPLETO (plano unico
+'         con todo, como antes), conjuntos=NO (solo el plano del ensamble abierto).
+'  v2.15 - El conjunto pasa a ESTADO = PLANOS al generarle el plano (SubirEstado).
+'  v2.14 - En el plano de un conjunto: CANT. DE CONJUNTOS EN LA FASE (x n -> TOTAL), nota "MARCA DE <conjunto>"
+'         en las piezas compartidas con otro conjunto y nota VER PLANO <subconjunto> en los subconjuntos.
+'  v2.13 - PAQUETE POR CONJUNTO: la fase (TIPO_ENSAMBLE=PLANTA) deja su plano general en <fase>\PLANOS; un
+'         conjunto o subconjunto (con PREFIJO) deja sus planos de fabricacion y habilitado en SU carpeta
+'         (<fase>\<conjunto>\PLANOS), junto a sus Piezas. Las piezas compartidas con otro conjunto
+'         tambien se habilitan en cada conjunto que las usa (el taller tiene todo en un solo paquete).
 '  v2.12 - Nombre del plano de un conjunto: PLCAY-CP1-CH-001-FAB (antes repetia la planta: CP1-PLCAY-CP1-CH-001-FAB).
 '  v2.11 - Vistas proyectadas con reintento (fallaban en perfiles girados largos: "El parametro no es
 '         correcto"). Si una hoja falla, se avisa y se siguen generando las demas.
@@ -73,7 +87,14 @@ Sub Main()
     ' PRINCIPAL abierto (un solo plano por planta). Argumento solo_este = plano del subensamble.
     If asm IsNot Nothing AndAlso Not RuleArguments.Exists("solo_este") Then
         Dim act As AssemblyDocument = TryCast(ThisApplication.ActiveDocument, AssemblyDocument)
-        If act IsNot Nothing AndAlso Not (act Is asm) Then
+        ' v2.17: solo si asm es el subensamble que se EDITA EN EL SITIO dentro del abierto (antes bastaba con
+        ' que otro ensamble estuviera activo y la regla corrida desde otra ventana hacia el plano equivocado)
+        Dim editando As Boolean = False
+        Try
+            editando = (ThisApplication.ActiveEditDocument Is asm)
+        Catch
+        End Try
+        If act IsNot Nothing AndAlso Not (act Is asm) AndAlso editando Then
             If UProp(act, "TIPO_ENSAMBLE").ToUpper() = "GENERAL" Then
                 ' dentro del ensamble GENERAL de la obra: el plano es de la planta que se edita
                 Dim pl As AssemblyDocument = PlantaDe(act, asm)
@@ -99,7 +120,27 @@ Sub Main()
         MessageBox.Show("Ejecuta la regla desde el ensamble general (.iam) o desde un plano generado por esta regla.", "GENERAR_PLANOS")
         Exit Sub
     End If
-    Dim carpeta As String = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(asm.FullFileName), "PLANOS")
+    ' ---------- v2.17 PLANO JERARQUICO: el plano de este ensamble y uno por cada conjunto / subconjunto ----------
+    jerarquico = (Arg("detalle").ToUpper() <> "COMPLETO")
+    Dim total As New System.Text.StringBuilder()
+    total.AppendLine(GenerarUno(asm, dwg, existia, False))
+    If jerarquico AndAlso Arg("conjuntos").ToUpper() <> "NO" Then
+        Dim hijos As List(Of AssemblyDocument) = Descendientes(asm)
+        If hijos.Count > 0 Then total.AppendLine("PLANOS DE CONJUNTOS / SUBCONJUNTOS (" & hijos.Count & "):")
+        For Each h As AssemblyDocument In hijos
+            Reiniciar()
+            Dim r As String = GenerarUno(h, Nothing, False, True)
+            total.AppendLine("  " & System.IO.Path.GetFileNameWithoutExtension(h.FullFileName) & ": " & r.Split(New String() {vbCrLf}, StringSplitOptions.None)(0))
+        Next
+    End If
+    Aviso(total.ToString())
+End Sub
+
+
+Function GenerarUno(asm As AssemblyDocument, dwg As DrawingDocument, existia As Boolean, hijo As Boolean) As String
+    Dim msgUno As String = ""
+    Dim visible As Boolean = Not silencioso AndAlso Not hijo
+    Dim carpeta As String = CarpetaSalida(asm)
     Dim nombre As String = System.IO.Path.GetFileNameWithoutExtension(asm.FullFileName)
     Try
         planta = UProp(asm, "PLANTA")
@@ -109,8 +150,8 @@ Sub Main()
         ' ---------- 1. leer la jerarquia ----------
         Recorrer(asm.ComponentDefinition.Occurrences)
         If conjOrden.Count = 0 AndAlso partDoc.Count = 0 Then
-            Aviso("No hay marcas. Ejecuta primero TEKLA_NUMERACION.")
-            Exit Sub
+            msgUno = "Sin marcas (corre TEKLA_NUMERACION): " & nombre
+            Return msgUno
         End If
 
         ' ---------- 2. plano existente o nuevo ----------
@@ -129,18 +170,18 @@ Sub Main()
                 dwg = Nothing
                 If System.IO.File.Exists(ruta) Then System.IO.File.Delete(ruta)
             ElseIf dwg Is Nothing AndAlso System.IO.File.Exists(ruta) Then
-                dwg = ThisApplication.Documents.Open(ruta, Not silencioso)
+                dwg = ThisApplication.Documents.Open(ruta, visible)
             End If
             existia = dwg IsNot Nothing
         End If
         If Not existia Then
             Dim tpl As String = BuscarPlantilla(asm)
             If tpl = "" Then
-                Aviso("No encuentro la plantilla 'PLANTILLA COIMSER A3 - TEKLA.idw'.")
-                Exit Sub
+                msgUno = "No encuentro la plantilla 'PLANTILLA COIMSER A3 - TEKLA.idw'."
+                Return msgUno
             End If
             resumen.AppendLine("Plantilla: " & tpl)
-            dwg = ThisApplication.Documents.Add(DocumentTypeEnum.kDrawingDocumentObject, tpl, Not silencioso)
+            dwg = ThisApplication.Documents.Add(DocumentTypeEnum.kDrawingDocumentObject, tpl, visible)
         Else
             resumen.AppendLine("Actualizando: " & ruta)
         End If
@@ -164,20 +205,22 @@ Sub Main()
             dwg.SaveAs(ruta, False)
         End If
         resumen.AppendLine("Guardado: " & ruta & "  (" & dwg.Sheets.Count & " hojas)")
+        SubirEstado(asm, "PLANOS")
         Dim pdfOk As Boolean = True
         If Arg("pdf").ToUpper() <> "NO" Then pdfOk = ExportarPdf(dwg, System.IO.Path.ChangeExtension(ruta, ".pdf"))
         Dim nh As Integer = dwg.Sheets.Count
-        If silencioso AndAlso Not (dwg Is ThisDoc.Document) Then dwg.Close(True)
+        If (silencioso OrElse hijo) AndAlso Not (dwg Is ThisDoc.Document) Then dwg.Close(True)
         Dim m As String = If(existia, "Plano ACTUALIZADO: ", "Plano CREADO: ") & nh & " hojas" & vbCrLf & ruta & vbCrLf
         If hNuevas.Count > 0 Then m = m & "Hojas nuevas: " & String.Join(", ", hNuevas) & vbCrLf
         If hActual.Count > 0 Then m = m & "Hojas actualizadas: " & hActual.Count & vbCrLf
         If hObsol.Count > 0 Then m = m & "OBSOLETAS (revisar / anular): " & String.Join(", ", hObsol) & vbCrLf
         If Not pdfOk Then m = m & "(no se pudo exportar el PDF)"
         If errores.Count > 0 Then m = m & vbCrLf & "ATENCION - hojas que NO se pudieron crear (ver GENERAR_PLANOS.log): " & String.Join(", ", errores) & vbCrLf & "Vuelve a ejecutar la regla para reintentarlas."
-        Aviso(m)
+        If hTras.Count > 0 Then m = m & "Hojas que pasaron al plano de su conjunto: " & hTras.Count & " (copia del plano anterior en PLANOS\_SUPERADOS)" & vbCrLf
+        msgUno = m
     Catch ex As Exception
         resumen.AppendLine("ERROR: " & ex.Message & vbCrLf & ex.StackTrace)
-        Aviso("Error generando planos: " & ex.Message)
+        msgUno = "ERROR en " & nombre & ": " & ex.Message
     Finally
         Try
             System.IO.Directory.CreateDirectory(carpeta)
@@ -185,7 +228,8 @@ Sub Main()
         Catch
         End Try
     End Try
-End Sub
+    Return msgUno
+End Function
 
 Private planta As String = ""
 Private proy As String = ""
@@ -234,7 +278,8 @@ Sub Recorrer(occs As Object)
                     conjOrden.Add(mk)
                 End If
             End If
-            Recorrer(occ.SubOccurrences)
+            ' v2.17: un subconjunto con plano propio se dibuja como hoja de conjunto; sus piezas van en SU plano
+            If Not (jerarquico AndAlso mk <> "" AndAlso bs <> BOMStructureEnum.kPhantomBOMStructure AndAlso ConPlanoPropio(d)) Then Recorrer(occ.SubOccurrences)
         Else
             If mk = "" Then
                 resumen.AppendLine("Sin marca (no se habilita): " & occ.Name)
@@ -349,8 +394,15 @@ Sub Sincronizar(dwg As DrawingDocument, asm As AssemblyDocument, existia As Bool
 
     ' obsoletas: se renombran, no se borran
     Dim obsoletas As New List(Of String)
+    Dim enArbol As HashSet(Of String) = If(jerarquico AndAlso existia, MarcasDelArbol(asm), Nothing)
+    Dim trasladar As New List(Of String)
     For Each k As String In hojaDe.Keys
         If orden.Contains(k) Then Continue For
+        ' v2.17: la marca sigue en el modelo pero su hoja ahora va en el plano de su conjunto
+        If enArbol IsNot Nothing AndAlso k <> "GA" AndAlso enArbol.Contains(Marca(k)) Then
+            trasladar.Add(k)
+            Continue For
+        End If
         obsoletas.Add(k)
         Dim s As Sheet = hojaDe(k)
         Dim base As String = NombreBase(s)
@@ -359,11 +411,37 @@ Sub Sincronizar(dwg As DrawingDocument, asm As AssemblyDocument, existia As Bool
         hObsol.Add(Marca(k))
     Next
 
+    If trasladar.Count > 0 Then
+        ' copia del plano tal como estaba guardado, luego se quitan esas hojas
+        Try
+            Dim sup As String = System.IO.Path.Combine(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(dwg.FullFileName), "_SUPERADOS"), DateTime.Now.ToString("yyyyMMdd_HHmmss"))
+            System.IO.Directory.CreateDirectory(sup)
+            System.IO.File.Copy(dwg.FullFileName, System.IO.Path.Combine(sup, System.IO.Path.GetFileName(dwg.FullFileName)), True)
+            Dim pdfV As String = System.IO.Path.ChangeExtension(dwg.FullFileName, ".pdf")
+            If System.IO.File.Exists(pdfV) Then System.IO.File.Copy(pdfV, System.IO.Path.Combine(sup, System.IO.Path.GetFileName(pdfV)), True)
+            resumen.AppendLine("Copia del plano anterior: " & sup)
+            For Each k As String In trasladar
+                Try
+                    Dim s As Sheet = hojaDe(k)
+                    hojaDe.Remove(k)
+                    s.Delete()
+                    hTras.Add(Marca(k))
+                    resumen.AppendLine("  > " & k & ": pasa al plano de su conjunto (hoja quitada de este plano)")
+                Catch ex2 As Exception
+                    resumen.AppendLine("  no se pudo quitar la hoja " & k & ": " & ex2.Message)
+                End Try
+            Next
+        Catch ex As Exception
+            resumen.AppendLine("  no se pudo copiar el plano anterior (" & ex.Message & "): las hojas " & String.Join(", ", trasladar.ToArray()) & " se dejan")
+        End Try
+    End If
+
     ' orden final
     Dim final As New List(Of Sheet)
     AgregarAnclados(final, usuario, ancla, "INICIO")
     For Each k As String In orden
-        final.Add(hojaDe(k))
+        ' v2.16: una hoja que no se pudo crear no esta en hojaDe; antes esto detenia la regla y no se guardaba nada
+        If hojaDe.ContainsKey(k) Then final.Add(hojaDe(k))
         AgregarAnclados(final, usuario, ancla, k)
     Next
     For Each k As String In obsoletas
@@ -436,7 +514,7 @@ Sub Construir(sh As Sheet, k As String, asm As AssemblyDocument)
     Dim den As Double
     Dim v() As DrawingView
     If k = "GA" Then
-        sh.Name = "DISPOSICION GENERAL " & planta
+        sh.Name = NombreGA(asm)
         v = Vistas(sh, d, 2, 8.5, 25, YMAX, den)
         AcotarTotal(sh, v(0), True, True)
         AcotarTotal(sh, v(1), False, True)
@@ -472,6 +550,12 @@ End Sub
 ' ===================== hojas existentes =====================
 ' Solo nota y globos. Vistas, cotas, lista y lo agregado a mano no se tocan.
 Sub Actualizar(sh As Sheet, k As String, asm As AssemblyDocument)
+    If k = "GA" Then
+        Try
+            If NombreBase(sh) <> NombreGA(asm) Then sh.Name = NombreGA(asm)
+        Catch
+        End Try
+    End If
     Dim d As Document = DocDeClave(k, asm)
     ' v2.9: rehacer=SI -> todas las hojas de la regla se rehacen (vistas nuevas, p.ej. ejes propios)
     If Arg("rehacer").ToUpper() = "SI" Then
@@ -631,6 +715,10 @@ Function TextoNota(k As String, asm As AssemblyDocument, den As Double) As Strin
         t = "PROYECTO: " & proy & "     PLANTA: " & planta & "     ENSAMBLE: " & System.IO.Path.GetFileNameWithoutExtension(asm.FullFileName) & vbCrLf
         t = t & "CONJUNTOS: " & conjOrden.Count & " tipos     PIEZAS DE HABILITADO: " & partDoc.Count & " marcas" & vbCrLf
         t = t & "PESO TOTAL (sin perneria): " & peso.ToString("0.0") & " kg     ESCALA 1:" & den
+        If UProp(asm, "TIPO_ENSAMBLE").ToUpper() <> "PLANTA" AndAlso UProp(asm, "PREFIJO") <> "" Then
+            Dim nq As Integer = CantidadEnFase(asm)
+            t = t & vbCrLf & "CANT. DE CONJUNTOS EN LA FASE: " & nq & If(nq > 1, "  ->  fabricar TODAS las piezas x " & nq & " (cantidad de la lista por conjunto)", "")
+        End If
     ElseIf k.StartsWith("C|") Then
         Dim mk As String = Marca(k)
         Dim d As Document = conjDoc(mk)
@@ -639,6 +727,11 @@ Function TextoNota(k As String, asm As AssemblyDocument, den As Double) As Strin
         Dim per As String = UProp(d, "PERNERIA")
         If per = "" Then per = "NO REQUIERE"
         t = "CONJUNTO: " & mk & "     " & DProp(d, "Description") & "     CANT.: " & n & vbCrLf
+        If jerarquico AndAlso ConPlanoPropio(d) Then
+            t = t & "DETALLE Y HABILITADOS EN PLANO: " & NomBase(planta, System.IO.Path.GetFileNameWithoutExtension(d.FullFileName)) & "-FAB  (carpeta " & System.IO.Path.GetFileNameWithoutExtension(d.FullFileName) & "\PLANOS)" & vbCrLf
+        ElseIf UProp(asm, "TIPO_ENSAMBLE").ToUpper() <> "PLANTA" AndAlso UProp(asm, "PREFIJO") <> "" Then
+            t = t & "SUBCONJUNTO: ver plano " & System.IO.Path.GetFileNameWithoutExtension(d.FullFileName) & "-FAB" & vbCrLf
+        End If
         t = t & "PESO UNIT.: " & pu.ToString("0.00") & " kg     PESO TOTAL: " & (pu * n).ToString("0.00") & " kg     ESCALA 1:" & den & vbCrLf
         t = t & "PERNERIA (por conjunto): " & per & vbCrLf
         Dim pa As String = UProp(d, "PERTENECE_A")
@@ -654,6 +747,8 @@ Function TextoNota(k As String, asm As AssemblyDocument, den As Double) As Strin
         Dim pa As String = UProp(d, "PERTENECE_A")
         If pa = "" Then pa = own
         t = "HABILITADO: " & mk & "     CANT.: " & n & " (planta " & planta & ")     PERTENECE A: " & pa & vbCrLf
+        Dim miMk As String = UProp(asm, "MARCA")
+        If miMk <> "" AndAlso own <> "" AndAlso own <> miMk AndAlso UProp(asm, "TIPO_ENSAMBLE").ToUpper() <> "PLANTA" Then t = t & "PIEZA COMPARTIDA: MARCA DE " & own & " (se fabrica una sola vez, no duplicar)" & vbCrLf
         t = t & "PERFIL: " & DProp(d, "Description") & "     LONG.: " & UProp(d, "LONGITUD") & " mm     MATERIAL: " & UProp(d, "GRADO") & vbCrLf
         t = t & "PESO UNIT.: " & pu.ToString("0.00") & " kg     PESO TOTAL: " & (pu * n).ToString("0.00") & " kg     ESCALA 1:" & den & vbCrLf
         t = t & "MODELO: " & System.IO.Path.GetFileName(d.FullFileName)
@@ -1237,6 +1332,32 @@ Function CompararMarca(a As String, b As String) As Integer
 End Function
 
 ' "EE" + "ANTAPACAY" -> "EE-ANTAPACAY"; "EE" + "ANT-EE" -> "ANT-EE" (no repite la planta)
+' Carpeta de salida: fase -> <fase>\PLANOS ; conjunto / subconjunto -> <carpeta del conjunto>\PLANOS
+' Cuantas veces esta el conjunto en la fase (suma de PERTENECE_A: "CP1 x2" -> 2); 1 si no hay dato
+Function CantidadEnFase(asm As AssemblyDocument) As Integer
+    Dim n As Integer = 0
+    Try
+        For Each parte As String In UProp(asm, "PERTENECE_A").Split(","c)
+            Dim i As Integer = parte.LastIndexOf("x")
+            Dim q As Integer
+            If i >= 0 AndAlso Integer.TryParse(parte.Substring(i + 1).Trim(), q) Then n += q
+        Next
+    Catch
+    End Try
+    If n < 1 Then n = 1
+    Return n
+End Function
+
+Function CarpetaSalida(asm As AssemblyDocument) As String
+    Dim dir As String = System.IO.Path.GetDirectoryName(asm.FullFileName)
+    Dim nom As String = System.IO.Path.GetFileNameWithoutExtension(asm.FullFileName)
+    If UProp(asm, "TIPO_ENSAMBLE").ToUpper() <> "PLANTA" AndAlso UProp(asm, "PREFIJO") <> "" Then
+        If System.IO.Path.GetFileName(dir).ToUpper() = nom.ToUpper() Then Return System.IO.Path.Combine(dir, "PLANOS")
+        Return System.IO.Path.Combine(System.IO.Path.Combine(dir, nom), "PLANOS")
+    End If
+    Return System.IO.Path.Combine(dir, "PLANOS")
+End Function
+
 Function NomBase(planta As String, nombre As String) As String
     If nombre.ToUpper() = planta.ToUpper() OrElse nombre.ToUpper().EndsWith("-" & planta.ToUpper()) OrElse nombre.ToUpper().Contains("-" & planta.ToUpper() & "-") Then Return nombre
     Return planta & "-" & nombre
@@ -1527,6 +1648,19 @@ Sub Marco(d As Document, ByRef ejes() As UnitVector, ByRef ext() As Double, ByRe
         Next
         If Not recto Then ejes = girado
     End If
+    If girado Is Nothing OrElse ejes(0).X > 0.99999 Then
+        Try
+            If d.DocumentType = DocumentTypeEnum.kPartDocumentObject Then
+                For Each b As SurfaceBody In CType(d, PartDocument).ComponentDefinition.SurfaceBodies
+                    pts.Add(b.RangeBox.MinPoint) : pts.Add(b.RangeBox.MaxPoint)
+                Next
+            Else
+                Dim rb0 As Box = Caja(d)
+                pts.Add(rb0.MinPoint) : pts.Add(rb0.MaxPoint)
+            End If
+        Catch
+        End Try
+    End If
     ext = New Double() {0, 0, 0}
     If pts.Count = 0 Then
         Dim rb As Box = Caja(d)
@@ -1596,6 +1730,12 @@ Function EjesDeCuerpo(b As SurfaceBody) As UnitVector()
             End If
         Next
         If f1 Is Nothing Then Return Nothing
+        ' v2.16: en conos / cilindros la cara plana mayor es el canto del corte: no sirve de guia
+        Dim aTot As Double = 0
+        For Each f As Face In b.Faces
+            aTot += f.Evaluator.Area
+        Next
+        If a1 < 0.15 * aTot Then Return Nothing
         Dim n As UnitVector = CType(f1.Geometry, Plane).Normal
         Dim u As UnitVector = Nothing
         Dim lu As Double = 0
@@ -1639,4 +1779,83 @@ Function VistaTorcida(v As DrawingView, d As Document) As Boolean
     Catch
         Return False
     End Try
+End Function
+
+' ESTADO del conjunto: MODELADO < NUMERADO < PLANOS < EMITIDO < EN CORTE < FABRICADO < MONTADO. Solo sube (nunca baja);
+' FABRICADO y MONTADO los pones tu. Si el conjunto ya esta mas adelante no se toca.
+Sub SubirEstado(d As Document, nuevo As String)
+    Try
+        If d Is Nothing Then Exit Sub
+        Dim pref As String = ""
+        Try : pref = CStr(d.PropertySets.Item("Inventor User Defined Properties").Item("PREFIJO").Value).Trim() : Catch : End Try
+        If pref = "" Then Exit Sub
+        Dim orden() As String = {"MODELADO", "NUMERADO", "PLANOS", "EMITIDO", "EN CORTE", "FABRICADO", "MONTADO"}
+        Dim actual As String = ""
+        Try : actual = CStr(d.PropertySets.Item("Inventor User Defined Properties").Item("ESTADO").Value).Trim().ToUpper() : Catch : End Try
+        If Array.IndexOf(orden, actual) >= Array.IndexOf(orden, nuevo) Then Exit Sub
+        Dim ps As PropertySet = d.PropertySets.Item("Inventor User Defined Properties")
+        Try
+            ps.Item("ESTADO").Value = nuevo
+        Catch
+            ps.Add(nuevo, "ESTADO")
+        End Try
+    Catch
+    End Try
+End Sub
+
+' ===================== v2.17 plano jerarquico =====================
+Private jerarquico As Boolean = True
+Private hTras As New List(Of String)
+
+' Conjuntos y subconjuntos (cualquier nivel) que llevan plano propio: ensambles numerados con PREFIJO
+Function Descendientes(asm As AssemblyDocument) As List(Of AssemblyDocument)
+    Dim l As New List(Of AssemblyDocument)
+    For Each x As Document In asm.AllReferencedDocuments
+        Try
+            Dim a As AssemblyDocument = TryCast(x, AssemblyDocument)
+            If a Is Nothing OrElse l.Contains(a) Then Continue For
+            If ConPlanoPropio(a) Then l.Add(a)
+        Catch
+        End Try
+    Next
+    l.Sort(Function(p As AssemblyDocument, q As AssemblyDocument) String.Compare(p.FullFileName, q.FullFileName, True))
+    Return l
+End Function
+
+Function ConPlanoPropio(d As Document) As Boolean
+    If d.DocumentType <> DocumentTypeEnum.kAssemblyDocumentObject Then Return False
+    If UProp(d, "PREFIJO") = "" OrElse UProp(d, "MARCA") = "" Then Return False
+    If UProp(d, "EQUIPO").ToUpper() = "SI" OrElse UProp(d, "REFERENCIA").ToUpper() = "SI" Then Return False
+    If UProp(d, "TIPO_ENSAMBLE").ToUpper() = "PLANTA" OrElse UProp(d, "TIPO_ENSAMBLE").ToUpper() = "GENERAL" Then Return False
+    Return True
+End Function
+
+' Marcas que existen en todo el arbol del ensamble (para saber si una hoja que sale de este plano
+' paso al plano de su conjunto o de verdad quedo obsoleta)
+Function MarcasDelArbol(asm As AssemblyDocument) As HashSet(Of String)
+    Dim h As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+    For Each x As Document In asm.AllReferencedDocuments
+        Try
+            Dim mk As String = UProp(x, "MARCA")
+            If mk <> "" Then h.Add(mk)
+        Catch
+        End Try
+    Next
+    Return h
+End Function
+
+Sub Reiniciar()
+    planta = "" : proy = ""
+    errores.Clear() : resumen = New System.Text.StringBuilder()
+    conjOrden.Clear() : conjDoc.Clear() : cantConj.Clear() : partDoc.Clear() : cantParte.Clear() : partesDe.Clear()
+    hNuevas.Clear() : hActual.Clear() : hObsol.Clear() : hTras.Clear()
+    notasFab = Nothing
+    modoGA = False
+End Sub
+
+' Nombre de la primera hoja: DISPOSICION GENERAL <planta> en la fase, DISPOSICION GENERAL <marca> en un conjunto
+Function NombreGA(asm As AssemblyDocument) As String
+    Dim mk As String = UProp(asm, "MARCA")
+    If UProp(asm, "TIPO_ENSAMBLE").ToUpper() <> "PLANTA" AndAlso mk <> "" Then Return "DISPOSICION GENERAL " & mk
+    Return "DISPOSICION GENERAL " & planta
 End Function

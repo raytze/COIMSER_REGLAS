@@ -1,5 +1,5 @@
 ' =====================================================================
-'  EJECUTAR_FASES  v1.2  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  EJECUTAR_FASES  v1.5  -  Regla externa iLogic (Inventor 2026) - COIMSER
 '  Desde el ensamble GENERAL de la obra ejecuta una regla en TODAS las fases o en UNA,
 '  sin tener que abrir cada fase a mano. Cada fase se abre, se activa y se corre la regla
 '  como si la hubieras lanzado tu ahi (cada una deja sus planos / reportes en su carpeta).
@@ -10,9 +10,15 @@
 '     (<obra>\REPORTES_OBRA\<COD>-RESUMEN_OBRA.xlsx). Es INFORMATIVO: para comprar y cortar
 '     se usa siempre el reporte de cada fase.
 '  Si una regla pregunta algo (ej. configuracion de TEKLA), te lo preguntara en cada fase.
+'  v1.4 - PAQUETE DE FABRICACION revisa antes la jerarquia de la fase (REVISAR_JERARQUIA): si tiene ERRORES
+'         no genera esa fase y deja el motivo en el resumen. Argumento sin_revision=SI para saltarse el control.
+'  v1.3 - PAQUETE DE FABRICACION: nueva opcion de regla. En cada fase genera el plano general y, en cada
+'         conjunto / subconjunto, SU paquete en <conjunto>\PLANOS: planos (FAB), PLASMA (DXF), CUT_LIST,
+'         PERNERIA, COSTO y REPORTE_ENSAMBLES. Cada conjunto queda con todo para el taller.
 '  v1.2 - GENERAR_PLANOS: ademas del plano de la fase (<COD>-FAB.idw) genera UN PLANO POR CONJUNTO /
 '         SUBCONJUNTO (<fase>\PLANOS\<COD>-CH-001-FAB.idw ...), como si corrieras la regla dentro de cada
 '         uno. Argumento conjuntos=NO para generar solo el plano de la fase.
+'  v1.5 - Con GENERAR_PLANOS v2.17 cada llamada lleva conjuntos=NO (los planos de conjuntos se hacen aqui, uno por uno).
 '  Argumentos: regla=<NOMBRE>, fase=<FASE>|TODAS, silencioso, conjuntos=NO
 ' =====================================================================
 
@@ -28,7 +34,7 @@ Sub Main()
         MessageBox.Show("El GENERAL no tiene fases (TIPO_ENSAMBLE = PLANTA). Crealas con INICIAR_CONJUNTO.", "EJECUTAR_FASES")
         Exit Sub
     End If
-    Dim reglas As New List(Of String)(New String() {"TEKLA_NUMERACION", "REVISAR_JERARQUIA", "TAG_EQUIPOS", "GENERAR_PLANOS", "CUT_LIST", "REPORTE_ENSAMBLES", "REPORTE_PERNERIA", "CAMBIOS_MATERIAL", "EXPORTAR_PLASMA", "EMITIR_PLANOS", "RESUMEN DE OBRA"})
+    Dim reglas As New List(Of String)(New String() {"TEKLA_NUMERACION", "REVISAR_JERARQUIA", "TAG_EQUIPOS", "GENERAR_PLANOS", "CUT_LIST", "REPORTE_ENSAMBLES", "REPORTE_PERNERIA", "CAMBIOS_MATERIAL", "EXPORTAR_PLASMA", "EMITIR_PLANOS", "PAQUETE DE FABRICACION", "TABLERO_OBRA", "RESUMEN DE OBRA"})
     Dim regla As String = Arg("regla").ToUpper()
     If regla = "" Then
         regla = InputListBox("Que quieres ejecutar en las fases de " & System.IO.Path.GetFileNameWithoutExtension(g.FullFileName) & "?", reglas, reglas(0), "EJECUTAR_FASES", "Regla")
@@ -61,7 +67,7 @@ Sub Main()
     End If
 
     Dim auto As Object = iLogicVb.Automation
-    Dim rutaR As String = RutaRegla(regla)
+    Dim rutaR As String = RutaRegla(If(regla = "PAQUETE DE FABRICACION", "GENERAR_PLANOS", regla))
     If rutaR = "" Then
         MessageBox.Show("No encuentro " & regla & ".iLogicVb en las carpetas de reglas externas.", "EJECUTAR_FASES")
         Exit Sub
@@ -72,9 +78,31 @@ Sub Main()
             Dim d As Document = ThisApplication.Documents.Open(ruta, True)
             d.Activate()
             Dim t0 As DateTime = DateTime.Now
-            auto.RunExternalRuleWithArguments(d, rutaR, ThisApplication.TransientObjects.CreateNameValueMap())
+            If regla = "PAQUETE DE FABRICACION" AndAlso Arg("sin_revision").ToUpper() <> "SI" Then
+                Dim rj As String = RutaRegla("REVISAR_JERARQUIA")
+                If rj <> "" Then
+                    Dim nvr As NameValueMap = ThisApplication.TransientObjects.CreateNameValueMap()
+                    nvr.Add("silencioso", "1")
+                    auto.RunExternalRuleWithArguments(d, rj, nvr)
+                    Dim inf As String = System.IO.Path.Combine(CarpetaObra(d.FullFileName), "_REVISION_JERARQUIA.txt")
+                    If System.IO.File.Exists(inf) AndAlso Not System.IO.File.ReadAllText(inf).Contains("ERRORES (0)") Then
+                        resumen.AppendLine("OMITIDA " & k & ": la jerarquia tiene ERRORES (ver " & inf & "). Corrigelos o usa sin_revision=SI.")
+                        Continue For
+                    End If
+                End If
+            End If
+            ' v1.5: GENERAR_PLANOS v2.17 hace solo los planos de conjuntos; aqui se hacen uno por uno
+            ' (abiertos y activos) en PlanosPorConjunto, por eso a la fase se le pasa conjuntos=NO
+            Dim nvF As NameValueMap = ThisApplication.TransientObjects.CreateNameValueMap()
+            If regla = "GENERAR_PLANOS" OrElse regla = "PAQUETE DE FABRICACION" Then nvF.Add("conjuntos", "NO")
+            If regla = "PAQUETE DE FABRICACION" Then
+                Dim ra As String = RutaRegla("GENERAR_PLANOS")
+                auto.RunExternalRuleWithArguments(d, ra, nvF)
+            Else
+                auto.RunExternalRuleWithArguments(d, rutaR, nvF)
+            End If
             resumen.AppendLine("OK    " & k & "  (" & CInt((DateTime.Now - t0).TotalSeconds) & " s)")
-            If regla = "GENERAR_PLANOS" AndAlso Arg("conjuntos").ToUpper() <> "NO" Then PlanosPorConjunto(CType(d, AssemblyDocument), k, auto, rutaR)
+            If (regla = "GENERAR_PLANOS" OrElse regla = "PAQUETE DE FABRICACION") AndAlso Arg("conjuntos").ToUpper() <> "NO" Then PlanosPorConjunto(CType(d, AssemblyDocument), k, auto, rutaR, regla = "PAQUETE DE FABRICACION")
         Catch ex As Exception
             resumen.AppendLine("ERROR " & k & ": " & ex.Message)
         End Try
@@ -92,7 +120,7 @@ Private xl As Object
 Private rutaSalida As String = ""
 
 ' Un plano por conjunto / subconjunto de la fase (cada uno se abre, se activa y se corre GENERAR_PLANOS)
-Sub PlanosPorConjunto(fase As AssemblyDocument, nomFase As String, auto As Object, rutaR As String)
+Sub PlanosPorConjunto(fase As AssemblyDocument, nomFase As String, auto As Object, rutaR As String, paquete As Boolean)
     Dim lista As New List(Of Document)
     Try
         For Each x As Document In fase.AllReferencedDocuments
@@ -110,8 +138,27 @@ Sub PlanosPorConjunto(fase As AssemblyDocument, nomFase As String, auto As Objec
             Dim d As Document = ThisApplication.Documents.Open(cj.FullFileName, True)
             d.Activate()
             Dim t0 As DateTime = DateTime.Now
-            auto.RunExternalRuleWithArguments(d, rutaR, ThisApplication.TransientObjects.CreateNameValueMap())
+            Dim nvC As NameValueMap = ThisApplication.TransientObjects.CreateNameValueMap()
+            nvC.Add("conjuntos", "NO")
+            auto.RunExternalRuleWithArguments(d, rutaR, nvC)
             resumen.AppendLine("   plano del conjunto " & nom & "  OK (" & CInt((DateTime.Now - t0).TotalSeconds) & " s)")
+            If paquete Then
+                For Each rn As String In New String() {"EXPORTAR_PLASMA", "CUT_LIST", "REPORTE_PERNERIA", "REPORTE_COSTO", "REPORTE_ENSAMBLES"}
+                    Dim rr As String = RutaRegla(rn)
+                    If rr = "" Then
+                        resumen.AppendLine("      " & rn & ": no encuentro la regla")
+                        Continue For
+                    End If
+                    Try
+                        Dim nvm As NameValueMap = ThisApplication.TransientObjects.CreateNameValueMap()
+                        nvm.Add("silencioso", "1")
+                        auto.RunExternalRuleWithArguments(d, rr, nvm)
+                        resumen.AppendLine("      " & rn & " OK")
+                    Catch ex2 As Exception
+                        resumen.AppendLine("      " & rn & " ERROR: " & ex2.Message)
+                    End Try
+                Next
+            End If
         Catch ex As Exception
             resumen.AppendLine("   plano del conjunto " & nom & "  ERROR: " & ex.Message)
         End Try

@@ -1,5 +1,5 @@
 ' =====================================================================
-'  CUT_LIST  v1.3  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  CUT_LIST  v1.5  -  Regla externa iLogic (Inventor 2026) - COIMSER
 '  Lista de corte agrupada por material, tipo Tekla "Cut list / Material list",
 '  de un ensamble numerado con TEKLA_NUMERACION (cantidades = toda la planta):
 '
@@ -19,6 +19,7 @@
 '        Argumentos: sin_requerimiento, sin_retazos
 '  Salida: PLANOS\REPORTES\<PLANTA>-<ENSAMBLE>-CUT_LIST.xlsx
 '  Argumentos opcionales: silencioso, barra1=6000, barra2=12000, corte=3
+'  v1.5 - ESPESOR REAL: se mide (2 caras paralelas); si el parametro ESPESOR no coincide, manda lo medido y avisa.
 ' =====================================================================
 
 Sub Main()
@@ -40,7 +41,7 @@ Sub Main()
     If Arg("barra2") <> "" Then barra2 = Num(Arg("barra2"))
     If Arg("corte") <> "" Then corte = Num(Arg("corte"))
     Dim nombre As String = System.IO.Path.GetFileNameWithoutExtension(asm.FullFileName)
-    Dim carpeta As String = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(asm.FullFileName), "PLANOS\REPORTES")
+    Dim carpeta As String = System.IO.Path.Combine(CarpetaSalida(asm), "REPORTES")
     Try
         planta = UProp(asm, "PLANTA")
         proy = UProp(asm, "PROYECTO")
@@ -217,7 +218,12 @@ Sub Main()
 
         Dim ruta As String = System.IO.Path.Combine(carpeta, NomBase(planta, nombre) & "-CUT_LIST.xlsx")
         CerrarExcel(wb, ruta)
-        Aviso("Cut list " & planta & " - " & nombre & vbCrLf & gPerf.Count & " perfiles, " & gPlan.Count & " espesores de plancha" & vbCrLf & "Peso total: " & totGen.ToString("0.00") & " kg" & vbCrLf & reqResumen.ToString() & rutaXls)
+        Dim avEsp As String = ""
+        If espAvisos.Count > 0 Then
+            avEsp = vbCrLf & "ESPESOR: el parametro no coincide con la pieza (se uso lo MEDIDO):" & vbCrLf & "  " & String.Join(vbCrLf & "  ", espAvisos.ToArray()) & vbCrLf
+            resumen.AppendLine(avEsp)
+        End If
+        Aviso("Cut list " & planta & " - " & nombre & vbCrLf & gPerf.Count & " perfiles, " & gPlan.Count & " espesores de plancha" & vbCrLf & "Peso total: " & totGen.ToString("0.00") & " kg" & vbCrLf & reqResumen.ToString() & avEsp & rutaXls)
     Catch ex As Exception
         MatarExcel()
         resumen.AppendLine("ERROR: " & ex.Message & vbCrLf & ex.StackTrace)
@@ -968,17 +974,77 @@ End Function
 
 Function Espesor(p As PartDocument) As Double
     Try
-        If p.SubType = SM_SUBTYPE Then Return CType(p.ComponentDefinition, SheetMetalComponentDefinition).Thickness.Value * 10
+        If p.SubType = SM_SUBTYPE Then
+            Dim smd As SheetMetalComponentDefinition = p.ComponentDefinition
+            Return smd.Thickness.Value * 10
+        End If
     Catch
     End Try
+    ' v1.5: el espesor REAL (2 caras planas paralelas) manda sobre el parametro ESPESOR
+    ' (si escribieron el numero en la extrusion, el parametro queda viejo)
+    Dim med As Double = EspesorMedido(p)
+    Dim par As Double = 0
     Try
-        Return p.ComponentDefinition.Parameters.Item("ESPESOR").Value * 10
+        par = p.ComponentDefinition.Parameters.Item("ESPESOR").Value * 10
     Catch
     End Try
+    If med > 0 Then
+        If par > 0 AndAlso Math.Abs(par - med) > 0.05 Then
+            Dim nm As String = System.IO.Path.GetFileNameWithoutExtension(p.FullFileName)
+            Dim t As String = nm & ": parametro ESPESOR = " & Math.Round(par, 2) & " mm pero la pieza mide " & Math.Round(med, 2) & " mm (se usa lo medido; corrige el parametro)"
+            If Not espAvisos.Contains(t) Then espAvisos.Add(t)
+        End If
+        Return med
+    End If
+    If par > 0 Then Return par
     Dim r As Box = p.ComponentDefinition.RangeBox
     Dim ex() As Double = {r.MaxPoint.X - r.MinPoint.X, r.MaxPoint.Y - r.MinPoint.Y, r.MaxPoint.Z - r.MinPoint.Z}
     Array.Sort(ex)
     Return Math.Round(ex(0) * 10, 1)
+End Function
+
+Private espAvisos As New List(Of String)
+
+' Espesor de plancha medido (mm): distancia entre la cara plana mayor y su cara paralela opuesta
+' (de area parecida). 0 si la pieza no es una plancha (no hay caras paralelas opuestas grandes).
+Function EspesorMedido(p As PartDocument) As Double
+    Try
+        Dim cd As PartComponentDefinition = p.ComponentDefinition
+        If cd.SurfaceBodies.Count = 0 Then Return 0
+        Dim caras As New List(Of Face)
+        Dim areas As New List(Of Double)
+        For Each b As SurfaceBody In cd.SurfaceBodies
+            If Not b.IsSolid Then Continue For
+            For Each f As Face In b.Faces
+                If f.SurfaceType = SurfaceTypeEnum.kPlaneSurface Then
+                    caras.Add(f)
+                    areas.Add(f.Evaluator.Area)
+                End If
+            Next
+        Next
+        If caras.Count < 2 Then Return 0
+        Dim i1 As Integer = 0
+        For i As Integer = 1 To caras.Count - 1
+            If areas(i) > areas(i1) Then i1 = i
+        Next
+        Dim pl1 As Plane = CType(caras(i1).Geometry, Plane)
+        Dim n As UnitVector = pl1.Normal
+        Dim mejor As Double = 0, aMejor As Double = 0
+        For i As Integer = 0 To caras.Count - 1
+            If i = i1 OrElse areas(i) < 0.5 * areas(i1) Then Continue For
+            Dim pl2 As Plane = CType(caras(i).Geometry, Plane)
+            If Math.Abs(pl2.Normal.DotProduct(n)) < 0.9999 Then Continue For
+            Dim d As Double = Math.Abs((pl2.RootPoint.X - pl1.RootPoint.X) * n.X + (pl2.RootPoint.Y - pl1.RootPoint.Y) * n.Y + (pl2.RootPoint.Z - pl1.RootPoint.Z) * n.Z)
+            If d < 0.0001 Then Continue For
+            If areas(i) > aMejor Then
+                aMejor = areas(i)
+                mejor = d
+            End If
+        Next
+        Return Math.Round(mejor * 10, 2)
+    Catch
+        Return 0
+    End Try
 End Function
 
 ' Largo x ancho del corte (desarrollado o cara mayor), mm. No modifica la pieza.
@@ -1137,7 +1203,7 @@ End Function
 
 ' "EE" + "ANTAPACAY" -> "EE-ANTAPACAY"; "EE" + "ANT-EE" -> "ANT-EE" (no repite la planta)
 Function NomBase(planta As String, nombre As String) As String
-    If nombre.ToUpper() = planta.ToUpper() OrElse nombre.ToUpper().EndsWith("-" & planta.ToUpper()) Then Return nombre
+    If nombre.ToUpper() = planta.ToUpper() OrElse nombre.ToUpper().EndsWith("-" & planta.ToUpper()) OrElse nombre.ToUpper().Contains("-" & planta.ToUpper() & "-") Then Return nombre
     Return planta & "-" & nombre
 End Function
 
@@ -1157,3 +1223,18 @@ Sub Aviso(t As String)
     resumen.AppendLine(t)
     If Not silencioso Then MessageBox.Show(t, NOMBRE_REGLA)
 End Sub
+
+' Carpeta de salida: fase -> <fase>\PLANOS ; conjunto / subconjunto -> <carpeta del conjunto>\PLANOS
+Function CarpetaSalida(asm As AssemblyDocument) As String
+    Dim dir As String = System.IO.Path.GetDirectoryName(asm.FullFileName)
+    Dim nom As String = System.IO.Path.GetFileNameWithoutExtension(asm.FullFileName)
+    Dim pref As String = ""
+    Dim tipo As String = ""
+    Try : pref = CStr(asm.PropertySets.Item("Inventor User Defined Properties").Item("PREFIJO").Value).Trim() : Catch : End Try
+    Try : tipo = CStr(asm.PropertySets.Item("Inventor User Defined Properties").Item("TIPO_ENSAMBLE").Value).Trim().ToUpper() : Catch : End Try
+    If tipo <> "PLANTA" AndAlso pref <> "" Then
+        If System.IO.Path.GetFileName(dir).ToUpper() = nom.ToUpper() Then Return System.IO.Path.Combine(dir, "PLANOS")
+        Return System.IO.Path.Combine(System.IO.Path.Combine(dir, nom), "PLANOS")
+    End If
+    Return System.IO.Path.Combine(dir, "PLANOS")
+End Function

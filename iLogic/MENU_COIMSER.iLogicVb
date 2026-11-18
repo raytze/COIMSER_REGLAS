@@ -1,5 +1,5 @@
 ' =====================================================================
-'  MENU_COIMSER  v2.3  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  MENU_COIMSER  v2.7  -  Regla externa iLogic (Inventor 2026) - COIMSER
 '  Menu de inicio por ACTIVIDADES. Mira DONDE estas (sin documento, GENERAL, FASE, CONJUNTO,
 '  PIEZA o PLANO), muestra el ESTADO y primero las ACTIVIDADES que tocan en ese nivel:
 '
@@ -114,6 +114,10 @@ Function Catalogo() As List(Of String())
     l.Add(New String() {A6, "OCULTAR_SUPERFICIES", "ocultar superficies de referencia", "F,C,P"})
     l.Add(New String() {A6, "LIMPIAR_OBSOLETOS", "mover piezas que ya no se usan a _OBSOLETO", "F"})
     l.Add(New String() {A6, "CATALOGO_PERFILES", "catalogo de perfiles (area e inercias) para reconocerlos en EXTRAER", "S,G,F,C,P,D,O"})
+    l.Add(New String() {A6, "TABLERO_OBRA", "tablero de control: estado, plano y peso de cada conjunto", "G,F"})
+    l.Add(New String() {A6, "PRUEBA_TST", "prueba automatica de toda la cadena (solo obras _PRUEBAS)", "F"})
+    l.Add(New String() {A6, "CAMBIOS_PIEZAS", "registro de cambios con fotos (nuevas, eliminadas, suprimidas, modificadas)", "F,C"})
+    l.Add(New String() {A6, "RESTAURAR_RESPALDO", "deshacer: devolver archivos respaldados antes de que una regla los guardara", "G,F,C,P"})
     l.Add(New String() {A6, "VERIFICAR_INSTALACION", "revisar reglas, versiones, carpetas y Git", "S,G,F,C,P,D,O"})
     Return l
 End Function

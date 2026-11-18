@@ -1,5 +1,5 @@
 '=====================================================================
-'  REVISAR_PERFILES  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  REVISAR_PERFILES  v1.2  -  Regla externa iLogic (Inventor 2026) - COIMSER
 '  Revisa que la designacion (propiedad PERFIL) de cada PERFIL ESTRUCTURAL corresponda a su
 '  geometria real, midiendo el AREA NETA y las INERCIAS PRINCIPALES de la seccion (igual que
 '  EXTRAER_PIEZA) y comparandolas con PERFILES_CATALOGO.csv (CATALOGO_PERFILES).
@@ -17,6 +17,11 @@
 '    Luego corre TEKLA_NUMERACION (la marca depende del perfil).
 '  - Reporte: <fase>\PLANOS\REPORTES\<ensamble>-PERFILES_<fecha>.csv
 '  Argumentos: silencioso (solo reporte), corregir=NO|RECOMENDADO, salida=<carpeta del reporte>
+'  v1.2 - SECCION REAL: corta el perfil con planos al 25/50/75 % del largo y mide la region (area,
+'         inercias principales, alto x ancho): los perfiles con despuntes, ingletes o rebajes ya se
+'         reconocen (antes: NO PRISMATICO). La pieza no se modifica (transaccion deshecha).
+'         Argumento cortes=NO = solo la medida por volumen (como v1.1).
+'  v1.1 - RESPALDO: antes de guardar cada pieza corregida se copia a _RESPALDOS (RESTAURAR_RESPALDO).
 ' =====================================================================
 Imports System.Collections.Generic
 
@@ -69,6 +74,14 @@ Sub Main()
         If rv.actual = "" AndAlso p.ComponentDefinition.IsContentMember Then rv.actual = PropDT(p, "Description")
         Try
             rv.prism = MedirSeccion(p.ComponentDefinition, rv.A, rv.i1, rv.i2, rv.L)
+            rv.metodo = "VOLUMEN"
+            ' v1.2: seccion real con planos de corte (manda sobre la medida por volumen)
+            If rv.A > 0 AndAlso Arg("cortes").ToUpper() <> "NO" Then
+                Try
+                    If MedirCortes(p, rv) Then rv.prism = True
+                Catch
+                End Try
+            End If
             If rv.A > 0 Then rv.cands = Candidatos(rv.A, rv.i1, rv.i2)
         Catch
         End Try
@@ -161,6 +174,7 @@ Sub Main()
                 rv.p.PropertySets.Item("Design Tracking Properties").Item("Description").Value = nuevo.ToUpper()
             Catch
             End Try
+            RspRespaldar(rv.p, "REVISAR_PERFILES")
             rv.p.Save2(False)
             hechos.Add("  " & NomSin(rv.p) & ":  " & If(rv.actual = "", "(vacio)", rv.actual) & "  ->  " & nuevo.ToUpper() & "   (" & ver & ")")
         Catch ex As Exception
@@ -191,12 +205,15 @@ Class Revision
     Public indicado As String = ""
     Public cat() As String
     Public estado As String = ""
+    Public metodo As String = ""
+    Public alto As Double
+    Public ancho As Double
 End Class
 
 Function Indicacion(rv As Revision) As String
     If rv.exacto Then Return "es " & rv.cands(0)(0)
     If rv.cands.Count > 0 Then Return "parecido a " & rv.cands(0)(0) & " (aprox.)"
-    Return "ningun perfil del catalogo (" & TxtSec(rv.A, rv.i1, rv.i2) & ")"
+    Return "ningun perfil del catalogo (" & SeccionTxt(rv) & ")"
 End Function
 
 ' una pieza: devuelve la designacion nueva, "" = dejarla, Nothing = cancelar todo
@@ -209,7 +226,7 @@ Function Preguntar(rv As Revision, nInst As Dictionary(Of String, Integer)) As S
     ls.Add("ESCRIBIR OTRA DESIGNACION")
     Dim txt As String = NomSin(rv.p) & "   (" & If(nInst.ContainsKey(rv.p.FullFileName), nInst(rv.p.FullFileName), 1) & " en el ensamble, en AZUL)" & vbCrLf & _
         "Estado: " & rv.estado & "     PERFIL actual: " & If(rv.actual = "", "(vacio)", rv.actual) & vbCrLf & _
-        "Cuerpo:   " & TxtSec(rv.A, rv.i1, rv.i2) & "   largo " & (rv.L * 10).ToString("0") & " mm" & vbCrLf
+        "Seccion:  " & SeccionTxt(rv) & "   largo " & (rv.L * 10).ToString("0") & " mm   (" & rv.metodo & ")" & vbCrLf
     If rv.cat IsNot Nothing Then txt &= rv.cat(0) & ": " & TxtSec(Num(rv.cat(2)), Num(rv.cat(3)), Num(rv.cat(4))) & vbCrLf
     txt &= If(rv.cands.Count = 0, "Ningun perfil del catalogo coincide." & vbCrLf, "") & vbCrLf & "Perfil correcto:"
     Dim r As String = InputListBox(txt, ls, ls(0), "REVISAR_PERFILES", "Perfil")
@@ -295,13 +312,13 @@ Function Reporte(doc As Document, res As List(Of Revision), nInst As Dictionary(
         System.IO.Directory.CreateDirectory(dir)
         Dim ci As System.Globalization.CultureInfo = System.Globalization.CultureInfo.InvariantCulture
         Dim sb As New System.Text.StringBuilder()
-        sb.AppendLine("PIEZA;CANT;PERFIL;ESTADO;INDICADO;A_cm2;Imax_cm4;Imin_cm4;LARGO_mm;A_cat;Imax_cat;Imin_cat;DIF_A;DIF_Imax;DIF_Imin;ARCHIVO")
+        sb.AppendLine("PIEZA;CANT;PERFIL;ESTADO;INDICADO;A_cm2;Imax_cm4;Imin_cm4;LARGO_mm;A_cat;Imax_cat;Imin_cat;DIF_A;DIF_Imax;DIF_Imin;ARCHIVO;METODO;ALTO_mm;ANCHO_mm")
         For Each rv As Revision In res
             Dim c() As String = If(rv.cat IsNot Nothing, rv.cat, If(rv.cands.Count > 0, rv.cands(0), Nothing))
             sb.AppendLine(String.Join(";", New String() {NomSin(rv.p), If(nInst.ContainsKey(rv.p.FullFileName), nInst(rv.p.FullFileName), 1).ToString(), rv.actual, rv.estado, If(rv.estado = "OK", rv.indicado, Indicacion(rv)), _
                 rv.A.ToString("0.00", ci), rv.i1.ToString("0.0", ci), rv.i2.ToString("0.00", ci), (rv.L * 10).ToString("0", ci), _
                 If(c Is Nothing, "", c(2)), If(c Is Nothing, "", c(3)), If(c Is Nothing, "", c(4)), _
-                If(c Is Nothing, "", Dif(rv.A, Num(c(2)))), If(c Is Nothing, "", Dif(rv.i1, Num(c(3)))), If(c Is Nothing, "", Dif(rv.i2, Num(c(4)))), rv.p.FullFileName}))
+                If(c Is Nothing, "", Dif(rv.A, Num(c(2)))), If(c Is Nothing, "", Dif(rv.i1, Num(c(3)))), If(c Is Nothing, "", Dif(rv.i2, Num(c(4)))), rv.p.FullFileName, rv.metodo, rv.alto.ToString("0.0", ci), rv.ancho.ToString("0.0", ci)}))
         Next
         System.IO.File.WriteAllText(ruta, sb.ToString(), System.Text.Encoding.UTF8)
     Catch ex As Exception
@@ -394,6 +411,14 @@ Function MedirSeccion(cd As PartComponentDefinition, ByRef A As Double, ByRef im
     Dim ok As Boolean = (mejor >= 0 AndAlso err <= 0.15)
     If Not ok Then mejor = mayor
     largo = Math.Sqrt(12 * ev(mejor) / V)
+    Dim q1 As Integer = (mejor + 1) Mod 3, q2 As Integer = (mejor + 2) Mod 3
+    For r As Integer = 0 To 2
+        ejeU(r) = vec(r, mejor) : ejeX(r) = vec(r, q1) : ejeY(r) = vec(r, q2)
+    Next
+    Try
+        cgP(0) = mp.CenterOfMass.X : cgP(1) = mp.CenterOfMass.Y : cgP(2) = mp.CenterOfMass.Z
+    Catch
+    End Try
     Dim afin As Double = AreaExtremo(cd, vec(0, mejor), vec(1, mejor), vec(2, mejor))
     A = If(afin > 0 AndAlso Math.Abs(afin / (V / largo) - 1) <= 0.15, afin, V / largo)
     Dim lef As Double = V / A
@@ -538,3 +563,191 @@ Function Dif(medido As Double, cat As Double) As String
     Return v.ToString("+0.0;-0.0", System.Globalization.CultureInfo.InvariantCulture) & "%"
 End Function
 
+' ===================== RESPALDO antes de guardar (bloque comun v1) =====================
+' Copia cada archivo TAL COMO ESTA EN DISCO (ultima version guardada) antes de que la regla lo
+' guarde:  <raiz>\<obra>\<fecha_hora>_<REGLA>\<ruta relativa a la obra>  + MANIFIESTO.csv
+' Raiz: primera linea de RESPALDOS.txt (carpeta de reglas) o <carpeta de reglas>\..\..\_RESPALDOS
+' (fuera de la obra y de Vault). Se restaura con RESTAURAR_RESPALDO (menu 6).
+Private rspTanda As String = ""
+Private rspHechos As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+
+Function RspRespaldar(d As Document, regla As String) As Boolean
+    Try
+        Dim f As String = d.FullFileName
+        If f = "" OrElse Not System.IO.File.Exists(f) Then Return True
+        If rspHechos.Contains(f) Then Return True
+        Dim obra As String = RspObra(f)
+        If rspTanda = "" Then
+            rspTanda = System.IO.Path.Combine(System.IO.Path.Combine(RspRaiz(), System.IO.Path.GetFileName(obra)), DateTime.Now.ToString("yyyyMMdd_HHmmss") & "_" & regla)
+            System.IO.Directory.CreateDirectory(rspTanda)
+            System.IO.File.WriteAllText(System.IO.Path.Combine(rspTanda, "MANIFIESTO.csv"), "ORIGINAL;RESPALDO;FECHA_ARCHIVO;REGLA" & vbCrLf)
+        End If
+        Dim rel As String
+        If f.StartsWith(obra & "\", StringComparison.OrdinalIgnoreCase) Then
+            rel = f.Substring(obra.Length + 1)
+        Else
+            rel = System.IO.Path.Combine("_FUERA_DE_OBRA", System.IO.Path.GetFileName(f))
+        End If
+        Dim dest As String = System.IO.Path.Combine(rspTanda, rel)
+        System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(dest))
+        System.IO.File.Copy(f, dest, True)
+        System.IO.File.AppendAllText(System.IO.Path.Combine(rspTanda, "MANIFIESTO.csv"), f & ";" & dest & ";" & System.IO.File.GetLastWriteTime(f).ToString("yyyy-MM-dd HH:mm:ss") & ";" & regla & vbCrLf)
+        rspHechos.Add(f)
+        Return True
+    Catch
+        Return False
+    End Try
+End Function
+
+' El documento y todos sus dependientes modificados (antes de Save2(True))
+Sub RspRespaldarSucios(top As Document, regla As String)
+    RspRespaldar(top, regla)
+    For Each d As Document In top.AllReferencedDocuments
+        Try
+            If d.Dirty Then RspRespaldar(d, regla)
+        Catch
+        End Try
+    Next
+End Sub
+
+Function RspObra(f As String) As String
+    Dim x As String = System.IO.Path.GetDirectoryName(f)
+    For i As Integer = 0 To 8
+        If x Is Nothing OrElse x = "" Then Exit For
+        If System.IO.File.Exists(System.IO.Path.Combine(x, "_OBRA.txt")) Then Return x
+        x = System.IO.Path.GetDirectoryName(x)
+    Next
+    Return System.IO.Path.GetDirectoryName(f)
+End Function
+
+Function RspRaiz() As String
+    Try
+        For Each raiz As String In iLogicVb.Automation.FileOptions.ExternalRuleDirectories
+            If Not System.IO.Directory.Exists(raiz) Then Continue For
+            Dim cfg As String = System.IO.Path.Combine(raiz, "RESPALDOS.txt")
+            If System.IO.File.Exists(cfg) Then
+                Dim l As String = System.IO.File.ReadAllLines(cfg)(0).Trim()
+                If l <> "" Then Return l
+            End If
+            Dim p As System.IO.DirectoryInfo = System.IO.Directory.GetParent(raiz.TrimEnd("\"c))
+            If p IsNot Nothing AndAlso p.Parent IsNot Nothing Then Return System.IO.Path.Combine(p.Parent.FullName, "_RESPALDOS")
+        Next
+    Catch
+    End Try
+    Return System.IO.Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments), "COIMSER_RESPALDOS")
+End Function
+
+' ===================== v1.2: SECCION REAL cortando el perfil con planos =====================
+' Corta el cuerpo con planos perpendiculares a su eje al 25 %, 50 % y 75 % del largo (boceto con
+' "cortes proyectados") y mide la region: AREA e INERCIAS PRINCIPALES de la seccion verdadera, y su
+' ALTO x ANCHO. Los despuntes, ingletes y rebajes de los extremos ya no estorban; un agujero en un
+' corte tampoco (manda el valor que se repite). Todo dentro de una transaccion que se DESHACE:
+' la pieza no queda modificada.
+Private ejeU(2) As Double, ejeX(2) As Double, ejeY(2) As Double, cgP(2) As Double
+
+Function MedirCortes(p As PartDocument, rv As Revision) As Boolean
+    Dim cd As PartComponentDefinition = p.ComponentDefinition
+    Dim tg As TransientGeometry = ThisApplication.TransientGeometry
+    ' rango a lo largo del eje (vertices del cuerpo)
+    Dim tMin As Double = 1.0E+30, tMax As Double = -1.0E+30
+    Try
+        For Each b As SurfaceBody In cd.SurfaceBodies
+            For Each vx As Vertex In b.Vertices
+                Dim t As Double = (vx.Point.X - cgP(0)) * ejeU(0) + (vx.Point.Y - cgP(1)) * ejeU(1) + (vx.Point.Z - cgP(2)) * ejeU(2)
+                If t < tMin Then tMin = t
+                If t > tMax Then tMax = t
+            Next
+        Next
+    Catch
+    End Try
+    If tMax - tMin < 0.5 * rv.L Then
+        tMin = -rv.L / 2 : tMax = rv.L / 2
+    End If
+    Dim medidas As New List(Of Double())
+    Dim tr As Transaction = Nothing
+    Try
+        tr = ThisApplication.TransactionManager.StartTransaction(CType(p, _Document), "REVISAR_PERFILES seccion")
+        Dim ux As UnitVector = tg.CreateUnitVector(ejeX(0), ejeX(1), ejeX(2))
+        Dim uy As UnitVector = tg.CreateUnitVector(ejeY(0), ejeY(1), ejeY(2))
+        For Each f As Double In New Double() {0.25, 0.5, 0.75}
+            Try
+                Dim t As Double = tMin + f * (tMax - tMin)
+                Dim o As Point = tg.CreatePoint(cgP(0) + ejeU(0) * t, cgP(1) + ejeU(1) * t, cgP(2) + ejeU(2) * t)
+                Dim wp As WorkPlane = cd.WorkPlanes.AddFixed(o, ux, uy)
+                Dim sk As PlanarSketch = cd.Sketches.Add(wp)
+                sk.ProjectedCuts.Add()
+                Dim pr As Profile = sk.Profiles.AddForSolid()
+                Dim rp As RegionProperties = pr.RegionProperties
+                Try
+                    rp.Accuracy = AccuracyEnum.kVeryHigh
+                Catch
+                End Try
+                Dim a As Double = rp.Area
+                If a <= 0 Then Continue For
+                Dim m1 As Double, m2 As Double, m3 As Double
+                rp.PrincipalMomentsOfInertia(m1, m2, m3)
+                ' alto / ancho a lo largo de los ejes principales de la seccion
+                Dim ang As Double = rp.RotationAngle
+                Dim cx As Double = rp.Centroid.X, cy As Double = rp.Centroid.Y
+                Dim ca As Double = Math.Cos(ang), sa As Double = Math.Sin(ang)
+                Dim xMin As Double = 1.0E+30, xMax As Double = -1.0E+30, yMin As Double = 1.0E+30, yMax As Double = -1.0E+30
+                Dim pts As New List(Of Point2d)
+                For Each sp As SketchPoint In sk.SketchPoints
+                    pts.Add(sp.Geometry)
+                Next
+                For Each ar As SketchArc In sk.SketchArcs
+                    For k As Integer = 0 To 16
+                        Dim an As Double = ar.Geometry.StartAngle + ar.Geometry.SweepAngle * k / 16
+                        pts.Add(tg.CreatePoint2d(ar.Geometry.Center.X + ar.Geometry.Radius * Math.Cos(an), ar.Geometry.Center.Y + ar.Geometry.Radius * Math.Sin(an)))
+                    Next
+                Next
+                For Each ci As SketchCircle In sk.SketchCircles
+                    For k As Integer = 0 To 31
+                        Dim an As Double = 2 * Math.PI * k / 32
+                        pts.Add(tg.CreatePoint2d(ci.Geometry.Center.X + ci.Geometry.Radius * Math.Cos(an), ci.Geometry.Center.Y + ci.Geometry.Radius * Math.Sin(an)))
+                    Next
+                Next
+                For Each q As Point2d In pts
+                    Dim x As Double = (q.X - cx) * ca + (q.Y - cy) * sa
+                    Dim y As Double = -(q.X - cx) * sa + (q.Y - cy) * ca
+                    If x < xMin Then xMin = x
+                    If x > xMax Then xMax = x
+                    If y < yMin Then yMin = y
+                    If y > yMax Then yMax = y
+                Next
+                Dim d1 As Double = If(pts.Count > 0, (xMax - xMin) * 10, 0), d2 As Double = If(pts.Count > 0, (yMax - yMin) * 10, 0)
+                medidas.Add(New Double() {a, Math.Max(m1, m2), Math.Min(m1, m2), Math.Max(d1, d2), Math.Min(d1, d2)})
+            Catch
+            End Try
+        Next
+    Catch
+    Finally
+        Try
+            If tr IsNot Nothing Then tr.Abort()
+        Catch
+        End Try
+    End Try
+    If medidas.Count = 0 Then Return False
+    ' el valor que se repite (area dentro de 1 %); si ninguno se repite, el de mayor area
+    Dim mejor As Integer = -1, votos As Integer = 0
+    For i As Integer = 0 To medidas.Count - 1
+        Dim v As Integer = 0
+        For j As Integer = 0 To medidas.Count - 1
+            If Math.Abs(medidas(j)(0) / medidas(i)(0) - 1) <= 0.01 Then v += 1
+        Next
+        If v > votos OrElse (v = votos AndAlso medidas(i)(0) > medidas(mejor)(0)) Then
+            votos = v
+            mejor = i
+        End If
+    Next
+    Dim r() As Double = medidas(mejor)
+    rv.A = r(0) : rv.i1 = r(1) : rv.i2 = r(2) : rv.alto = r(3) : rv.ancho = r(4)
+    rv.metodo = "CORTES " & votos & "/" & medidas.Count
+    Return True
+End Function
+
+' Designacion descriptiva de una seccion que no esta en el catalogo
+Function SeccionTxt(rv As Revision) As String
+    If rv.alto <= 0 Then Return TxtSec(rv.A, rv.i1, rv.i2)
+    Return "SECCION " & rv.alto.ToString("0.#") & "x" & rv.ancho.ToString("0.#") & " mm, " & TxtSec(rv.A, rv.i1, rv.i2)
+End Function

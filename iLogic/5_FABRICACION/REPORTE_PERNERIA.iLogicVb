@@ -1,5 +1,5 @@
 ' =====================================================================
-'  REPORTE_PERNERIA  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  REPORTE_PERNERIA  v1.1  -  Regla externa iLogic (Inventor 2026) - COIMSER
 '  Lista de COMPRA de perneria y comerciales de la fase (o del conjunto) abierto:
 '   - Perneria = Content Center no estructural (pernos, tuercas, arandelas, anclajes...),
 '     piezas COMPRADO en la lista de materiales, comerciales del Design Accelerator
@@ -60,7 +60,7 @@ Sub Main()
     filas.Add(New Object() {"TOTAL", "", "", "", "", "", "", Nothing, Nothing, Nothing, Nothing, Math.Round(pesoT, 1), ""})
 
     ' ---------- cambios ----------
-    Dim dirRep As String = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(asm.FullFileName), "PLANOS\REPORTES")
+    Dim dirRep As String = System.IO.Path.Combine(CarpetaSalida(asm), "REPORTES")
     System.IO.Directory.CreateDirectory(dirRep)
     Dim fAnt As String = ElegirFoto(dirRep, "PERNERIA", silencioso)
     Dim nC As Integer = 0
@@ -451,4 +451,19 @@ Function Cambios(ant As Dictionary(Of String, Object()), act As Dictionary(Of St
         filas.Add(New Object() {k, desc, un, Math.Round(qa, 3), Math.Round(qn, 3), Math.Round(qn - qa, 3), est})
     Next
     Return filas
+End Function
+
+' Carpeta de salida: fase -> <fase>\PLANOS ; conjunto / subconjunto -> <carpeta del conjunto>\PLANOS
+Function CarpetaSalida(asm As AssemblyDocument) As String
+    Dim dir As String = System.IO.Path.GetDirectoryName(asm.FullFileName)
+    Dim nom As String = System.IO.Path.GetFileNameWithoutExtension(asm.FullFileName)
+    Dim pref As String = ""
+    Dim tipo As String = ""
+    Try : pref = CStr(asm.PropertySets.Item("Inventor User Defined Properties").Item("PREFIJO").Value).Trim() : Catch : End Try
+    Try : tipo = CStr(asm.PropertySets.Item("Inventor User Defined Properties").Item("TIPO_ENSAMBLE").Value).Trim().ToUpper() : Catch : End Try
+    If tipo <> "PLANTA" AndAlso pref <> "" Then
+        If System.IO.Path.GetFileName(dir).ToUpper() = nom.ToUpper() Then Return System.IO.Path.Combine(dir, "PLANOS")
+        Return System.IO.Path.Combine(System.IO.Path.Combine(dir, nom), "PLANOS")
+    End If
+    Return System.IO.Path.Combine(dir, "PLANOS")
 End Function

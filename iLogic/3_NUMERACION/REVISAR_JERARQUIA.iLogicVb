@@ -1,5 +1,5 @@
 ' =====================================================================
-'  REVISAR_JERARQUIA  v1.2  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  REVISAR_JERARQUIA  v1.4  -  Regla externa iLogic (Inventor 2026) - COIMSER
 '  Se corre en el ensamble de PLANTA antes de TEKLA_NUMERACION.
 '
 '  1) REVISA todo el arbol y escribe _REVISION_JERARQUIA.txt en la carpeta de la obra:
@@ -16,6 +16,14 @@
 '              como referencia -> NUEVA_REFERENCIA opcion 3
 '            - v1.2: perfil sin designacion (PERFIL), chapa desarrollada "de canto", espesor no
 '              comercial (FORMATOS_PLANCHA.csv), y ERROR: el mismo archivo usado en otra fase
+'            - v1.3 ORDEN POR CONJUNTO: pieza suelta en la fase, archivo guardado en la carpeta de otro
+'              conjunto, el mismo archivo usado en varios conjuntos, pieza con marca de otro conjunto,
+'              numero de archivo distinto del de la marca (CH-002 con marca CH1), conjunto sin plano
+'              o con plano desactualizado (<conjunto>\PLANOS\*-FAB.idw mas viejo que el modelo)
+'            - v1.4 GEOMETRIA: ERROR parametro ESPESOR distinto del espesor real, pieza con varios solidos,
+'              pieza a FABRICAR fuera de la obra (TRAER A LA OBRA); AVISO propiedad ESPESOR desactualizada,
+'              material sin definir, piezas sin fijar ni restringir, misma geometria con marcas distintas,
+'              rutas largas (ERROR desde 250 caracteres, AVISO desde 225)
 '  2) CORRIGE desde un menu (solo propiedades; mover piezas: Reestructurar de Inventor):
 '     cambiar tipo de conjunto, volver transparente (Fantasma), igualar PLANTA/PROYECTO,
 '     forzar CODIGO de pieza, bloquear / desbloquear marcas.
@@ -130,6 +138,7 @@ Sub Main()
     MessageBox.Show(Cierre(), "REVISAR_JERARQUIA")
 End Sub
 
+Private usoPieza As New Dictionary(Of String, List(Of String))
 Private silencioso As Boolean
 Private top As AssemblyDocument
 Private planta As String = ""
@@ -149,11 +158,12 @@ Private cambios As New List(Of String)
 Private nErr As Integer
 Private nAvi As Integer
 Private informeTxt As String = ""
+Private sinFijar As New List(Of String)
 
 ' ===================== revision =====================
 Sub Revisar()
     docs.Clear() : nombresConj.Clear() : nombresPieza.Clear() : padreDe.Clear() : refVistas.Clear()
-    errores.Clear() : avisos.Clear()
+    errores.Clear() : avisos.Clear() : usoPieza.Clear() : sinFijar.Clear()
     If planta = "" Then errores.Add("El ensamble de planta no tiene PLANTA (ej. EE): ponla en iProperties > Personalizada.")
     If proy = "" Then errores.Add("El ensamble de planta no tiene PROYECTO.")
     Recorrer(top.ComponentDefinition.Occurrences, "", "(planta)")
@@ -176,6 +186,13 @@ Sub Revisar()
         If distintas Then errores.Add("Part Number '" & kv.Key & "' repetido en " & String.Join(", ", kv.Value) & ": el BOM las junta en una fila. Numera con TEKLA_NUMERACION.")
     Next
     RevisarAntesDeNumerar()
+    RevisarDuplicados()
+    If sinFijar.Count > 0 Then
+        Dim t As String = String.Join(", ", Primeros(sinFijar, 12).ToArray())
+        If sinFijar.Count > 12 Then t &= " ... y " & (sinFijar.Count - 12) & " mas"
+        avisos.Add(sinFijar.Count & " pieza(s) sin fijar ni restringir (se mueven al arrastrar o al abrir): " & t & ". Restringelas o fijalas (Fijo / Grounded).")
+    End If
+    RevisarOrdenConjuntos()
     nErr = errores.Count
     nAvi = avisos.Count
 End Sub
@@ -228,9 +245,45 @@ Sub RevisarAntesDeNumerar()
                 End If
             Catch
             End Try
-        ElseIf nat.Contains("PLANCHA") Then
+        ElseIf nat.Contains("PLANCHA") OrElse TieneParam(p, "ESPESOR") Then
+            ' v1.4: el espesor REAL de la pieza contra el parametro y la propiedad ESPESOR
             esp = Num(UProp(p, "ESPESOR"))
+            Dim med As Double = EspesorMedido(p)
+            Dim par As Double = 0
+            Try
+                par = p.ComponentDefinition.Parameters.Item("ESPESOR").Value * 10
+            Catch
+            End Try
+            If med > 0 Then
+                If par > 0 AndAlso Math.Abs(par - med) > 0.05 Then
+                    errores.Add(k & ": parametro ESPESOR = " & par.ToString("0.##") & " mm pero la pieza mide " & med.ToString("0.##") & " mm (se escribio el numero en la extrusion?). Corrige la extrusion para que use ESPESOR, o el parametro.")
+                ElseIf esp > 0 AndAlso Math.Abs(esp - med) > 0.05 Then
+                    avisos.Add(k & ": propiedad ESPESOR = " & esp.ToString("0.##") & " desactualizada (la pieza mide " & med.ToString("0.##") & " mm). Plasma y cut list usan lo medido; CAMBIAR_NATURALEZA espesor=" & med.ToString("0.##") & " la iguala.")
+                End If
+                esp = med
+            End If
         End If
+        ' v1.4: varios solidos en una pieza (plasma, numeracion y peso asumen uno)
+        Try
+            Dim nSol As Integer = 0
+            For Each b As SurfaceBody In p.ComponentDefinition.SurfaceBodies
+                If Not b.IsSolid Then Continue For
+                ' cada trozo separado (FaceShell exterior) cuenta: una extrusion de 2 perfiles da 1 cuerpo con 2 trozos
+                Dim nTr As Integer = 0
+                For Each fs As FaceShell In b.FaceShells
+                    If Not fs.IsVoid Then nTr += 1
+                Next
+                nSol += Math.Max(1, nTr)
+            Next
+            If nSol > 1 Then errores.Add(k & ": tiene " & nSol & " solidos (o trozos separados) en un solo archivo: TEKLA, plasma y planos lo tratan como UNA pieza. Separalos con EXTRAER_PIEZA (o Make Components).")
+        Catch
+        End Try
+        ' v1.4: material sin definir (el peso sale falso)
+        Try
+            Dim mn As String = p.ComponentDefinition.Material.Name.ToLower().Replace(ChrW(233), "e")
+            If mn.Contains("generic") OrElse mn.Contains("generico") OrElse mn.Contains("default") OrElse mn = "" Then avisos.Add(k & ": material '" & p.ComponentDefinition.Material.Name & "' (sin definir): el peso y el costo salen falsos. Ponle el acero (ASTM A36...).")
+        Catch
+        End Try
         ' espesor no comercial
         If esp > 0 Then
             Dim cerca As Double = 0
@@ -320,11 +373,30 @@ Sub Recorrer(occs As Object, conjPadre As String, prefPadre As String)
         Dim comprado As Boolean = (bs = BOMStructureEnum.kPurchasedBOMStructure) OrElse esCC
         Dim nuevo As Boolean = Not docs.ContainsKey(nom)
         If nuevo Then docs(nom) = d
+        ' v1.4: rutas largas (subconjuntos muy anidados): Windows / Vault no pasan de 259 caracteres
+        If nuevo Then
+            Dim lr As Integer = d.FullFileName.Length
+            If lr >= 250 Then
+                errores.Add(nom & ": ruta de " & lr & " caracteres (limite Windows / Vault 259; OldVersions y Vault la alargan). Sube el conjunto un nivel o acorta nombres.")
+            ElseIf lr >= 225 Then
+                avisos.Add(nom & ": ruta de " & lr & " caracteres: un nivel mas de subconjunto pasara el limite (259).")
+            End If
+        End If
+        Try
+            If d.DocumentType = DocumentTypeEnum.kPartDocumentObject AndAlso Not comprado AndAlso Not esEquipo Then
+                If Not usoPieza.ContainsKey(nom) Then usoPieza(nom) = New List(Of String)
+                If Not usoPieza(nom).Contains(conjPadre) Then usoPieza(nom).Add(conjPadre)
+            End If
+        Catch
+        End Try
 
         ' archivos fuera de la obra
         If nuevo AndAlso Not esCC AndAlso Not ruta.Contains("\content center files\") AndAlso Not ruta.StartsWith(obra.ToLower()) Then
             If ruta.Contains("\librerias\") Then
                 If Not esEquipo AndAlso Not comprado Then avisos.Add(nom & ": viene de \Librerias y no tiene EQUIPO = SI ni estructura Comprado.")
+            ElseIf d.DocumentType = DocumentTypeEnum.kPartDocumentObject AndAlso Not comprado AndAlso Not esEquipo AndAlso bs <> BOMStructureEnum.kPhantomBOMStructure AndAlso TieneSolidos(d) Then
+                ' v1.4: pieza a FABRICAR fuera de la obra: TEKLA escribiria la marca en el archivo original
+                errores.Add(nom & ": pieza a fabricar FUERA de la obra (" & System.IO.Path.GetDirectoryName(d.FullFileName) & "). Al numerar se escribiria la marca en ese archivo original. Traela con COPIAR_PIEZA -> TRAER A LA OBRA (si es skeleton o equipo: NUEVA_REFERENCIA opcion 3).")
             Else
                 avisos.Add(nom & ": esta fuera de la carpeta de la obra (" & System.IO.Path.GetDirectoryName(d.FullFileName) & "). Si es skeleton o equipo de referencia: NUEVA_REFERENCIA opcion 3.")
             End If
@@ -372,6 +444,11 @@ Sub Recorrer(occs As Object, conjPadre As String, prefPadre As String)
             End If
             If bs = BOMStructureEnum.kPhantomBOMStructure Then Continue For
             nombresPieza.Add(nom)
+            ' v1.4: ni fija ni restringida (no aplica a miembros de Frame Generator ni a Design Accelerator)
+            Try
+                If Not occ.Grounded AndAlso occ.Constraints.Count = 0 AndAlso occ.Joints.Count = 0 AndAlso Not ruta.Contains("\frame\") AndAlso Not ruta.Contains("\design accelerator\") Then sinFijar.Add(nom)
+            Catch
+            End Try
             padreDe(nom) = conjPadre
             Dim cod As String = UProp(d, "CODIGO").ToLower()
             If cod <> "" AndAlso Not tablaParte.ContainsKey(cod) Then errores.Add(nom & ": CODIGO '" & cod & "' no esta en TABLA_MARCAS. Opcion 5 del menu.")
@@ -380,6 +457,71 @@ Sub Recorrer(occs As Object, conjPadre As String, prefPadre As String)
         End If
     Next
 End Sub
+
+' v1.3: orden por conjunto (carpetas, marcas, planos)
+Sub RevisarOrdenConjuntos()
+    ' numero del archivo vs numero de la marca, y plano del conjunto
+    For Each k As String In nombresConj
+        Dim d As Document = docs(k)
+        Dim pref As String = UProp(d, "PREFIJO").ToUpper()
+        Dim mk As String = UProp(d, "MARCA")
+        Dim mf As Match = Regex.Match(System.IO.Path.GetFileNameWithoutExtension(k), "-" & Regex.Escape(pref) & "-0*(\d+)$", RegexOptions.IgnoreCase)
+        Dim mm As Match = Regex.Match(mk, Regex.Escape(pref) & "(\d+)$", RegexOptions.IgnoreCase)
+        If mf.Success AndAlso mm.Success AndAlso mf.Groups(1).Value <> mm.Groups(1).Value Then
+            avisos.Add(k & ": el archivo es " & pref & "-" & mf.Groups(1).Value & " pero su marca es " & mk & ". TEKLA_NUMERACION v3.13 la alinea al numerar en una configuracion INICIAL; si hay planos emitidos, dejala asi.")
+        End If
+        Try
+            Dim dirPl As String = CarpetaSalidaDe(d)
+            Dim idws() As String = Nothing
+            If System.IO.Directory.Exists(dirPl) Then idws = System.IO.Directory.GetFiles(dirPl, "*-FAB.idw")
+            If idws Is Nothing OrElse idws.Length = 0 Then
+                avisos.Add(k & ": no tiene plano de fabricacion en " & dirPl & " (GENERAR_PLANOS dentro del conjunto o EJECUTAR_FASES -> PAQUETE DE FABRICACION).")
+            Else
+                Dim fp As DateTime = System.IO.File.GetLastWriteTime(idws(0))
+                Dim nuevoMod As String = ""
+                If System.IO.File.GetLastWriteTime(d.FullFileName) > fp Then nuevoMod = k
+                For Each kp As String In nombresPieza
+                    If padreDe(kp) = k AndAlso nuevoMod = "" Then
+                        If System.IO.File.GetLastWriteTime(docs(kp).FullFileName) > fp Then nuevoMod = kp
+                    End If
+                Next
+                If nuevoMod <> "" Then avisos.Add(k & ": su plano (" & System.IO.Path.GetFileName(idws(0)) & ") es MAS VIEJO que " & nuevoMod & ": regenera el plano antes de emitir.")
+            End If
+        Catch
+        End Try
+    Next
+    ' piezas
+    For Each kp As String In nombresPieza
+        Dim d As Document = docs(kp)
+        Dim padre As String = padreDe(kp)
+        If padre = "" Then
+            avisos.Add(kp & ": pieza SUELTA en la fase (sin conjunto). Metela en un conjunto con AGRUPAR_EN_CONJUNTO para que tenga su paquete de planos.")
+            Continue For
+        End If
+        Dim carp As String = System.IO.Path.GetFileNameWithoutExtension(padre)
+        If Not d.FullFileName.ToLower().Contains("\" & carp.ToLower() & "\") Then
+            Dim otro As String = ""
+            For Each kc As String In nombresConj
+                If kc <> padre AndAlso d.FullFileName.ToLower().Contains("\" & System.IO.Path.GetFileNameWithoutExtension(kc).ToLower() & "\") Then otro = kc
+            Next
+            If otro <> "" Then avisos.Add(kp & ": va en " & padre & " pero el archivo esta en la carpeta de " & otro & ". Si ese conjunto se edita o se borra, este se afecta.")
+        End If
+        Dim mkPad As String = UProp(docs(padre), "MARCA")
+        Dim dueno As String = UProp(d, "CONJUNTO")
+        If mkPad <> "" AndAlso dueno <> "" AndAlso dueno <> mkPad AndAlso usoPieza.ContainsKey(kp) AndAlso usoPieza(kp).Count <= 1 Then avisos.Add(kp & ": tiene marca de otro conjunto (" & dueno & ") y esta en " & mkPad & ".")
+    Next
+    For Each kv As KeyValuePair(Of String, List(Of String)) In usoPieza
+        If kv.Value.Count > 1 Then avisos.Add(kv.Key & ": el MISMO archivo se usa en " & kv.Value.Count & " conjuntos (" & String.Join(", ", kv.Value.ToArray()) & "). Editarlo cambia en todos: correcto si son identicas; si no, COPIAR_PIEZA.")
+    Next
+End Sub
+
+' Carpeta PLANOS de un conjunto (misma logica que GENERAR_PLANOS)
+Function CarpetaSalidaDe(d As Document) As String
+    Dim dir As String = System.IO.Path.GetDirectoryName(d.FullFileName)
+    Dim nom As String = System.IO.Path.GetFileNameWithoutExtension(d.FullFileName)
+    If System.IO.Path.GetFileName(dir).ToUpper() = nom.ToUpper() Then Return System.IO.Path.Combine(dir, "PLANOS")
+    Return System.IO.Path.Combine(System.IO.Path.Combine(dir, nom), "PLANOS")
+End Function
 
 Sub RevisarPlantaProy(d As Document, nom As String)
     Dim p As String = UProp(d, "PLANTA").ToUpper()
@@ -661,4 +803,99 @@ Function Arg(n As String) As String
     Catch
     End Try
     Return ""
+End Function
+
+' ===================== v1.4: chequeos de geometria =====================
+Function TieneSolidos(d As Document) As Boolean
+    Try
+        Return CType(d, PartDocument).ComponentDefinition.SurfaceBodies.Count > 0
+    Catch
+        Return False
+    End Try
+End Function
+
+Function Primeros(l As List(Of String), n As Integer) As List(Of String)
+    If l.Count <= n Then Return l
+    Return l.GetRange(0, n)
+End Function
+
+' Piezas con la MISMA geometria y material pero marcas DISTINTAS: TEKLA deberia darles la misma
+' marca (salvo espejos izquierda / derecha). Firma: volumen, area y caja ordenada.
+Sub RevisarDuplicados()
+    Dim grupos As New Dictionary(Of String, List(Of String))
+    For Each k As String In nombresPieza
+        Try
+            Dim p As PartDocument = CType(docs(k), PartDocument)
+            If UProp(p, "MARCA") = "" Then Continue For
+            Dim mp As MassProperties = p.ComponentDefinition.MassProperties
+            Dim rb As Box = p.ComponentDefinition.RangeBox
+            Dim dd() As Double = {rb.MaxPoint.X - rb.MinPoint.X, rb.MaxPoint.Y - rb.MinPoint.Y, rb.MaxPoint.Z - rb.MinPoint.Z}
+            Array.Sort(dd)
+            Dim mat As String = ""
+            Try
+                mat = p.ComponentDefinition.Material.Name
+            Catch
+            End Try
+            Dim f As String = String.Format(System.Globalization.CultureInfo.InvariantCulture, "{0:0.00}|{1:0.0}|{2:0.0}|{3:0.0}|{4:0.0}|", CDbl(mp.Volume), CDbl(mp.Area), dd(0), dd(1), dd(2)) & mat
+            If Not grupos.ContainsKey(f) Then grupos(f) = New List(Of String)
+            grupos(f).Add(k)
+        Catch
+        End Try
+    Next
+    For Each kv As KeyValuePair(Of String, List(Of String)) In grupos
+        If kv.Value.Count < 2 Then Continue For
+        Dim marcas As New List(Of String)
+        Dim det As New List(Of String)
+        Dim espejo As Boolean = False
+        For Each k As String In kv.Value
+            Dim mk As String = UProp(docs(k), "MARCA")
+            If Not marcas.Contains(mk) Then marcas.Add(mk)
+            det.Add(k & " (" & mk & ")")
+            If UProp(docs(k), "ESPEJO_DE") <> "" Then espejo = True
+        Next
+        If marcas.Count < 2 Then Continue For
+        avisos.Add("Misma geometria y material con marcas DISTINTAS: " & String.Join(", ", Primeros(det, 6).ToArray()) & If(espejo, " - hay espejos: si son izquierda / derecha es correcto.", ". Si son iguales, corre TEKLA_NUMERACION; si una es espejo, esta bien."))
+    Next
+End Sub
+
+' Espesor de plancha medido (mm): distancia entre la cara plana mayor y su cara paralela opuesta
+' (de area parecida). 0 si la pieza no es una plancha (no hay caras paralelas opuestas grandes).
+Function EspesorMedido(p As PartDocument) As Double
+    Try
+        Dim cd As PartComponentDefinition = p.ComponentDefinition
+        If cd.SurfaceBodies.Count = 0 Then Return 0
+        Dim caras As New List(Of Face)
+        Dim areas As New List(Of Double)
+        For Each b As SurfaceBody In cd.SurfaceBodies
+            If Not b.IsSolid Then Continue For
+            For Each f As Face In b.Faces
+                If f.SurfaceType = SurfaceTypeEnum.kPlaneSurface Then
+                    caras.Add(f)
+                    areas.Add(f.Evaluator.Area)
+                End If
+            Next
+        Next
+        If caras.Count < 2 Then Return 0
+        Dim i1 As Integer = 0
+        For i As Integer = 1 To caras.Count - 1
+            If areas(i) > areas(i1) Then i1 = i
+        Next
+        Dim pl1 As Plane = CType(caras(i1).Geometry, Plane)
+        Dim n As UnitVector = pl1.Normal
+        Dim mejor As Double = 0, aMejor As Double = 0
+        For i As Integer = 0 To caras.Count - 1
+            If i = i1 OrElse areas(i) < 0.5 * areas(i1) Then Continue For
+            Dim pl2 As Plane = CType(caras(i).Geometry, Plane)
+            If Math.Abs(pl2.Normal.DotProduct(n)) < 0.9999 Then Continue For
+            Dim d As Double = Math.Abs((pl2.RootPoint.X - pl1.RootPoint.X) * n.X + (pl2.RootPoint.Y - pl1.RootPoint.Y) * n.Y + (pl2.RootPoint.Z - pl1.RootPoint.Z) * n.Z)
+            If d < 0.0001 Then Continue For
+            If areas(i) > aMejor Then
+                aMejor = areas(i)
+                mejor = d
+            End If
+        Next
+        Return Math.Round(mejor * 10, 2)
+    Catch
+        Return 0
+    End Try
 End Function

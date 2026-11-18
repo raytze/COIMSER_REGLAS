@@ -30,6 +30,9 @@ comprar y cortar con el reporte de la FASE; nada se borra (_to_delete, _OBSOLETO
     XYZMomentsOfInertia, cuyos productos ya son los terminos del tensor); precision =
     MassPropertiesAccuracyEnum.k_VeryHigh; filtro de planos = SelectionFilterEnum.kAllPlanarEntities.
 12. Un error de compilacion abre un dialogo de iLogic al usuario: probar primero una copia con Main reducido.
+13. Toda regla que GUARDA archivos llama antes a RspRespaldar / RspRespaldarSucios (bloque comun RESPALDO al final
+    de REVISAR_PERFILES, TEKLA_NUMERACION, CAMBIAR_NATURALEZA). Se restaura con RESTAURAR_RESPALDO.
+14. Corridas de mas de 80 s desde execute_python: lanzarlas en un hilo (PRUEBAS.md) o fallan con 'Interfaz no registrada'.
 
 ## REGISTRO DE PARCHES (obligatorio)
 Cada modificacion, arreglo o regla nueva instalada = una fila en docs/REGISTRO_PARCHES.csv

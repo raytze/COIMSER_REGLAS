@@ -1,0 +1,239 @@
+' =====================================================================
+'  RESTAURAR_RESPALDO  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Devuelve a la obra los archivos que una regla respaldo ANTES de guardarlos
+'  (REVISAR_PERFILES, TEKLA_NUMERACION, CAMBIAR_NATURALEZA...).
+'
+'  - Respaldos en <raiz>\<obra>\<fecha_hora>_<REGLA>\ con MANIFIESTO.csv
+'    (raiz = RESPALDOS.txt en la carpeta de reglas, o <carpeta de reglas>\..\..\_RESPALDOS).
+'  - Eliges la tanda (la mas nueva primero), ves que archivos tiene y confirmas.
+'  - Los archivos de esa tanda deben estar CERRADOS en Inventor (cierra el ensamble antes).
+'  - Antes de restaurar, la version ACTUAL de cada archivo se respalda en una tanda
+'    <fecha_hora>_ANTES_DE_RESTAURAR: la restauracion tambien se puede deshacer.
+'  - Archivos protegidos en Vault (solo lectura) no se restauran: haz Check Out primero.
+'  - Despues de restaurar, corre TEKLA_NUMERACION si cambiaron marcas.
+'  - No borra nada.
+'  Argumentos (pruebas): tanda=<nombre de carpeta>, obra=<nombre de obra>, si=SI, silencioso
+' =====================================================================
+Imports System.Collections.Generic
+
+Sub Main()
+    silencioso = RuleArguments.Exists("silencioso")
+    Dim raiz As String = RspRaiz()
+    If Not System.IO.Directory.Exists(raiz) Then
+        Msg("No hay respaldos todavia (" & raiz & ").")
+        Exit Sub
+    End If
+
+    ' ---------- obra ----------
+    Dim obra As String = Arg("obra")
+    Dim obras As New List(Of String)
+    For Each d As String In System.IO.Directory.GetDirectories(raiz)
+        obras.Add(System.IO.Path.GetFileName(d))
+    Next
+    If obras.Count = 0 Then
+        Msg("No hay respaldos todavia (" & raiz & ").")
+        Exit Sub
+    End If
+    If obra = "" Then
+        Dim sug As String = ""
+        Try
+            sug = System.IO.Path.GetFileName(RspObra(ThisApplication.ActiveDocument.FullFileName))
+        Catch
+        End Try
+        If Not obras.Contains(sug) Then sug = obras(0)
+        If obras.Count = 1 Then
+            obra = obras(0)
+        Else
+            obra = InputListBox("Obra:", obras, sug, "RESTAURAR_RESPALDO", "Obras con respaldos")
+        End If
+        If obra Is Nothing OrElse obra = "" Then Exit Sub
+    End If
+    Dim dirObra As String = System.IO.Path.Combine(raiz, obra)
+    If Not System.IO.Directory.Exists(dirObra) Then
+        Msg("No hay respaldos de la obra " & obra & ".")
+        Exit Sub
+    End If
+
+    ' ---------- tanda ----------
+    Dim tandas As New List(Of String)
+    For Each d As String In System.IO.Directory.GetDirectories(dirObra)
+        If System.IO.File.Exists(System.IO.Path.Combine(d, "MANIFIESTO.csv")) Then tandas.Add(System.IO.Path.GetFileName(d))
+    Next
+    tandas.Sort()
+    tandas.Reverse()
+    If tandas.Count = 0 Then
+        Msg("No hay respaldos de la obra " & obra & ".")
+        Exit Sub
+    End If
+    Dim tanda As String = Arg("tanda")
+    If tanda = "" Then
+        Dim vis As New List(Of String)
+        For Each t As String In tandas
+            vis.Add(t & "   (" & LeerManifiesto(System.IO.Path.Combine(dirObra, t)).Count & " archivos)")
+        Next
+        Dim r As String = InputListBox("Tanda a restaurar (fecha_hora_REGLA, la mas nueva arriba):", vis, vis(0), "RESTAURAR_RESPALDO", "Respaldos de " & obra)
+        If r Is Nothing OrElse r = "" Then Exit Sub
+        tanda = r.Split(" "c)(0)
+    End If
+    Dim dirT As String = System.IO.Path.Combine(dirObra, tanda)
+    Dim filas As List(Of String()) = LeerManifiesto(dirT)
+    If filas.Count = 0 Then
+        Msg("La tanda " & tanda & " no tiene archivos.")
+        Exit Sub
+    End If
+
+    ' ---------- abiertos / protegidos ----------
+    Dim abiertos As New List(Of String)
+    Dim protegidos As New List(Of String)
+    For Each f() As String In filas
+        For Each d As Document In ThisApplication.Documents
+            Try
+                If String.Equals(d.FullFileName, f(0), StringComparison.OrdinalIgnoreCase) Then
+                    abiertos.Add(System.IO.Path.GetFileName(f(0)))
+                    Exit For
+                End If
+            Catch
+            End Try
+        Next
+        Try
+            If System.IO.File.Exists(f(0)) AndAlso (System.IO.File.GetAttributes(f(0)) And System.IO.FileAttributes.ReadOnly) = System.IO.FileAttributes.ReadOnly Then protegidos.Add(System.IO.Path.GetFileName(f(0)))
+        Catch
+        End Try
+    Next
+    If abiertos.Count > 0 Then
+        Msg("Cierra en Inventor estos archivos y vuelve a correr la regla:" & vbCrLf & "  " & String.Join(vbCrLf & "  ", Primeros(abiertos, 20).ToArray()))
+        Exit Sub
+    End If
+
+    ' ---------- confirmar ----------
+    If Arg("si").ToUpper() <> "SI" Then
+        Dim lst As New List(Of String)
+        For Each f() As String In filas
+            lst.Add(System.IO.Path.GetFileName(f(0)))
+        Next
+        Dim t As String = "Restaurar " & filas.Count & " archivo(s) de la tanda " & tanda & ":" & vbCrLf & "  " & String.Join(vbCrLf & "  ", Primeros(lst, 20).ToArray())
+        If lst.Count > 20 Then t &= vbCrLf & "  ... y " & (lst.Count - 20) & " mas"
+        If protegidos.Count > 0 Then t &= vbCrLf & vbCrLf & protegidos.Count & " estan protegidos en Vault (solo lectura) y NO se restauraran."
+        t &= vbCrLf & vbCrLf & "La version actual se respalda antes (tanda ANTES_DE_RESTAURAR). Continuar?"
+        If MessageBox.Show(t, "RESTAURAR_RESPALDO", MessageBoxButtons.YesNo, MessageBoxIcon.Question) <> DialogResult.Yes Then Exit Sub
+    End If
+
+    ' ---------- restaurar ----------
+    Dim antes As String = System.IO.Path.Combine(dirObra, DateTime.Now.ToString("yyyyMMdd_HHmmss") & "_ANTES_DE_RESTAURAR")
+    System.IO.Directory.CreateDirectory(antes)
+    Dim man As String = System.IO.Path.Combine(antes, "MANIFIESTO.csv")
+    System.IO.File.WriteAllText(man, "ORIGINAL;RESPALDO;FECHA_ARCHIVO;REGLA" & vbCrLf)
+    Dim ok As New List(Of String)
+    Dim mal As New List(Of String)
+    For Each f() As String In filas
+        Dim nom As String = System.IO.Path.GetFileName(f(0))
+        Try
+            If Not System.IO.File.Exists(f(1)) Then
+                mal.Add(nom & ": falta el respaldo")
+                Continue For
+            End If
+            If protegidos.Contains(nom) Then
+                mal.Add(nom & ": protegido en Vault")
+                Continue For
+            End If
+            If System.IO.File.Exists(f(0)) Then
+                Dim dest As String = System.IO.Path.Combine(antes, f(1).Substring(dirT.Length + 1))
+                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(dest))
+                System.IO.File.Copy(f(0), dest, True)
+                System.IO.File.AppendAllText(man, f(0) & ";" & dest & ";" & System.IO.File.GetLastWriteTime(f(0)).ToString("yyyy-MM-dd HH:mm:ss") & ";RESTAURAR_RESPALDO" & vbCrLf)
+            Else
+                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(f(0)))
+            End If
+            System.IO.File.Copy(f(1), f(0), True)
+            ok.Add(nom)
+        Catch ex As Exception
+            mal.Add(nom & ": " & ex.Message)
+        End Try
+    Next
+
+    Dim rep As New System.Text.StringBuilder()
+    rep.AppendLine("RESTAURAR_RESPALDO  " & DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"))
+    rep.AppendLine("Tanda: " & dirT)
+    rep.AppendLine("Version anterior guardada en: " & antes)
+    rep.AppendLine("RESTAURADOS (" & ok.Count & "):")
+    For Each s As String In ok
+        rep.AppendLine("  " & s)
+    Next
+    rep.AppendLine("NO RESTAURADOS (" & mal.Count & "):")
+    For Each s As String In mal
+        rep.AppendLine("  " & s)
+    Next
+    Try
+        System.IO.File.WriteAllText(System.IO.Path.Combine(dirObra, "_RESTAURAR_RESPALDO.txt"), rep.ToString())
+    Catch
+    End Try
+    Msg(ok.Count & " archivo(s) restaurados" & If(mal.Count > 0, ", " & mal.Count & " no (ver informe)", "") & "." & vbCrLf & _
+        "La version anterior quedo en " & System.IO.Path.GetFileName(antes) & "." & vbCrLf & _
+        "Abre el ensamble y corre TEKLA_NUMERACION si cambiaron marcas.")
+End Sub
+
+Private silencioso As Boolean
+
+Function LeerManifiesto(dirT As String) As List(Of String())
+    Dim r As New List(Of String())
+    Dim man As String = System.IO.Path.Combine(dirT, "MANIFIESTO.csv")
+    If Not System.IO.File.Exists(man) Then Return r
+    Dim vistos As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+    Dim primera As Boolean = True
+    For Each l As String In System.IO.File.ReadAllLines(man)
+        If primera Then
+            primera = False
+            Continue For
+        End If
+        Dim c() As String = l.Split(";"c)
+        If c.Length < 2 OrElse c(0).Trim() = "" Then Continue For
+        If vistos.Contains(c(0)) Then Continue For
+        vistos.Add(c(0))
+        r.Add(c)
+    Next
+    Return r
+End Function
+
+Function Primeros(l As List(Of String), n As Integer) As List(Of String)
+    If l.Count <= n Then Return l
+    Return l.GetRange(0, n)
+End Function
+
+Sub Msg(t As String)
+    If Not silencioso Then MessageBox.Show(t, "RESTAURAR_RESPALDO")
+End Sub
+
+Function Arg(n As String) As String
+    Try
+        If RuleArguments.Exists(n) Then Return CStr(RuleArguments.Value(n)).Trim()
+    Catch
+    End Try
+    Return ""
+End Function
+
+Function RspObra(f As String) As String
+    Dim x As String = System.IO.Path.GetDirectoryName(f)
+    For i As Integer = 0 To 8
+        If x Is Nothing OrElse x = "" Then Exit For
+        If System.IO.File.Exists(System.IO.Path.Combine(x, "_OBRA.txt")) Then Return x
+        x = System.IO.Path.GetDirectoryName(x)
+    Next
+    Return System.IO.Path.GetDirectoryName(f)
+End Function
+
+Function RspRaiz() As String
+    Try
+        For Each raiz As String In iLogicVb.Automation.FileOptions.ExternalRuleDirectories
+            If Not System.IO.Directory.Exists(raiz) Then Continue For
+            Dim cfg As String = System.IO.Path.Combine(raiz, "RESPALDOS.txt")
+            If System.IO.File.Exists(cfg) Then
+                Dim l As String = System.IO.File.ReadAllLines(cfg)(0).Trim()
+                If l <> "" Then Return l
+            End If
+            Dim p As System.IO.DirectoryInfo = System.IO.Directory.GetParent(raiz.TrimEnd("\"c))
+            If p IsNot Nothing AndAlso p.Parent IsNot Nothing Then Return System.IO.Path.Combine(p.Parent.FullName, "_RESPALDOS")
+        Next
+    Catch
+    End Try
+    Return System.IO.Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments), "COIMSER_RESPALDOS")
+End Function

@@ -1,5 +1,5 @@
 ' =====================================================================
-'  EMITIR_PLANOS  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  EMITIR_PLANOS  v1.2  -  Regla externa iLogic (Inventor 2026) - COIMSER
 '  CONTROL DE REVISIONES de los planos de una fase (Vault Basic no maneja revisiones):
 '
 '   1) Eliges los planos: TODOS, PENDIENTES (nunca emitidos o cuyo modelo cambio despues de
@@ -37,7 +37,7 @@ Sub Main()
             MessageBox.Show("Este es el GENERAL. Abre una fase o usa EJECUTAR_FASES -> EMITIR_PLANOS.", "EMITIR_PLANOS")
             Exit Sub
         End If
-        dirPlanos = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(act.FullFileName), "PLANOS")
+        dirPlanos = CarpetaSalida(CType(act, AssemblyDocument))
         fase = System.IO.Path.GetFileNameWithoutExtension(act.FullFileName)
         If Not System.IO.Directory.Exists(dirPlanos) Then
             MessageBox.Show("No hay carpeta PLANOS en la fase. Corre GENERAR_PLANOS primero.", "EMITIR_PLANOS")
@@ -127,6 +127,12 @@ Sub Main()
             Dim desc As String = motivo & If(para <> "", " - " & para, "")
             EscribirProp(dd, "REVISION", rev)
             EscribirProp(dd, "ESTADO", "EMITIDO")
+            Try
+                For Each rd As Document In dd.ReferencedDocuments
+                    If rd.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then SubirEstado(rd, "EMITIDO")
+                Next
+            Catch
+            End Try
             EscribirProp(dd, "FECHA_REV", fecha)
             EscribirProp(dd, "DESCRIPCION_REV", desc)
             EscribirProp(dd, "DIBUJO", usr)
@@ -489,4 +495,41 @@ Sub GuardarCsv(ruta As String, filas As List(Of Object()))
     Next
     System.IO.File.WriteAllText(ruta, sb.ToString(), System.Text.Encoding.UTF8)
     rutaSalida = ruta
+End Sub
+
+' Carpeta de salida: fase -> <fase>\PLANOS ; conjunto / subconjunto -> <carpeta del conjunto>\PLANOS
+Function CarpetaSalida(asm As AssemblyDocument) As String
+    Dim dir As String = System.IO.Path.GetDirectoryName(asm.FullFileName)
+    Dim nom As String = System.IO.Path.GetFileNameWithoutExtension(asm.FullFileName)
+    Dim pref As String = ""
+    Dim tipo As String = ""
+    Try : pref = CStr(asm.PropertySets.Item("Inventor User Defined Properties").Item("PREFIJO").Value).Trim() : Catch : End Try
+    Try : tipo = CStr(asm.PropertySets.Item("Inventor User Defined Properties").Item("TIPO_ENSAMBLE").Value).Trim().ToUpper() : Catch : End Try
+    If tipo <> "PLANTA" AndAlso pref <> "" Then
+        If System.IO.Path.GetFileName(dir).ToUpper() = nom.ToUpper() Then Return System.IO.Path.Combine(dir, "PLANOS")
+        Return System.IO.Path.Combine(System.IO.Path.Combine(dir, nom), "PLANOS")
+    End If
+    Return System.IO.Path.Combine(dir, "PLANOS")
+End Function
+
+' ESTADO del conjunto: MODELADO < NUMERADO < PLANOS < EMITIDO < EN CORTE < FABRICADO < MONTADO. Solo sube (nunca baja);
+' FABRICADO y MONTADO los pones tu. Si el conjunto ya esta mas adelante no se toca.
+Sub SubirEstado(d As Document, nuevo As String)
+    Try
+        If d Is Nothing Then Exit Sub
+        Dim pref As String = ""
+        Try : pref = CStr(d.PropertySets.Item("Inventor User Defined Properties").Item("PREFIJO").Value).Trim() : Catch : End Try
+        If pref = "" Then Exit Sub
+        Dim orden() As String = {"MODELADO", "NUMERADO", "PLANOS", "EMITIDO", "EN CORTE", "FABRICADO", "MONTADO"}
+        Dim actual As String = ""
+        Try : actual = CStr(d.PropertySets.Item("Inventor User Defined Properties").Item("ESTADO").Value).Trim().ToUpper() : Catch : End Try
+        If Array.IndexOf(orden, actual) >= Array.IndexOf(orden, nuevo) Then Exit Sub
+        Dim ps As PropertySet = d.PropertySets.Item("Inventor User Defined Properties")
+        Try
+            ps.Item("ESTADO").Value = nuevo
+        Catch
+            ps.Add(nuevo, "ESTADO")
+        End Try
+    Catch
+    End Try
 End Sub

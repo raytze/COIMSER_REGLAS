@@ -117,3 +117,27 @@ y el resto de reglas nuevas (MENU, EJECUTAR_FASES, REORGANIZAR_OBRA, PERNERIA, C
   MARCAS 1F-f2 8 -> 7 DISMINUYE; PLANCHAS PL1.5 271.44 -> 267.85 kg (-3.59). Perfiles sin cambio.
 - LIMPIAR_OBSOLETOS v1.0 (nueva): PROBADA. TST-ALM: movio solo PL-001 (reemplazada por COPIAR_PIEZA);
   ISL-1F: movio Frame...-PZ-001/002 (copias viejas sin uso), dejo PZ-003 (en uso). Sin referencias rotas.
+
+## Estado al 2026-11-18 (obra TST)
+- EXTRAER_PIEZA v1.6 (cuerpos identicos): PROBADA con STEP de placas repetidas y giradas.
+- TEKLA_NUMERACION v3.13/v3.14: marca del conjunto = numero del archivo; estado NUMERADO. PROBADA.
+- Paquete por conjunto (GENERAR_PLANOS v2.15, EXPORTAR_PLASMA v2.4, CUT_LIST, REPORTE_PERNERIA, REPORTE_COSTO, REPORTE_ENSAMBLES): PROBADO en 3 conjuntos.
+- Conjunto x2 en la fase: DXF y lista x2 (277.3 kg), envio como complemento. PROBADO.
+- REVISAR_JERARQUIA v1.3 y TABLERO_OBRA v1.0: PROBADAS.
+- PRUEBA_TST v1.0: TODO OK en TST. Nota: GENERAR_PLANOS exige el conjunto abierto y activo.
+- CAMBIOS_PIEZAS v1.1: PROBADA (referencia con fotos, marca modificada, pieza suprimida y reactivada, registro en Excel con imagenes). Sin probar: pieza nueva real, eliminada real, renombrada, y obras grandes (tiempo de fotos).
+- Nota: comprobar las reglas con vbc contra Autodesk.Inventor.Interop (Environment, View y otros tipos chocan en iLogic y el chequeo con stubs no los ve).
+- Sin probar: EJECUTAR_FASES completo con PAQUETE DE FABRICACION y la compuerta de jerarquia; EMITIR_PLANOS v1.2 (solo compilado).
+- Corrida real en PLCAY: pendiente (el usuario).
+- ESTILO_PLANO v1.2 (etiquetas de seccion y detalle normales, logo vectorial) y GENERAR_PLANOS v2.16 (conos): PROBADOS en TST; falta correrlos en CON-CO (el usuario).
+
+## Estado al 2026-11-18 tarde (obra TST)
+- RESPALDO antes de guardar (REVISAR_PERFILES v1.2, TEKLA_NUMERACION v3.15, CAMBIAR_NATURALEZA v1.3) y RESTAURAR_RESPALDO v1.0: PROBADOS (tanda de TEKLA con 21 archivos; restaurar se niega con el archivo abierto y respalda la version actual).
+- Espesor medido en EXPORTAR_PLASMA v2.5 y CUT_LIST v1.5: PROBADO con pieza temporal (parametro 10, extrusion 12 -> 12).
+- REVISAR_JERARQUIA v1.4: PROBADA con piezas temporales (espesor, 2 trozos, pieza externa, material Generico, duplicados, sin fijar). Sin falsos en TST.
+- COPIAR_PIEZA v1.4 TRAER A LA OBRA: PROBADA (2 instancias, original intacto, ORIGEN escrito).
+- REVISAR_PERFILES v1.2 seccion por cortes: PROBADA (W4x13 sano, con despunte + agujero y con ingletes; HSS 5x5).
+- Subconjuntos a 3 niveles (BS-001 > PB-001 > L-001, AGRUPAR_EN_CONJUNTO v1.4): numeracion NIVEL 4, planos y plasma de cada nivel. PRUEBA_TST v1.1 con 5 conjuntos: TODO OK.
+- Nota Claude: una corrida de mas de 80 s por execute_python se corta y las reglas siguientes fallan con "Interfaz no registrada"; lanzar PRUEBA_TST en un hilo (codigo de arriba) y consultar despues. PRUEBA_TST usa el documento ACTIVO.
+- Sin probar: RESTAURAR_RESPALDO con archivos protegidos en Vault; TRAER A LA OBRA con pieza derivada externa.
+- GENERAR_PLANOS v2.17 plano jerarquico: corrido en PLCAY-CP1 (fase 9 hojas + 7 planos de conjunto). PROBADO en TST-ALM (fase 5 hojas; planos de CH-001, CH-002, BS-001, PB-001 y L-001 con lo suyo; hojas trasladadas con copia en _SUPERADOS; 2da corrida sin cambios). EJECUTAR_FASES v1.5 y PRUEBA_TST v1.2 solo compilados.

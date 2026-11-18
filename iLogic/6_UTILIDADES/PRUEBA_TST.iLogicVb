@@ -1,0 +1,211 @@
+' =====================================================================
+'  PRUEBA_TST  v1.2  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Prueba automatica de la cadena completa. SOLO corre si la ruta del ensamble contiene "_PRUEBAS".
+'  Abre la FASE de prueba (p.ej. TST-ALM.iam) y ejecuta: REVISAR_JERARQUIA, TEKLA_NUMERACION (fase 3),
+'  GENERAR_PLANOS en cada conjunto, EXPORTAR_PLASMA, CUT_LIST, REPORTE_PERNERIA, REPORTE_COSTO,
+'  REPORTE_ENSAMBLES, TABLERO_OBRA y GENERAR_PLANOS en la fase. Despues comprueba que existan
+'  archivos nuevos y estados. Informe: <obra>\_PRUEBA_TST.txt (OK / FALLO por paso).
+'  v1.2 - Cada conjunto con conjuntos=NO; GENERAR_PLANOS de la fase rehace todos (plano jerarquico v2.17).
+'  v1.1 - Tambien los SUBCONJUNTOS (cualquier nivel, con PREFIJO), igual que EJECUTAR_FASES.
+' =====================================================================
+Imports System.Collections.Generic
+
+Sub Main()
+    Dim fase As AssemblyDocument = TryCast(ThisApplication.ActiveDocument, AssemblyDocument)
+    If fase Is Nothing Then
+        MessageBox.Show("Abre la fase de prueba (ensamble en una carpeta _PRUEBAS).", "PRUEBA_TST")
+        Exit Sub
+    End If
+    If Not fase.FullFileName.ToUpper().Contains("_PRUEBAS") Then
+        MessageBox.Show("PRUEBA_TST solo corre en obras de prueba (ruta con _PRUEBAS). No se ejecuto.", "PRUEBA_TST")
+        Exit Sub
+    End If
+    t0 = DateTime.Now
+    Dim auto As Object = iLogicVb.Automation
+
+    Paso("REVISAR_JERARQUIA", fase, auto, "REVISAR_JERARQUIA", "silencioso")
+    Dim rev As String = LeerTxt(System.IO.Path.Combine(CarpetaObraDe(fase.FullFileName), "_REVISION_JERARQUIA.txt"))
+    Chequea("REVISAR_JERARQUIA sin errores", rev.Contains("ERRORES (0)"))
+
+    Paso("TEKLA_NUMERACION", fase, auto, "TEKLA_NUMERACION", "silencioso;fase=3")
+
+    Dim conjuntos As New List(Of AssemblyDocument)
+    ' v1.1: conjuntos Y SUBCONJUNTOS (cualquier nivel) con PREFIJO, como EJECUTAR_FASES
+    For Each x As Document In fase.AllReferencedDocuments
+        Try
+            Dim d As AssemblyDocument = TryCast(x, AssemblyDocument)
+            If d Is Nothing OrElse conjuntos.Contains(d) Then Continue For
+            If UProp(d, "PREFIJO") = "" OrElse UProp(d, "EQUIPO").ToUpper() = "SI" OrElse d.FullFileName = fase.FullFileName Then Continue For
+            conjuntos.Add(d)
+        Catch
+        End Try
+    Next
+    conjuntos.Sort(Function(a As AssemblyDocument, b As AssemblyDocument) String.Compare(a.FullFileName, b.FullFileName, True))
+    Chequea("Conjuntos encontrados en la fase: " & conjuntos.Count, conjuntos.Count > 0)
+
+    For Each c As AssemblyDocument In conjuntos
+        Dim nom As String = System.IO.Path.GetFileNameWithoutExtension(c.FullFileName)
+        Try
+            Dim vis As Document = ThisApplication.Documents.Open(c.FullFileName, True)
+            vis.Activate()
+        Catch
+        End Try
+        Dim est As String = UProp(c, "ESTADO")
+        Chequea(nom & " estado >= NUMERADO (" & est & ")", Rango(est) >= 2)
+        Paso(nom & " GENERAR_PLANOS", c, auto, "GENERAR_PLANOS", "silencioso;conjuntos=NO")
+        Dim dp As String = DirPlanos(c)
+        Chequea(nom & " idw nuevo en PLANOS", HayNuevo(dp, "*.idw"))
+        Chequea(nom & " estado >= PLANOS (" & UProp(c, "ESTADO") & ")", Rango(UProp(c, "ESTADO")) >= 3)
+        Paso(nom & " EXPORTAR_PLASMA", c, auto, "EXPORTAR_PLASMA", "silencioso")
+        Chequea(nom & " LISTA_CORTE", HayNuevo(dp & "\PLASMA", "*LISTA_CORTE.csv"))
+        Paso(nom & " CUT_LIST", c, auto, "CUT_LIST", "silencioso")
+        Paso(nom & " REPORTE_PERNERIA", c, auto, "REPORTE_PERNERIA", "silencioso")
+        Paso(nom & " REPORTE_COSTO", c, auto, "REPORTE_COSTO", "silencioso")
+        Paso(nom & " REPORTE_ENSAMBLES", c, auto, "REPORTE_ENSAMBLES", "silencioso")
+        Chequea(nom & " REPORTES nuevos", HayNuevo(dp & "\REPORTES", "*.*"))
+    Next
+    Try
+        fase.Activate()
+    Catch
+    End Try
+
+    Paso("GENERAR_PLANOS fase", fase, auto, "GENERAR_PLANOS", "silencioso")
+    Chequea("idw de fase nuevo", HayNuevo(Carpeta(fase) & "\PLANOS", "*.idw"))
+    Paso("TABLERO_OBRA", fase, auto, "TABLERO_OBRA", "silencioso")
+    Chequea("TABLERO_OBRA generado", HayNuevoRec(Carpeta(fase), "*TABLERO_OBRA.*"))
+
+    Dim rep As String = System.IO.Path.Combine(Carpeta(fase), "_PRUEBA_TST.txt")
+    Dim sb As New System.Text.StringBuilder
+    sb.AppendLine("PRUEBA_TST  " & DateTime.Now.ToString("yyyy-MM-dd HH:mm") & "  fase: " & fase.DisplayName)
+    sb.AppendLine("RESULTADO: " & If(fallos = 0, "TODO OK", fallos & " FALLO(S)"))
+    For Each l As String In informe
+        sb.AppendLine(l)
+    Next
+    Try
+        System.IO.File.WriteAllText(rep, sb.ToString(), System.Text.Encoding.UTF8)
+    Catch
+    End Try
+    MessageBox.Show(If(fallos = 0, "TODO OK", fallos & " fallo(s)") & vbCrLf & "Informe: " & rep, "PRUEBA_TST")
+End Sub
+
+Dim informe As New List(Of String)
+Dim fallos As Integer = 0
+Dim t0 As DateTime
+
+Sub Paso(titulo As String, d As Document, auto As Object, regla As String, args As String)
+    Dim ruta As String = RutaRegla(regla)
+    If ruta = "" Then
+        Chequea(titulo & " (no encuentro la regla)", False)
+        Exit Sub
+    End If
+    Try
+        Dim nv As NameValueMap = ThisApplication.TransientObjects.CreateNameValueMap()
+        For Each a As String In args.Split(";"c)
+            If a = "" Then Continue For
+            If a.Contains("=") Then
+                nv.Add(a.Split("="c)(0), a.Split("="c)(1))
+            Else
+                nv.Add(a, "1")
+            End If
+        Next
+        Dim r As Integer = auto.RunExternalRuleWithArguments(d, ruta, nv)
+        Chequea(titulo & " (codigo " & r & ")", r = 0)
+    Catch ex As Exception
+        Chequea(titulo & " EXCEPCION: " & ex.Message, False)
+    End Try
+End Sub
+
+Sub Chequea(txt As String, ok As Boolean)
+    If Not ok Then fallos += 1
+    informe.Add(If(ok, "  OK     ", "  FALLO  ") & txt)
+End Sub
+
+Function Rango(e As String) As Integer
+    Select Case e.ToUpper()
+        Case "MODELADO" : Return 1
+        Case "NUMERADO" : Return 2
+        Case "PLANOS" : Return 3
+        Case "EMITIDO" : Return 4
+        Case "EN CORTE" : Return 5
+        Case "FABRICADO" : Return 6
+        Case "MONTADO" : Return 7
+    End Select
+    Return 0
+End Function
+
+Function DirPlanos(c As Document) As String
+    Dim dir As String = System.IO.Path.GetDirectoryName(c.FullFileName)
+    Dim nom As String = System.IO.Path.GetFileNameWithoutExtension(c.FullFileName)
+    If String.Compare(System.IO.Path.GetFileName(dir), nom, True) = 0 Then Return dir & "\PLANOS"
+    Return dir & "\" & nom & "\PLANOS"
+End Function
+
+Function CarpetaObraDe(ruta As String) As String
+    Dim x As String = System.IO.Path.GetDirectoryName(ruta)
+    For i As Integer = 0 To 8
+        If x Is Nothing OrElse x = "" Then Exit For
+        If System.IO.File.Exists(System.IO.Path.Combine(x, "_OBRA.txt")) Then Return x
+        x = System.IO.Path.GetDirectoryName(x)
+    Next
+    Return System.IO.Path.GetDirectoryName(ruta)
+End Function
+
+Function Carpeta(d As Document) As String
+    Return System.IO.Path.GetDirectoryName(d.FullFileName)
+End Function
+
+Function HayNuevo(dir As String, patron As String) As Boolean
+    Try
+        If Not System.IO.Directory.Exists(dir) Then Return False
+        For Each f As String In System.IO.Directory.GetFiles(dir, patron)
+            If System.IO.File.GetLastWriteTime(f) >= t0 Then Return True
+        Next
+        For Each sd As String In System.IO.Directory.GetDirectories(dir)
+            If sd.ToUpper().Contains("_OBSOLETO") Then Continue For
+            If HayNuevo(sd, patron) Then Return True
+        Next
+    Catch
+    End Try
+    Return False
+End Function
+
+Function HayNuevoRec(dir As String, patron As String) As Boolean
+    Dim x As String = dir
+    For i As Integer = 0 To 8
+        If x Is Nothing OrElse x = "" Then Exit For
+        If System.IO.File.Exists(System.IO.Path.Combine(x, "_OBRA.txt")) Then Return HayNuevo(x, patron)
+        x = System.IO.Path.GetDirectoryName(x)
+    Next
+    Return HayNuevo(dir, patron)
+End Function
+
+Function LeerTxt(ruta As String) As String
+    Try
+        Return System.IO.File.ReadAllText(ruta)
+    Catch
+        Return ""
+    End Try
+End Function
+
+Function UProp(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Inventor User Defined Properties").Item(n).Value).Trim()
+    Catch
+        Return ""
+    End Try
+End Function
+
+Function RutaRegla(archivo As String) As String
+    If Not archivo.Contains(".") Then archivo &= ".iLogicVb"
+    Try
+        For Each raiz As String In iLogicVb.Automation.FileOptions.ExternalRuleDirectories
+            If Not System.IO.Directory.Exists(raiz) Then Continue For
+            For Each f As String In System.IO.Directory.GetFiles(raiz, archivo, System.IO.SearchOption.AllDirectories)
+                If f.ToLower().Contains("\_to_delete\") OrElse f.ToLower().Contains("\oldversions\") Then Continue For
+                Return f
+            Next
+        Next
+    Catch
+    End Try
+    Return ""
+End Function

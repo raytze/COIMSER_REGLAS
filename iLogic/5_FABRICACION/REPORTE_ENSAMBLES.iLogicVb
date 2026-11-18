@@ -1,5 +1,5 @@
 ' =====================================================================
-'  REPORTE_ENSAMBLES  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  REPORTE_ENSAMBLES  v1.1  -  Regla externa iLogic (Inventor 2026) - COIMSER
 '  Reporte de ensambles (conjuntos) de un ensamble numerado con TEKLA_NUMERACION:
 '   - Excel  PLANOS\REPORTES\<PLANTA>-<ENSAMBLE>-REPORTE_ENSAMBLES.xlsx
 '       RESUMEN : por conjunto -> cant., peso perfiles, peso planchas, peso y AREA
@@ -29,7 +29,7 @@ Sub Main()
     End Try
     silencioso = RuleArguments.Exists("silencioso")
     Dim nombre As String = System.IO.Path.GetFileNameWithoutExtension(asm.FullFileName)
-    Dim dirPlanos As String = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(asm.FullFileName), "PLANOS")
+    Dim dirPlanos As String = CarpetaSalida(asm)
     Dim carpeta As String = System.IO.Path.Combine(dirPlanos, "REPORTES")
     Try
         planta = UProp(asm, "PLANTA")
@@ -610,7 +610,7 @@ End Function
 
 ' "EE" + "ANTAPACAY" -> "EE-ANTAPACAY"; "EE" + "ANT-EE" -> "ANT-EE" (no repite la planta)
 Function NomBase(planta As String, nombre As String) As String
-    If nombre.ToUpper() = planta.ToUpper() OrElse nombre.ToUpper().EndsWith("-" & planta.ToUpper()) Then Return nombre
+    If nombre.ToUpper() = planta.ToUpper() OrElse nombre.ToUpper().EndsWith("-" & planta.ToUpper()) OrElse nombre.ToUpper().Contains("-" & planta.ToUpper() & "-") Then Return nombre
     Return planta & "-" & nombre
 End Function
 
@@ -638,4 +638,19 @@ Function PanelModelo(dwg As DrawingDocument) As BrowserPane
         If bp.InternalName = "DlHierarchy" Then Return bp
     Next
     Return dwg.BrowserPanes.ActivePane
+End Function
+
+' Carpeta de salida: fase -> <fase>\PLANOS ; conjunto / subconjunto -> <carpeta del conjunto>\PLANOS
+Function CarpetaSalida(asm As AssemblyDocument) As String
+    Dim dir As String = System.IO.Path.GetDirectoryName(asm.FullFileName)
+    Dim nom As String = System.IO.Path.GetFileNameWithoutExtension(asm.FullFileName)
+    Dim pref As String = ""
+    Dim tipo As String = ""
+    Try : pref = CStr(asm.PropertySets.Item("Inventor User Defined Properties").Item("PREFIJO").Value).Trim() : Catch : End Try
+    Try : tipo = CStr(asm.PropertySets.Item("Inventor User Defined Properties").Item("TIPO_ENSAMBLE").Value).Trim().ToUpper() : Catch : End Try
+    If tipo <> "PLANTA" AndAlso pref <> "" Then
+        If System.IO.Path.GetFileName(dir).ToUpper() = nom.ToUpper() Then Return System.IO.Path.Combine(dir, "PLANOS")
+        Return System.IO.Path.Combine(System.IO.Path.Combine(dir, nom), "PLANOS")
+    End If
+    Return System.IO.Path.Combine(dir, "PLANOS")
 End Function

@@ -1,5 +1,5 @@
 ' =====================================================================
-'  REPORTE_COSTO  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  REPORTE_COSTO  v1.1  -  Regla externa iLogic (Inventor 2026) - COIMSER
 '  Costo estimado de fabricacion desde el modelo (para cotizar), en la FASE o un conjunto:
 '
 '   RESUMEN  : kg de PERFILES, PLANCHAS, MECANIZADO y OTROS (con su merma), unidades de PERNERIA
@@ -82,7 +82,7 @@ Sub Main()
         filasP.Add(New Object() {kv.Key, kv.Value})
     Next
 
-    Dim dirRep As String = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(asm.FullFileName), "PLANOS\REPORTES")
+    Dim dirRep As String = System.IO.Path.Combine(CarpetaSalida(asm), "REPORTES")
     System.IO.Directory.CreateDirectory(dirRep)
     Dim nomA As String = System.IO.Path.GetFileNameWithoutExtension(asm.FullFileName)
     Dim fecha As String = DateTime.Now.ToString("yyyyMMdd_HHmm")
@@ -344,3 +344,18 @@ Sub GuardarCsv(ruta As String, filas As List(Of Object()))
     System.IO.File.WriteAllText(ruta, sb.ToString(), System.Text.Encoding.UTF8)
     rutaSalida = ruta
 End Sub
+
+' Carpeta de salida: fase -> <fase>\PLANOS ; conjunto / subconjunto -> <carpeta del conjunto>\PLANOS
+Function CarpetaSalida(asm As AssemblyDocument) As String
+    Dim dir As String = System.IO.Path.GetDirectoryName(asm.FullFileName)
+    Dim nom As String = System.IO.Path.GetFileNameWithoutExtension(asm.FullFileName)
+    Dim pref As String = ""
+    Dim tipo As String = ""
+    Try : pref = CStr(asm.PropertySets.Item("Inventor User Defined Properties").Item("PREFIJO").Value).Trim() : Catch : End Try
+    Try : tipo = CStr(asm.PropertySets.Item("Inventor User Defined Properties").Item("TIPO_ENSAMBLE").Value).Trim().ToUpper() : Catch : End Try
+    If tipo <> "PLANTA" AndAlso pref <> "" Then
+        If System.IO.Path.GetFileName(dir).ToUpper() = nom.ToUpper() Then Return System.IO.Path.Combine(dir, "PLANOS")
+        Return System.IO.Path.Combine(System.IO.Path.Combine(dir, nom), "PLANOS")
+    End If
+    Return System.IO.Path.Combine(dir, "PLANOS")
+End Function

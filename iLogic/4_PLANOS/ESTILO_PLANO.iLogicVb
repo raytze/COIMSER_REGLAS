@@ -1,5 +1,5 @@
 ' =====================================================================
-'  ESTILO_PLANO  v1.1  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  ESTILO_PLANO  v1.2  -  Regla externa iLogic (Inventor 2026) - COIMSER
 '  Deja un plano (.idw) o la PLANTILLA con un estilo de ingenieria uniforme:
 '
 '   TEXTO   una sola fuente en todo el plano = la del rotulo (ISOCP), SIN cursiva.
@@ -20,7 +20,11 @@
 '           Las capas de vista ISO se RENOMBRAN (Visible (ISO) -> COIMSER-VISIBLE ...) asi
 '           las vistas nuevas ya salen en las capas COIMSER. Las capas sin uso se eliminan.
 '   COTAS   estilo COIMSER-COTAS: texto COIMSER-2.5 negro, sin decimales (mm).
-'   VISTAS  etiquetas "A-A (1:10)" e identificadores de corte / detalle en magenta.
+'   VISTAS  etiquetas "SECCION A-A (1:10)", "DETALLE B (1:5)", "VISTA C-C (1:10)" (v1.2: sin hoja / zona,
+'           que dejaban "A / ,") y en la linea de corte / circulo de detalle solo la letra. Se fija en la
+'           norma activa (vistas nuevas) y se corrige en las vistas ya dibujadas.
+'   LOGO    (v1.2) logo GRUPO COIMSER VECTORIAL (lineas, rellenos y texto, sin imagen: llega bien a DWG/DXF)
+'           en la celda libre del rotulo COIMSER-A3-ROTULO, sobre las firmas. Argumento logo=NO para no ponerlo.
 '   BOM     titulo 3.5 negrita, cabecera 2.5 negrita (2 lineas), datos 2.5; columnas ajustadas
 '           al texto. GENERAR_PLANOS v2.3 hace el mismo ajuste en cada lista nueva.
 '
@@ -129,6 +133,8 @@ Sub Main()
         log.AppendLine("valores por defecto: " & ex.Message)
     End Try
     Try : od.BalloonStyle.TextStyle = t25 : Catch : End Try
+    EtiquetasNorma(sm.ActiveStandardStyle)
+    If Arg("logo").ToUpper() <> "NO" Then Logo(dwg)
     Dim pls As PartsListStyle = od.PartsListStyle
     Try
         pls.TitleTextStyle = t35b
@@ -201,6 +207,7 @@ Sub Main()
                     v.Label.Layer = cDet
                 Catch
                 End Try
+                EtiquetaVista(v)
             Next
         Next
     End If
@@ -237,6 +244,123 @@ Private log As New System.Text.StringBuilder
 Private NEGRO() As Integer = {10, 10, 10}     ' (0,0,0) Inventor lo toma como "por capa"
 Private MAGENTA() As Integer = {255, 0, 255}
 Private GRIS() As Integer = {128, 128, 128}
+
+' ---------- v1.2: etiquetas de vista sin hoja / zona ----------
+Function FormatoEtiqueta(t As DrawingViewTypeEnum) As String
+    Dim vn As String = "<DrawingViewName/>"
+    Dim es As String = " (<DrawingViewScale/>)"
+    Select Case t
+        Case DrawingViewTypeEnum.kSectionDrawingViewType : Return "SECCION " & vn & "-" & vn & es
+        Case DrawingViewTypeEnum.kDetailDrawingViewType : Return "DETALLE " & vn & es
+        Case DrawingViewTypeEnum.kAuxiliaryDrawingViewType : Return "VISTA " & vn & "-" & vn & es
+    End Select
+    Return ""
+End Function
+
+Sub EtiquetasNorma(st As DrawingStandardStyle)
+    For Each t As DrawingViewTypeEnum In New DrawingViewTypeEnum() {DrawingViewTypeEnum.kSectionDrawingViewType, DrawingViewTypeEnum.kDetailDrawingViewType, DrawingViewTypeEnum.kAuxiliaryDrawingViewType}
+        Try
+            ' el prefijo va vacio: Inventor lo pega al nombre de la vista ("SECCIONA")
+            st.SetViewLabelDefaults(t, "", True, FormatoEtiqueta(t), False, False)
+        Catch ex As Exception
+            log.AppendLine("etiqueta por defecto: " & ex.Message)
+        End Try
+        Try
+            st.SetViewAnnotationDefaults(t, "<DrawingViewName/>")
+        Catch ex As Exception
+            log.AppendLine("anotacion por defecto: " & ex.Message)
+        End Try
+    Next
+End Sub
+
+Sub EtiquetaVista(v As DrawingView)
+    Dim f As String = FormatoEtiqueta(v.ViewType)
+    If f = "" Then Exit Sub
+    Try : v.Label.FormattedText = f : Catch : End Try
+    Try
+        Dim a As Object = v.ViewAnnotation
+        If a IsNot Nothing Then
+            Try : a.FormattedText = "<DrawingViewName/>" : Catch : End Try
+            Try : a.SecondFormattedText = "<DrawingViewName/>" : Catch : End Try
+        End If
+    Catch
+    End Try
+End Sub
+
+' ---------- v1.2: logo en el rotulo (VECTORIAL: lineas, rellenos y texto; pasa a DWG / DXF sin imagenes) ----------
+' Hexagono de 6 triangulos (azules y uno rojo) + "GRUPO" rojo + "COIMSER" azul, centrado en la celda libre
+' sobre las firmas del rotulo COIMSER-A3-ROTULO (X 28.5 - 35.5, Y 2.6 - 3.47 cm). Si habia logo en imagen se quita.
+Sub Logo(dwg As DrawingDocument)
+    Dim tObj As TransientObjects = ThisApplication.TransientObjects
+    Dim G As TransientGeometry = ThisApplication.TransientGeometry
+    For Each tbd As TitleBlockDefinition In dwg.TitleBlockDefinitions
+        If tbd.Name.ToUpper() <> "COIMSER-A3-ROTULO" Then Continue For
+        Try
+            Dim yaEsta As Boolean = False
+            For Each tx As Inventor.TextBox In tbd.Sketch.TextBoxes
+                If tx.Text = "COIMSER" Then yaEsta = True
+            Next
+            If yaEsta AndAlso tbd.Sketch.SketchImages.Count = 0 Then Continue For
+            Dim ks As DrawingSketch = Nothing
+            tbd.Edit(ks)
+            Do While ks.SketchImages.Count > 0
+                ks.SketchImages.Item(1).Delete()
+            Loop
+            If Not yaEsta Then
+                Dim x0 As Double = 28.5, x1 As Double = 35.5, y0 As Double = 2.6, y1 As Double = 3.47
+                Dim r As Double = 0.36
+                Dim cy As Double = (y0 + y1) / 2
+                Dim fuente As String = "<StyleOverride Font='Arial' FontSize='0.30' Bold='True'>"
+                Dim ta As Inventor.TextBox = ks.TextBoxes.AddFitted(G.CreatePoint2d(0, cy + 0.02), fuente & "GRUPO</StyleOverride>")
+                Dim tb As Inventor.TextBox = ks.TextBoxes.AddFitted(G.CreatePoint2d(0, cy + 0.02), fuente & "COIMSER</StyleOverride>")
+                ta.Color = tObj.CreateColor(200, 30, 40)
+                tb.Color = tObj.CreateColor(31, 78, 140)
+                ta.VerticalJustification = VerticalTextAlignmentEnum.kAlignTextMiddle
+                tb.VerticalJustification = VerticalTextAlignmentEnum.kAlignTextMiddle
+                Dim ancho As Double = 2 * r * Math.Cos(Math.PI / 6)
+                Dim gap As Double = 0.08
+                Dim tot As Double = ancho + 0.12 + ta.FittedTextWidth + gap + tb.FittedTextWidth
+                Dim cx As Double = (x0 + x1) / 2 - tot / 2 + ancho / 2
+                Dim xa As Double = cx + ancho / 2 + 0.12
+                ta.Origin = G.CreatePoint2d(xa, ta.Origin.Y)
+                tb.Origin = G.CreatePoint2d(xa + ta.FittedTextWidth + gap, tb.Origin.Y)
+                Dim cols As Integer(,) = {{46, 117, 190}, {84, 150, 215}, {46, 117, 190}, {31, 78, 140}, {20, 55, 110}, {200, 30, 40}}
+                For i As Integer = 0 To 5
+                    Dim a1 As Double = (30 + 60 * i) * Math.PI / 180
+                    Dim a2 As Double = (30 + 60 * (i + 1)) * Math.PI / 180
+                    Dim l1 As SketchLine = ks.SketchLines.AddByTwoPoints(G.CreatePoint2d(cx, cy), G.CreatePoint2d(cx + r * Math.Cos(a1), cy + r * Math.Sin(a1)))
+                    Dim l2 As SketchLine = ks.SketchLines.AddByTwoPoints(l1.EndSketchPoint, G.CreatePoint2d(cx + r * Math.Cos(a2), cy + r * Math.Sin(a2)))
+                    Dim l3 As SketchLine = ks.SketchLines.AddByTwoPoints(l2.EndSketchPoint, l1.StartSketchPoint)
+                    Dim oc As ObjectCollection = tObj.CreateObjectCollection()
+                    oc.Add(l1) : oc.Add(l2) : oc.Add(l3)
+                    For Each ln As SketchLine In New SketchLine() {l1, l2, l3}
+                        Try : ln.Color = tObj.CreateColor(255, 255, 255) : Catch : End Try
+                    Next
+                    ks.SketchFillRegions.Add(ks.Profiles.AddForSolid(False, oc), tObj.CreateColor(cols(i, 0), cols(i, 1), cols(i, 2)))
+                Next
+            End If
+            tbd.ExitEdit(True)
+            log.AppendLine("logo vectorial en el rotulo " & tbd.Name)
+        Catch ex As Exception
+            log.AppendLine("logo: " & ex.Message)
+            Try : tbd.ExitEdit(False) : Catch : End Try
+        End Try
+    Next
+End Sub
+
+Function ArchivoReglas(archivo As String) As String
+    Try
+        For Each raiz As String In iLogicVb.Automation.FileOptions.ExternalRuleDirectories
+            If Not System.IO.Directory.Exists(raiz) Then Continue For
+            For Each f As String In System.IO.Directory.GetFiles(raiz, archivo, System.IO.SearchOption.AllDirectories)
+                If f.ToLower().Contains("\_to_delete\") OrElse f.ToLower().Contains("\oldversions\") Then Continue For
+                Return f
+            Next
+        Next
+    Catch
+    End Try
+    Return ""
+End Function
 
 Function Clr(c() As Integer) As Color
     Dim k As Color = ThisApplication.TransientObjects.CreateColor(c(0), c(1), c(2))

@@ -1,5 +1,5 @@
 ' =====================================================================
-'  AGRUPAR_EN_CONJUNTO  v1.3  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  AGRUPAR_EN_CONJUNTO  v1.4  -  Regla externa iLogic (Inventor 2026) - COIMSER
 '  Junta piezas sueltas de una fase (o de un conjunto) en un CONJUNTO NUEVO, con el mismo
 '  orden que INICIAR_CONJUNTO, como un "Degradar" de Inventor pero con nombres COIMSER:
 '
@@ -24,6 +24,8 @@
 '         la lista). Las piezas entran a <conjunto>\Piezas con el siguiente numero de su serie.
 '         Argumento conjunto=<nombre> para pruebas.
 '  v1.2 - Si la pieza tambien se usa en OTRA FASE de la obra, se copia (antes solo miraba la fase).
+'  v1.4 - SUBCONJUNTOS a varios niveles (abre o edita en el sitio el conjunto y agrupa ahi): se
+'         detiene si la ruta pasaria de 250 caracteres (limite Windows / Vault 259) y avisa desde 225.
 '  NO usar con archivos con check-in en Vault (solo lectura): se detiene.
 '  PRUEBALO PRIMERO EN UNA OBRA DE PRUEBA.   Argumentos: silencioso, tipo=<PREF>, objetos=a;b;c
 ' =====================================================================
@@ -209,6 +211,17 @@ Sub Main()
     Dim nomC As String = System.IO.Path.GetFileNameWithoutExtension(rutaC)
     Dim carpPiezas As String = System.IO.Path.Combine(carpeta, nomC, "Piezas")
     If enExistente Then carpPiezas = System.IO.Path.Combine(CarpetaHija(aEx), "Piezas")
+
+    ' v1.4: subconjunto dentro de subconjunto: cada nivel alarga la ruta. Windows / Vault no
+    ' aceptan rutas de mas de 259 caracteres (archivos que no se abren, check-in que falla).
+    Dim rutaMax As String = System.IO.Path.Combine(System.IO.Path.Combine(carpPiezas, "OldVersions"), nomC & "-PL-001.1.ipt")   ' la mas larga: copia de Inventor en OldVersions
+    If rutaMax.Length >= 250 Then
+        MessageBox.Show("El subconjunto quedaria con rutas de " & rutaMax.Length & " caracteres (limite de Windows / Vault: 259):" & vbCrLf & rutaMax & vbCrLf & vbCrLf & _
+            "No se crea. Usa menos niveles (agrupa en el conjunto de arriba) o un nombre de obra / fase mas corto.", "AGRUPAR_EN_CONJUNTO")
+        Exit Sub
+    ElseIf rutaMax.Length >= 225 AndAlso Not silencioso Then
+        If MessageBox.Show("Rutas largas: " & rutaMax.Length & " caracteres (limite 259). Un nivel mas de subconjunto ya no entrara." & vbCrLf & vbCrLf & "Continuar?", "AGRUPAR_EN_CONJUNTO", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) <> DialogResult.Yes Then Exit Sub
+    End If
 
     ' ---------- que archivo se mueve y cual se copia ----------
     Dim srcs As New List(Of String)

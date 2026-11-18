@@ -1,0 +1,162 @@
+' =====================================================================
+'  TABLERO_OBRA  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Tablero de control de la obra: una fila por conjunto / subconjunto con su estado.
+'  Se corre en el ensamble GENERAL (todas las fases) o en una FASE.
+'
+'     FASE | CONJUNTO (archivo) | MARCA | DESCRIPCION | CANT. EN FASE | PESO UNIT. | PESO TOTAL |
+'     ESTADO | PLANO (FAB) | FECHA PLANO | REV. | LOTE | AVISO
+'
+'  ESTADO (propiedad ESTADO del conjunto, solo sube): MODELADO > NUMERADO (TEKLA_NUMERACION) > PLANOS
+'  (GENERAR_PLANOS) > EMITIDO (EMITIR_PLANOS) > EN CORTE (EXPORTAR_PLASMA) > FABRICADO > MONTADO.
+'  FABRICADO y MONTADO los escribes tu en iProperties > Personalizada (ESTADO). LOTE tambien (opcional).
+'  AVISO = el plano es mas viejo que el modelo, o el conjunto no tiene plano.
+'  Salida: <obra>\REPORTES_OBRA\<COD>-TABLERO_OBRA.xlsx (sin Excel: .csv)   Argumentos: silencioso
+' =====================================================================
+Imports System.Collections.Generic
+
+Sub Main()
+    Dim silencioso As Boolean = RuleArguments.Exists("silencioso")
+    Dim top As AssemblyDocument = TryCast(ThisApplication.ActiveDocument, AssemblyDocument)
+    If top Is Nothing Then top = TryCast(ThisDoc.Document, AssemblyDocument)
+    If top Is Nothing Then
+        MessageBox.Show("Abre el ensamble GENERAL de la obra o una fase.", "TABLERO_OBRA")
+        Exit Sub
+    End If
+    Dim fases As New List(Of Document)
+    If EsGeneral(top) Then
+        For Each oc As ComponentOccurrence In top.ComponentDefinition.Occurrences
+            Try
+                Dim d As Document = oc.Definition.Document
+                If UProp(d, "TIPO_ENSAMBLE").ToUpper() = "PLANTA" AndAlso Not fases.Contains(d) Then fases.Add(d)
+            Catch
+            End Try
+        Next
+    Else
+        fases.Add(top)
+    End If
+    Dim filas As New List(Of String())
+    filas.Add(New String() {"FASE", "CONJUNTO", "MARCA", "DESCRIPCION", "CANT. EN FASE", "PESO UNIT. (kg)", "PESO TOTAL (kg)", "ESTADO", "PLANO FAB", "FECHA PLANO", "REV.", "LOTE", "AVISO"})
+    For Each f As Document In fases
+        Dim lista As New List(Of Document)
+        For Each x As Document In CType(f, AssemblyDocument).AllReferencedDocuments
+            Try
+                If x.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject AndAlso UProp(x, "PREFIJO") <> "" AndAlso UProp(x, "EQUIPO").ToUpper() <> "SI" Then lista.Add(x)
+            Catch
+            End Try
+        Next
+        lista.Sort(Function(a As Document, b As Document) String.Compare(UProp(a, "MARCA") & a.FullFileName, UProp(b, "MARCA") & b.FullFileName, True))
+        For Each c As Document In lista
+            Dim cant As Integer = 0
+            For Each parte As String In UProp(c, "PERTENECE_A").Split(","c)
+                Dim i As Integer = parte.LastIndexOf("x")
+                Dim q As Integer
+                If i >= 0 AndAlso Integer.TryParse(parte.Substring(i + 1).Trim(), q) Then cant += q
+            Next
+            If cant < 1 Then cant = 1
+            Dim pu As Double = 0
+            Double.TryParse(UProp(c, "PESO").Replace(",", "."), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, pu)
+            Dim est As String = UProp(c, "ESTADO")
+            If est = "" Then est = "MODELADO"
+            Dim dirPl As String = DirPlanos(c)
+            Dim plano As String = "SIN PLANO"
+            Dim fecha As String = ""
+            Dim rev As String = ""
+            Dim aviso As String = ""
+            Try
+                If System.IO.Directory.Exists(dirPl) Then
+                    Dim idws() As String = System.IO.Directory.GetFiles(dirPl, "*-FAB.idw")
+                    If idws.Length > 0 Then
+                        plano = System.IO.Path.GetFileName(idws(0))
+                        Dim ft As DateTime = System.IO.File.GetLastWriteTime(idws(0))
+                        fecha = ft.ToString("yyyy-MM-dd HH:mm")
+                        If System.IO.File.GetLastWriteTime(c.FullFileName) > ft Then aviso = "PLANO MAS VIEJO QUE EL CONJUNTO"
+                        Dim emit As String = System.IO.Path.Combine(dirPl, "EMITIDOS")
+                        If System.IO.Directory.Exists(emit) Then rev = System.IO.Directory.GetDirectories(emit).Length.ToString() & " envio(s)"
+                    End If
+                End If
+            Catch
+            End Try
+            If plano = "SIN PLANO" Then aviso = "FALTA PLANO"
+            filas.Add(New String() {System.IO.Path.GetFileNameWithoutExtension(f.FullFileName), System.IO.Path.GetFileNameWithoutExtension(c.FullFileName), UProp(c, "MARCA"), PropDT(c, "Description"), cant.ToString(), pu.ToString("0.00"), (pu * cant).ToString("0.00"), est, plano, fecha, rev, UProp(c, "LOTE"), aviso})
+        Next
+    Next
+    Dim obra As String = CarpetaObra(top.FullFileName)
+    If obra = "" Then obra = System.IO.Path.GetDirectoryName(top.FullFileName)
+    Dim dir As String = System.IO.Path.Combine(obra, "REPORTES_OBRA")
+    System.IO.Directory.CreateDirectory(dir)
+    Dim cod As String = UProp(top, "COD_PROYECTO")
+    If cod = "" Then cod = System.IO.Path.GetFileNameWithoutExtension(top.FullFileName).Replace("-GENERAL", "")
+    Dim salida As String = System.IO.Path.Combine(dir, cod & "-TABLERO_OBRA.xlsx")
+    Dim ok As Boolean = False
+    Try
+        Dim xl As Object = CreateObject("Excel.Application")
+        xl.DisplayAlerts = False
+        Dim wb As Object = xl.Workbooks.Add()
+        Dim ws As Object = wb.Worksheets(1)
+        ws.Name = "TABLERO"
+        For r As Integer = 0 To filas.Count - 1
+            For c As Integer = 0 To filas(r).Length - 1
+                ws.Cells(r + 1, c + 1).Value = filas(r)(c)
+            Next
+        Next
+        ws.Rows(1).Font.Bold = True
+        ws.Rows(1).Interior.Color = RGB(31, 56, 100)
+        ws.Rows(1).Font.Color = RGB(255, 255, 255)
+        ws.Columns.AutoFit()
+        If System.IO.File.Exists(salida) Then
+            Try : System.IO.File.Delete(salida) : Catch : salida = salida.Replace(".xlsx", "_" & DateTime.Now.ToString("HHmmss") & ".xlsx") : End Try
+        End If
+        wb.SaveAs(salida)
+        wb.Close(False)
+        xl.Quit()
+        ok = True
+    Catch
+    End Try
+    If Not ok Then
+        salida = System.IO.Path.ChangeExtension(salida, ".csv")
+        Dim sb As New System.Text.StringBuilder
+        For Each fl As String() In filas
+            sb.AppendLine(String.Join(";", fl))
+        Next
+        System.IO.File.WriteAllText(salida, sb.ToString(), New System.Text.UTF8Encoding(True))
+    End If
+    If Not silencioso Then MessageBox.Show("Tablero de obra (" & (filas.Count - 1) & " conjuntos):" & vbCrLf & salida, "TABLERO_OBRA")
+End Sub
+
+Function DirPlanos(d As Document) As String
+    Dim dir As String = System.IO.Path.GetDirectoryName(d.FullFileName)
+    Dim nom As String = System.IO.Path.GetFileNameWithoutExtension(d.FullFileName)
+    If System.IO.Path.GetFileName(dir).ToUpper() = nom.ToUpper() Then Return System.IO.Path.Combine(dir, "PLANOS")
+    Return System.IO.Path.Combine(System.IO.Path.Combine(dir, nom), "PLANOS")
+End Function
+
+Function EsGeneral(d As Document) As Boolean
+    If UProp(d, "TIPO_ENSAMBLE").ToUpper() = "GENERAL" Then Return True
+    Return System.IO.Path.GetFileNameWithoutExtension(d.FullFileName).ToUpper().EndsWith("-GENERAL")
+End Function
+
+Function CarpetaObra(ruta As String) As String
+    Dim x As String = System.IO.Path.GetDirectoryName(ruta)
+    For i As Integer = 0 To 8
+        If x Is Nothing OrElse x = "" Then Exit For
+        If System.IO.File.Exists(System.IO.Path.Combine(x, "_OBRA.txt")) Then Return x
+        x = System.IO.Path.GetDirectoryName(x)
+    Next
+    Return ""
+End Function
+
+Function UProp(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Inventor User Defined Properties").Item(n).Value).Trim()
+    Catch
+        Return ""
+    End Try
+End Function
+
+Function PropDT(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Design Tracking Properties").Item(n).Value).Trim()
+    Catch
+        Return ""
+    End Try
+End Function

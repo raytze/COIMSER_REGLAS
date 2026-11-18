@@ -26,12 +26,18 @@ OBRA        2026-004 MAJES\            MAJ-GENERAL.iam  (solo para ver todo)
       MAJ-ALM.iam
       MAJ-ALM-BA-001.iam      MAJ-ALM-BA-001\Frame\  Piezas\  Referencias\
       REFERENCIAS\
+      MAJ-ALM-BA-001\PLANOS\  (paquete del conjunto: idw, PLASMA\, REPORTES\)
       PLANOS\  *.idw
                PLASMA\  (DXF, historial de corte)
                REPORTES\ (cut list, pernos, cambios, ensambles; _HISTORIAL\ con las fotos)
                EMITIDOS\<fecha>_T001\  (PDF + transmittal de cada envio)
                VIGENTES\  (ultima revision de cada plano = lo que va al taller)
 ```
+
+Cada **conjunto** tiene su propia carpeta PLANOS (plano de fabricacion y habilitado, PLASMA, REPORTES) para el orden
+constructivo; la **fase** guarda el paquete general de revision. EJECUTAR_FASES > PAQUETE DE FABRICACION genera ambos.
+El avance se sigue con la propiedad ESTADO de cada conjunto y el TABLERO_OBRA. CAMBIOS_PIEZAS deja un registro de cambios en Excel con fotos antes/ahora
+(piezas nuevas, eliminadas, suprimidas o modificadas) y dice que conjuntos reemitir. PRUEBA_TST valida toda la cadena, pero solo en obras de prueba (_PRUEBAS).
 
 ## 4. Instalacion en una PC nueva
 1. Activar el proyecto **COIMSER.ipj** en Inventor (Proyectos).
@@ -69,6 +75,9 @@ EXPORTAR_PLASMA > EMITIR_PLANOS > PENDIENTES.
 - Pieza eliminada: su marca queda SIN USO; en CAMBIOS_MATERIAL aparece ELIMINADA (no se compra) y, si
   ya se corto, SOBRANTE EN TALLER.
 
+- Para deshacer lo que guardo una regla (perfiles corregidos, numeracion, naturaleza): RESTAURAR_RESPALDO
+  con el ensamble cerrado (ver FICHA_RAPIDA, Deshacer).
+
 ## 7. Que hacer y que no
 | Hacer | No hacer |
 |---|---|
@@ -79,6 +88,9 @@ EXPORTAR_PLASMA > EMITIR_PLANOS > PENDIENTES.
 | Guardar antes de numerar | Numerar con cambios sin guardar |
 | Taller = `PLANOS\VIGENTES` | Mandar PDF sueltos o viejos |
 | Reorganizar / renombrar ANTES del primer check-in en Vault | Mover carpetas despues en el Explorador |
+| Traer piezas externas con COPIAR_PIEZA -> TRAER A LA OBRA | Insertar un .ipt de otra carpeta y numerarlo |
+| Cambiar el espesor con el parametro ESPESOR | Escribir el numero en la extrusion |
+| Hasta 3 niveles de subconjunto | Anidar subconjuntos sin limite (rutas de mas de 259 caracteres) |
 
 ## 8. Errores frecuentes
 | Sintoma | Causa | Solucion |
@@ -89,6 +101,10 @@ EXPORTAR_PLASMA > EMITIR_PLANOS > PENDIENTES.
 | La regla nueva no aparece | iLogic carga las reglas al iniciar | Reiniciar Inventor |
 | "Abre un ensamble" | Documento activo equivocado | Activar la fase o el conjunto correcto |
 | Pieza sin marca | Es comprada / Content Center / solo lectura | Correcto: va a perneria o compras |
+| ERROR "pieza a fabricar FUERA de la obra" | Se inserto un .ipt de otra carpeta | COPIAR_PIEZA -> TRAER A LA OBRA |
+| ERROR "parametro ESPESOR ... pero la pieza mide ..." | El numero se escribio en la extrusion | Editar la extrusion para que use ESPESOR |
+| ERROR "tiene 2 solidos" | Varios cuerpos en un .ipt | EXTRAER_PIEZA o Make Components |
+| Una regla guardo algo mal | - | RESTAURAR_RESPALDO |
 
 ## 9. Lectura de marcas (A0.61)
 `<FASE>-<PREFIJO><n>-<codigo><n>`: EE-BS1-p3 = fase EE, bastidor 1, pieza tipo p numero 3.

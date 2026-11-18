@@ -1,5 +1,5 @@
 ' =====================================================================
-'  CAMBIAR_NATURALEZA  v1.2  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  CAMBIAR_NATURALEZA  v1.3  -  Regla externa iLogic (Inventor 2026) - COIMSER
 '  Cambia la NATURALEZA de piezas ya creadas (con NUEVA_PIEZA, EXTRAER_PIEZA, PIEZA_ASOCIADA,
 '  importadas...) con las mismas opciones que NUEVA_PIEZA:
 '
@@ -18,6 +18,7 @@
 '  v1.1 - Naturaleza PERFIL: pide la designacion (W18x50, C10x15.3, L4x4x1/2, HSS6x6x1/4) y la
 '         guarda en PERFIL: TEKLA lo marca como perfil (w, c, a...) con su largo y sale en CUT_LIST.
 '  Argumentos (pruebas): silencioso, tipo=<naturaleza>, codigo=, grado=, espesor=, perfil=, objeto=<archivo>
+'  v1.3 - RESPALDO: antes de guardar cada pieza se copia a _RESPALDOS (RESTAURAR_RESPALDO).
 ' =====================================================================
 Imports System.Collections.Generic
 
@@ -242,7 +243,10 @@ Sub Main()
                 p.PropertySets.Item("Design Tracking Properties").Item("Description").Value = descP
             Catch
             End Try
-            If p.FullFileName <> "" Then p.Save2(False)
+            If p.FullFileName <> "" Then
+                RspRespaldar(p, "CAMBIAR_NATURALEZA")
+                p.Save2(False)
+            End If
             hechas.Add("  " & nm & ":  " & If(antes = "", "(sin naturaleza)", antes) & "  ->  " & tipo & If(codigo <> "", " [" & codigo & "]", "") & extra)
         Catch ex As Exception
             avisos.Add(nm & ": " & ex.Message)
@@ -423,4 +427,78 @@ Function DesarrolloBien(sm As SheetMetalComponentDefinition) As Boolean
     Catch
         Return False
     End Try
+End Function
+
+' ===================== RESPALDO antes de guardar (bloque comun v1) =====================
+' Copia cada archivo TAL COMO ESTA EN DISCO (ultima version guardada) antes de que la regla lo
+' guarde:  <raiz>\<obra>\<fecha_hora>_<REGLA>\<ruta relativa a la obra>  + MANIFIESTO.csv
+' Raiz: primera linea de RESPALDOS.txt (carpeta de reglas) o <carpeta de reglas>\..\..\_RESPALDOS
+' (fuera de la obra y de Vault). Se restaura con RESTAURAR_RESPALDO (menu 6).
+Private rspTanda As String = ""
+Private rspHechos As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+
+Function RspRespaldar(d As Document, regla As String) As Boolean
+    Try
+        Dim f As String = d.FullFileName
+        If f = "" OrElse Not System.IO.File.Exists(f) Then Return True
+        If rspHechos.Contains(f) Then Return True
+        Dim obra As String = RspObra(f)
+        If rspTanda = "" Then
+            rspTanda = System.IO.Path.Combine(System.IO.Path.Combine(RspRaiz(), System.IO.Path.GetFileName(obra)), DateTime.Now.ToString("yyyyMMdd_HHmmss") & "_" & regla)
+            System.IO.Directory.CreateDirectory(rspTanda)
+            System.IO.File.WriteAllText(System.IO.Path.Combine(rspTanda, "MANIFIESTO.csv"), "ORIGINAL;RESPALDO;FECHA_ARCHIVO;REGLA" & vbCrLf)
+        End If
+        Dim rel As String
+        If f.StartsWith(obra & "\", StringComparison.OrdinalIgnoreCase) Then
+            rel = f.Substring(obra.Length + 1)
+        Else
+            rel = System.IO.Path.Combine("_FUERA_DE_OBRA", System.IO.Path.GetFileName(f))
+        End If
+        Dim dest As String = System.IO.Path.Combine(rspTanda, rel)
+        System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(dest))
+        System.IO.File.Copy(f, dest, True)
+        System.IO.File.AppendAllText(System.IO.Path.Combine(rspTanda, "MANIFIESTO.csv"), f & ";" & dest & ";" & System.IO.File.GetLastWriteTime(f).ToString("yyyy-MM-dd HH:mm:ss") & ";" & regla & vbCrLf)
+        rspHechos.Add(f)
+        Return True
+    Catch
+        Return False
+    End Try
+End Function
+
+' El documento y todos sus dependientes modificados (antes de Save2(True))
+Sub RspRespaldarSucios(top As Document, regla As String)
+    RspRespaldar(top, regla)
+    For Each d As Document In top.AllReferencedDocuments
+        Try
+            If d.Dirty Then RspRespaldar(d, regla)
+        Catch
+        End Try
+    Next
+End Sub
+
+Function RspObra(f As String) As String
+    Dim x As String = System.IO.Path.GetDirectoryName(f)
+    For i As Integer = 0 To 8
+        If x Is Nothing OrElse x = "" Then Exit For
+        If System.IO.File.Exists(System.IO.Path.Combine(x, "_OBRA.txt")) Then Return x
+        x = System.IO.Path.GetDirectoryName(x)
+    Next
+    Return System.IO.Path.GetDirectoryName(f)
+End Function
+
+Function RspRaiz() As String
+    Try
+        For Each raiz As String In iLogicVb.Automation.FileOptions.ExternalRuleDirectories
+            If Not System.IO.Directory.Exists(raiz) Then Continue For
+            Dim cfg As String = System.IO.Path.Combine(raiz, "RESPALDOS.txt")
+            If System.IO.File.Exists(cfg) Then
+                Dim l As String = System.IO.File.ReadAllLines(cfg)(0).Trim()
+                If l <> "" Then Return l
+            End If
+            Dim p As System.IO.DirectoryInfo = System.IO.Directory.GetParent(raiz.TrimEnd("\"c))
+            If p IsNot Nothing AndAlso p.Parent IsNot Nothing Then Return System.IO.Path.Combine(p.Parent.FullName, "_RESPALDOS")
+        Next
+    Catch
+    End Try
+    Return System.IO.Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments), "COIMSER_RESPALDOS")
 End Function

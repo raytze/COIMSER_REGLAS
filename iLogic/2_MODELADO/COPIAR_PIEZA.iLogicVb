@@ -1,5 +1,5 @@
 ' =====================================================================
-'  COPIAR_PIEZA  v1.3  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  COPIAR_PIEZA  v1.4  -  Regla externa iLogic (Inventor 2026) - COIMSER
 '  Copia UNA pieza (.ipt) para modificarla sin tocar la original, dentro del orden de la obra:
 '
 '     MAJ-ALM-BA-001\Piezas\MAJ-ALM-BA-001-PL-002.ipt
@@ -20,7 +20,11 @@
 '  v1.2 - PERFIL DE FRAME GENERATOR: la copia NO va dentro del ensamble Frame (lo maneja Frame
 '         Generator): sube al CONJUNTO que contiene el frame, como pieza normal (prefijo PF),
 '         en la misma posicion y libre. Siempre INSERTAR (no se reemplaza un miembro del frame).
-'  Argumentos (pruebas): silencioso, objeto=<ocurrencia o archivo>, accion=reemplazar|insertar,
+'  v1.4 - TRAER A LA OBRA: si la pieza esta FUERA de la carpeta de la obra (un .ipt hecho antes, de
+'         otra obra o suelto) se copia a <conjunto>\Piezas con nombre en serie, TODAS sus instancias en
+'         ese ensamble pasan a la copia, ORIGEN = ruta original (que no se toca: no recibe la marca)
+'         y, si no tiene NATURALEZA, se abre CAMBIAR_NATURALEZA sobre la copia.
+'  Argumentos (pruebas): silencioso, objeto=<ocurrencia o archivo>, accion=reemplazar|insertar|traer,
 '     vinculo=mantener|independiente
 ' =====================================================================
 Imports System.Collections.Generic
@@ -135,9 +139,26 @@ Sub Main()
     Catch
     End Try
 
+    ' ---------- v1.4 TRAER A LA OBRA: pieza que esta fuera de la carpeta de la obra ----------
+    Dim obraDir As String = CarpetaObraDe(padre)
+    Dim externo As Boolean = (obraDir <> "" AndAlso Not esFrame AndAlso Not src.FullFileName.StartsWith(obraDir & "\", StringComparison.OrdinalIgnoreCase) AndAlso Not src.FullFileName.ToLower().Contains("\content center files\"))
+    If externo AndAlso UProp(src, "EQUIPO").ToUpper() = "SI" Then
+        MessageBox.Show(System.IO.Path.GetFileName(src.FullFileName) & " es un EQUIPO (EQUIPO = SI): no se fabrica ni se trae a la obra." & vbCrLf & "Si es solo referencia usa NUEVA_REFERENCIA opcion 3.", "COPIAR_PIEZA")
+        Exit Sub
+    End If
+
     ' ---------- opciones ----------
     Dim accion As String = Arg("accion").ToLower()
     If esFrame Then accion = "insertar"
+    If externo AndAlso accion = "" Then
+        accion = "traer"
+        If Not silencioso Then
+            If MessageBox.Show(System.IO.Path.GetFileName(src.FullFileName) & " esta FUERA de la obra:" & vbCrLf & "  " & System.IO.Path.GetDirectoryName(src.FullFileName) & vbCrLf & vbCrLf & _
+                "TRAER A LA OBRA: se copia a la carpeta Piezas de " & NomSin(padre) & " con su nombre en serie," & vbCrLf & _
+                "TODAS sus instancias en " & NomSin(padre) & " pasan a usar la copia y el archivo original NO se toca" & vbCrLf & _
+                "(no se le escribira la marca de esta obra)." & vbCrLf & vbCrLf & "Continuar?", "COPIAR_PIEZA - TRAER A LA OBRA", MessageBoxButtons.YesNo, MessageBoxIcon.Question) <> DialogResult.Yes Then Exit Sub
+        End If
+    End If
     If accion = "" Then
         If silencioso Then
             accion = "reemplazar"
@@ -206,6 +227,7 @@ Sub Main()
         If UProp(cp, pn) <> "" Then EscribirProp(cp, pn, "")
     Next
     EscribirProp(cp, "COPIA_DE", NomSin(src))
+    If accion = "traer" Then EscribirProp(cp, "ORIGEN", src.FullFileName)
     Dim plPadre As String = UProp(padre, "PLANTA")
     If plPadre <> "" AndAlso UProp(cp, "PLANTA") <> "" Then EscribirProp(cp, "PLANTA", plPadre)
     Try
@@ -217,7 +239,10 @@ Sub Main()
     ' ---------- poner en el ensamble ----------
     Dim hecho As String = ""
     Try
-        If accion = "reemplazar" Then
+        If accion = "traer" Then
+            nat.Replace(ruta, True)
+            hecho = "TRAIDA A LA OBRA: todas las instancias de " & System.IO.Path.GetFileName(src.FullFileName) & " en " & nomPadre & " usan ahora la copia. El original (ORIGEN) no se toco."
+        ElseIf accion = "reemplazar" Then
             nat.Replace(ruta, False)
             hecho = "Reemplazada en " & nomPadre & " la instancia " & nat.Name & " (las demas instancias siguen con la original)."
         Else
@@ -245,12 +270,25 @@ Sub Main()
         bitacora.AppendLine("Era un perfil de Frame Generator: la copia es una pieza normal en " & nomPadre & " (fuera del Frame).")
         bitacora.AppendLine("El perfil original sigue en el Frame. Si la copia lo sustituye, borralo con Frame Generator > Eliminar.")
     End If
+    If accion = "traer" AndAlso UProp(src, "NATURALEZA") = "" Then bitacora.AppendLine("No tenia NATURALEZA: ponsela con CAMBIAR_NATURALEZA (se abre ahora) y, si es perfil, corre REVISAR_PERFILES.")
     bitacora.AppendLine("MARCA borrada: corre TEKLA_NUMERACION para que reciba la suya. Guarda el ensamble.")
     Try
         System.IO.File.WriteAllText(System.IO.Path.Combine(carpeta, "_ultima_pieza.txt"), ruta)
     Catch
     End Try
     Aviso(bitacora.ToString())
+    ' pieza traida sin naturaleza: abre CAMBIAR_NATURALEZA sobre la copia
+    If accion = "traer" AndAlso Not silencioso AndAlso UProp(src, "NATURALEZA") = "" Then
+        Try
+            Dim regla As String = ArchivoRegla("CAMBIAR_NATURALEZA.iLogicVb")
+            If regla <> "" Then
+                Dim mapa As NameValueMap = ThisApplication.TransientObjects.CreateNameValueMap()
+                mapa.Add("objeto", System.IO.Path.GetFileNameWithoutExtension(ruta))
+                iLogicVb.Automation.RunExternalRuleWithArguments(top, regla, mapa)
+            End If
+        Catch
+        End Try
+    End If
     If Not silencioso AndAlso accion = "reemplazar" Then
         ' deja seleccionada la copia para que la edites
         Try
@@ -365,4 +403,29 @@ Function CarpetaHija(d As Document) As String
     End Try
     If tipoEns = "PLANTA" AndAlso System.IO.Path.GetFileName(dir).ToUpper() = nom.ToUpper() Then Return dir
     Return System.IO.Path.Combine(dir, nom)
+End Function
+
+' Carpeta de la obra (la que tiene _OBRA.txt) del ensamble; "" si no hay
+Function CarpetaObraDe(d As Document) As String
+    Dim x As String = System.IO.Path.GetDirectoryName(d.FullFileName)
+    For i As Integer = 0 To 8
+        If x Is Nothing OrElse x = "" Then Exit For
+        If System.IO.File.Exists(System.IO.Path.Combine(x, "_OBRA.txt")) Then Return x
+        x = System.IO.Path.GetDirectoryName(x)
+    Next
+    Return ""
+End Function
+
+Function ArchivoRegla(archivo As String) As String
+    Try
+        For Each raiz As String In iLogicVb.Automation.FileOptions.ExternalRuleDirectories
+            If Not System.IO.Directory.Exists(raiz) Then Continue For
+            For Each f As String In System.IO.Directory.GetFiles(raiz, archivo, System.IO.SearchOption.AllDirectories)
+                If f.ToLower().Contains("\_to_delete\") OrElse f.ToLower().Contains("\oldversions\") Then Continue For
+                Return f
+            Next
+        Next
+    Catch
+    End Try
+    Return ""
 End Function

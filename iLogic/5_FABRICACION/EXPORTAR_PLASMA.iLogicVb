@@ -1,5 +1,8 @@
 ' =====================================================================
-'  EXPORTAR_PLASMA  v2.1  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  EXPORTAR_PLASMA  v2.5  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  v2.4 - El conjunto pasa a ESTADO = EN CORTE al enviar piezas a corte (SubirEstado).
+'  v2.3 - En un conjunto que se repite en la fase (CH-001 x2) las cantidades salen TOTALES (x2): _x6 y no _x3.
+'  v2.2 - PAQUETE POR CONJUNTO: en un conjunto, DXF e historial van a <conjunto>\PLANOS\PLASMA; lo ya enviado a corte desde la fase u otro conjunto cuenta como cortado.
 '  Paquete de CORTE POR PLASMA de un ensamble ya numerado (TEKLA_NUMERACION):
 '
 '   - Toma solo planchas, cartelas y chapas (segun su naturaleza):
@@ -33,6 +36,7 @@
 '     a plasma aunque parezcan una plancha.
 '  No modifica las piezas: lo que crea para exportar se deshace al terminar.
 '  Argumentos opcionales: silencioso, reenviar, forzar
+'  v2.5 - ESPESOR REAL: se mide (2 caras paralelas); si el parametro ESPESOR no coincide, manda lo medido y avisa.
 ' =====================================================================
 
 Sub Main()
@@ -51,13 +55,19 @@ Sub Main()
     End Try
     silencioso = RuleArguments.Exists("silencioso")
     Dim nombre As String = System.IO.Path.GetFileNameWithoutExtension(asm.FullFileName)
-    carpeta = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(asm.FullFileName), "PLANOS\PLASMA")
+    carpeta = System.IO.Path.Combine(CarpetaSalida(asm), "PLASMA")
     Try
         planta = UProp(asm, "PLANTA")
         If planta = "" Then planta = "XX"
         ensamble = NomBase(planta, nombre)
         System.IO.Directory.CreateDirectory(carpeta)
         Recorrer(asm.ComponentDefinition.Occurrences)
+        Dim qConj As Integer = CantidadEnFase(asm)
+        If qConj > 1 Then
+            For Each kq As String In New List(Of String)(cantParte.Keys)
+                cantParte(kq) = cantParte(kq) * qConj
+            Next
+        End If
         LeerHistorial()
         Dim reenviar As List(Of String) = ListaArg("reenviar")
         Dim forzar As List(Of String) = ListaArg("forzar")
@@ -176,6 +186,7 @@ Sub Main()
         msg.AppendLine(resumenEsp.ToString())
         If paquete.Count > 0 Then
             msg.AppendLine("ENVIAR AL TALLER: " & carpetaEnvio & "  (" & paquete.Count & " DXF)")
+            SubirEstado(asm, "EN CORTE")
         Else
             msg.AppendLine("Nada nuevo que enviar al taller.")
         End If
@@ -200,6 +211,14 @@ Sub Main()
         End If
         If reducidas.Count > 0 Then msg.AppendLine("MENOS CANTIDAD (sobrantes): " & String.Join(", ", reducidas))
         If nObs > 0 Then msg.AppendLine("DXF que ya no corresponden movidos a _OBSOLETO: " & nObs)
+        If espAvisos.Count > 0 Then
+            msg.AppendLine("")
+            msg.AppendLine("ESPESOR: el parametro no coincide con la pieza (se corto con lo MEDIDO):")
+            For Each t As String In espAvisos
+                msg.AppendLine("  " & t)
+                resumen.AppendLine("ESPESOR: " & t)
+            Next
+        End If
         msg.AppendLine("Lista vigente: " & lista)
         Aviso(msg.ToString())
     Catch ex As Exception
@@ -398,14 +417,71 @@ Function Espesor(p As PartDocument) As Double
         End If
     Catch
     End Try
+    ' v2.5: el espesor REAL (2 caras planas paralelas) manda sobre el parametro ESPESOR
+    ' (si escribieron el numero en la extrusion, el parametro queda viejo)
+    Dim med As Double = EspesorMedido(p)
+    Dim par As Double = 0
     Try
-        Return p.ComponentDefinition.Parameters.Item("ESPESOR").Value * 10
+        par = p.ComponentDefinition.Parameters.Item("ESPESOR").Value * 10
     Catch
     End Try
+    If med > 0 Then
+        If par > 0 AndAlso Math.Abs(par - med) > 0.05 Then
+            Dim nm As String = System.IO.Path.GetFileNameWithoutExtension(p.FullFileName)
+            Dim t As String = nm & ": parametro ESPESOR = " & Math.Round(par, 2) & " mm pero la pieza mide " & Math.Round(med, 2) & " mm (se usa lo medido; corrige el parametro)"
+            If Not espAvisos.Contains(t) Then espAvisos.Add(t)
+        End If
+        Return med
+    End If
+    If par > 0 Then Return par
     Dim r As Box = p.ComponentDefinition.RangeBox
     Dim ex() As Double = {r.MaxPoint.X - r.MinPoint.X, r.MaxPoint.Y - r.MinPoint.Y, r.MaxPoint.Z - r.MinPoint.Z}
     Array.Sort(ex)
     Return ex(0) * 10
+End Function
+
+Private espAvisos As New List(Of String)
+
+' Espesor de plancha medido (mm): distancia entre la cara plana mayor y su cara paralela opuesta
+' (de area parecida). 0 si la pieza no es una plancha (no hay caras paralelas opuestas grandes).
+Function EspesorMedido(p As PartDocument) As Double
+    Try
+        Dim cd As PartComponentDefinition = p.ComponentDefinition
+        If cd.SurfaceBodies.Count = 0 Then Return 0
+        Dim caras As New List(Of Face)
+        Dim areas As New List(Of Double)
+        For Each b As SurfaceBody In cd.SurfaceBodies
+            If Not b.IsSolid Then Continue For
+            For Each f As Face In b.Faces
+                If f.SurfaceType = SurfaceTypeEnum.kPlaneSurface Then
+                    caras.Add(f)
+                    areas.Add(f.Evaluator.Area)
+                End If
+            Next
+        Next
+        If caras.Count < 2 Then Return 0
+        Dim i1 As Integer = 0
+        For i As Integer = 1 To caras.Count - 1
+            If areas(i) > areas(i1) Then i1 = i
+        Next
+        Dim pl1 As Plane = CType(caras(i1).Geometry, Plane)
+        Dim n As UnitVector = pl1.Normal
+        Dim mejor As Double = 0, aMejor As Double = 0
+        For i As Integer = 0 To caras.Count - 1
+            If i = i1 OrElse areas(i) < 0.5 * areas(i1) Then Continue For
+            Dim pl2 As Plane = CType(caras(i).Geometry, Plane)
+            If Math.Abs(pl2.Normal.DotProduct(n)) < 0.9999 Then Continue For
+            Dim d As Double = Math.Abs((pl2.RootPoint.X - pl1.RootPoint.X) * n.X + (pl2.RootPoint.Y - pl1.RootPoint.Y) * n.Y + (pl2.RootPoint.Z - pl1.RootPoint.Z) * n.Z)
+            If d < 0.0001 Then Continue For
+            If areas(i) > aMejor Then
+                aMejor = areas(i)
+                mejor = d
+            End If
+        Next
+        Return Math.Round(mejor * 10, 2)
+    Catch
+        Return 0
+    End Try
 End Function
 
 ' ===================== lista de corte e historial =====================
@@ -455,12 +531,40 @@ Private Const HIST_CAB As String = "FECHA;ENSAMBLE;MARCA;CANT.;ESPESOR (mm);MATE
 ' ultima situacion de cada marca enviada (cantidad, estado, huella)
 Sub LeerHistorial()
     Dim h As String = System.IO.Path.Combine(carpeta, "_HISTORIAL_CORTE.csv")
+    CargarHistorial(h, False)
+    ' v2.2 PAQUETE POR CONJUNTO: lo que ya se envio a corte desde la fase o desde otro conjunto de la
+    ' misma fase cuenta como cortado (no se corta dos veces). Solo se agrega lo que este historial no tiene.
+    Try
+        Dim dirPl As String = System.IO.Path.GetDirectoryName(carpeta)          ' ...\PLANOS
+        Dim dirAsm As String = System.IO.Path.GetDirectoryName(dirPl)           ' carpeta del ensamble (o del conjunto)
+        Dim faseDir As String = System.IO.Path.GetDirectoryName(dirAsm)
+        If System.IO.Directory.Exists(faseDir) Then
+            Dim fh As String = System.IO.Path.Combine(faseDir, "PLANOS\PLASMA\_HISTORIAL_CORTE.csv")
+            If String.Compare(fh, h, True) <> 0 Then CargarHistorial(fh, True)
+            For Each sub1 As String In System.IO.Directory.GetDirectories(faseDir)
+                Dim oh As String = System.IO.Path.Combine(sub1, "PLANOS\PLASMA\_HISTORIAL_CORTE.csv")
+                If String.Compare(oh, h, True) <> 0 Then CargarHistorial(oh, True)
+            Next
+        End If
+        ' la propia fase: mirar los historiales de sus conjuntos (carpetas hijas)
+        If System.IO.Directory.Exists(dirAsm) Then
+            For Each sub2 As String In System.IO.Directory.GetDirectories(dirAsm)
+                Dim oh2 As String = System.IO.Path.Combine(sub2, "PLANOS\PLASMA\_HISTORIAL_CORTE.csv")
+                If String.Compare(oh2, h, True) <> 0 Then CargarHistorial(oh2, True)
+            Next
+        End If
+    Catch
+    End Try
+End Sub
+
+Sub CargarHistorial(h As String, soloNuevas As Boolean)
     If Not System.IO.File.Exists(h) Then Exit Sub
     For Each ln As String In System.IO.File.ReadAllLines(h)
         Dim c() As String = ln.Split(";"c)
         If c.Length < 4 OrElse c(0) = "FECHA" Then Continue For
         Dim n As Integer
         If Not Integer.TryParse(c(3), n) Then Continue For
+        If soloNuevas AndAlso histCant.ContainsKey(c(2)) Then Continue For
         histCant(c(2)) = n
         histEstado(c(2)) = If(c.Length > 7, c(7), "")
         histFila(c(2)) = c
@@ -648,7 +752,7 @@ End Function
 
 ' "EE" + "ANTAPACAY" -> "EE-ANTAPACAY"; "EE" + "ANT-EE" -> "ANT-EE" (no repite la planta)
 Function NomBase(planta As String, nombre As String) As String
-    If nombre.ToUpper() = planta.ToUpper() OrElse nombre.ToUpper().EndsWith("-" & planta.ToUpper()) Then Return nombre
+    If nombre.ToUpper() = planta.ToUpper() OrElse nombre.ToUpper().EndsWith("-" & planta.ToUpper()) OrElse nombre.ToUpper().Contains("-" & planta.ToUpper() & "-") Then Return nombre
     Return planta & "-" & nombre
 End Function
 
@@ -661,4 +765,62 @@ End Function
 Sub Aviso(t As String)
     resumen.AppendLine(t)
     If Not silencioso Then MessageBox.Show(t, "EXPORTAR_PLASMA")
+End Sub
+
+' Carpeta de salida: fase -> <fase>\PLANOS ; conjunto / subconjunto -> <carpeta del conjunto>\PLANOS
+' Cuantas veces esta el conjunto en la fase (PERTENECE_A "CP1 x2" -> 2). Fase o sin dato = 1
+Function CantidadEnFase(asm As AssemblyDocument) As Integer
+    Dim n As Integer = 0
+    Dim pref As String = ""
+    Dim tipo As String = ""
+    Try : pref = CStr(asm.PropertySets.Item("Inventor User Defined Properties").Item("PREFIJO").Value).Trim() : Catch : End Try
+    Try : tipo = CStr(asm.PropertySets.Item("Inventor User Defined Properties").Item("TIPO_ENSAMBLE").Value).Trim().ToUpper() : Catch : End Try
+    If tipo = "PLANTA" OrElse pref = "" Then Return 1
+    Try
+        Dim pa As String = CStr(asm.PropertySets.Item("Inventor User Defined Properties").Item("PERTENECE_A").Value)
+        For Each parte As String In pa.Split(","c)
+            Dim i As Integer = parte.LastIndexOf("x")
+            Dim q As Integer
+            If i >= 0 AndAlso Integer.TryParse(parte.Substring(i + 1).Trim(), q) Then n += q
+        Next
+    Catch
+    End Try
+    If n < 1 Then n = 1
+    Return n
+End Function
+
+Function CarpetaSalida(asm As AssemblyDocument) As String
+    Dim dir As String = System.IO.Path.GetDirectoryName(asm.FullFileName)
+    Dim nom As String = System.IO.Path.GetFileNameWithoutExtension(asm.FullFileName)
+    Dim pref As String = ""
+    Dim tipo As String = ""
+    Try : pref = CStr(asm.PropertySets.Item("Inventor User Defined Properties").Item("PREFIJO").Value).Trim() : Catch : End Try
+    Try : tipo = CStr(asm.PropertySets.Item("Inventor User Defined Properties").Item("TIPO_ENSAMBLE").Value).Trim().ToUpper() : Catch : End Try
+    If tipo <> "PLANTA" AndAlso pref <> "" Then
+        If System.IO.Path.GetFileName(dir).ToUpper() = nom.ToUpper() Then Return System.IO.Path.Combine(dir, "PLANOS")
+        Return System.IO.Path.Combine(System.IO.Path.Combine(dir, nom), "PLANOS")
+    End If
+    Return System.IO.Path.Combine(dir, "PLANOS")
+End Function
+
+' ESTADO del conjunto: MODELADO < NUMERADO < PLANOS < EMITIDO < EN CORTE < FABRICADO < MONTADO. Solo sube (nunca baja);
+' FABRICADO y MONTADO los pones tu. Si el conjunto ya esta mas adelante no se toca.
+Sub SubirEstado(d As Document, nuevo As String)
+    Try
+        If d Is Nothing Then Exit Sub
+        Dim pref As String = ""
+        Try : pref = CStr(d.PropertySets.Item("Inventor User Defined Properties").Item("PREFIJO").Value).Trim() : Catch : End Try
+        If pref = "" Then Exit Sub
+        Dim orden() As String = {"MODELADO", "NUMERADO", "PLANOS", "EMITIDO", "EN CORTE", "FABRICADO", "MONTADO"}
+        Dim actual As String = ""
+        Try : actual = CStr(d.PropertySets.Item("Inventor User Defined Properties").Item("ESTADO").Value).Trim().ToUpper() : Catch : End Try
+        If Array.IndexOf(orden, actual) >= Array.IndexOf(orden, nuevo) Then Exit Sub
+        Dim ps As PropertySet = d.PropertySets.Item("Inventor User Defined Properties")
+        Try
+            ps.Item("ESTADO").Value = nuevo
+        Catch
+            ps.Add(nuevo, "ESTADO")
+        End Try
+    Catch
+    End Try
 End Sub

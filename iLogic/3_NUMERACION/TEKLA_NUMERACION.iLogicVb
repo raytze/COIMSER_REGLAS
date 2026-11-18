@@ -1,5 +1,5 @@
 ' =====================================================================
-'  TEKLA_NUMERACION  v3.13  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  TEKLA_NUMERACION  v3.15  -  Regla externa iLogic (Inventor 2026) - COIMSER
 '  Marcacion jerarquica segun A0.61 MARCACION DE PIEZAS (TABLA_MARCAS.csv)
 '
 '   PROYECTO   ANTAPACCAY          -> propiedad PROYECTO del ensamble principal (registro unico)
@@ -55,6 +55,7 @@
 '  v3.5 - SIN REDONDEOS: el perfil de plancha y la LONGITUD respetan los decimales del modelo
 '     (PL4.5x232.4, L=4076.5). La huella sigue comparando en mm enteros, asi las marcas ya
 '     asignadas no cambian por este ajuste.
+'  v3.14 - Cada conjunto numerado pasa a ESTADO = NUMERADO (si estaba mas atras; ver SubirEstado).
 '  v3.13 - CONJUNTO CORRIDO SOLO (dentro de CH-002): ya no toma la marca CH1 por ser el primero en correr.
 '         El numero de la marca del conjunto sale del numero del archivo (PLCAY-CP1-CH-002.iam ->
 '         CP1-CH2) si esta libre; si no, el siguiente de la serie. Asi dentro del conjunto o desde la
@@ -94,6 +95,7 @@
 '  RENUMERAR: argumento "renumerar" o propiedad RENUMERAR = SI en el ensamble (se usa una
 '     vez y se borra). Da marca nueva a todo lo que NO tenga BLOQUEADO = SI; las marcas
 '     anteriores quedan quemadas en el registro (no se reutilizan).
+'  v3.15 - RESPALDO: antes de guardar, el ensamble y cada archivo modificado se copian a _RESPALDOS.
 ' =====================================================================
 Imports System.Text
 Imports System.Globalization
@@ -228,6 +230,12 @@ Sub Main()
     End If
     Try : asm.ComponentDefinition.BOM.SetPartNumberMergeSettings(True) : Catch : End Try
 
+    Try
+        For Each dE As Document In todos
+            If dE.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject AndAlso marcaDoc.ContainsKey(dE.FullFileName) Then SubirEstado(dE, "NUMERADO")
+        Next
+    Catch
+    End Try
     Dim guardado As String = GuardarModelos(asm)
     GuardarRegistro(regPath)
 
@@ -1726,6 +1734,7 @@ End Function
 Function GuardarModelos(asm As AssemblyDocument) As String
     If RuleArguments.Exists("no_guardar") Then Return "NO SE GUARDO (argumento no_guardar): guarda el ensamble para conservar los cambios."
     Dim fallos As New List(Of String)
+    RspRespaldarSucios(asm, "TEKLA_NUMERACION")
     Try
         asm.Save2(True)
     Catch ex As Exception
@@ -2014,3 +2023,99 @@ Sub JacobiEV(a(,) As Double, d() As Double, v(,) As Double)
         d(i) = m(i, i)
     Next
 End Sub
+
+' ESTADO del conjunto: MODELADO < NUMERADO < PLANOS < EMITIDO < EN CORTE < FABRICADO < MONTADO. Solo sube (nunca baja);
+' FABRICADO y MONTADO los pones tu. Si el conjunto ya esta mas adelante no se toca.
+Sub SubirEstado(d As Document, nuevo As String)
+    Try
+        If d Is Nothing Then Exit Sub
+        Dim pref As String = ""
+        Try : pref = CStr(d.PropertySets.Item("Inventor User Defined Properties").Item("PREFIJO").Value).Trim() : Catch : End Try
+        If pref = "" Then Exit Sub
+        Dim orden() As String = {"MODELADO", "NUMERADO", "PLANOS", "EMITIDO", "EN CORTE", "FABRICADO", "MONTADO"}
+        Dim actual As String = ""
+        Try : actual = CStr(d.PropertySets.Item("Inventor User Defined Properties").Item("ESTADO").Value).Trim().ToUpper() : Catch : End Try
+        If Array.IndexOf(orden, actual) >= Array.IndexOf(orden, nuevo) Then Exit Sub
+        Dim ps As PropertySet = d.PropertySets.Item("Inventor User Defined Properties")
+        Try
+            ps.Item("ESTADO").Value = nuevo
+        Catch
+            ps.Add(nuevo, "ESTADO")
+        End Try
+    Catch
+    End Try
+End Sub
+
+' ===================== RESPALDO antes de guardar (bloque comun v1) =====================
+' Copia cada archivo TAL COMO ESTA EN DISCO (ultima version guardada) antes de que la regla lo
+' guarde:  <raiz>\<obra>\<fecha_hora>_<REGLA>\<ruta relativa a la obra>  + MANIFIESTO.csv
+' Raiz: primera linea de RESPALDOS.txt (carpeta de reglas) o <carpeta de reglas>\..\..\_RESPALDOS
+' (fuera de la obra y de Vault). Se restaura con RESTAURAR_RESPALDO (menu 6).
+Private rspTanda As String = ""
+Private rspHechos As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+
+Function RspRespaldar(d As Document, regla As String) As Boolean
+    Try
+        Dim f As String = d.FullFileName
+        If f = "" OrElse Not System.IO.File.Exists(f) Then Return True
+        If rspHechos.Contains(f) Then Return True
+        Dim obra As String = RspObra(f)
+        If rspTanda = "" Then
+            rspTanda = System.IO.Path.Combine(System.IO.Path.Combine(RspRaiz(), System.IO.Path.GetFileName(obra)), DateTime.Now.ToString("yyyyMMdd_HHmmss") & "_" & regla)
+            System.IO.Directory.CreateDirectory(rspTanda)
+            System.IO.File.WriteAllText(System.IO.Path.Combine(rspTanda, "MANIFIESTO.csv"), "ORIGINAL;RESPALDO;FECHA_ARCHIVO;REGLA" & vbCrLf)
+        End If
+        Dim rel As String
+        If f.StartsWith(obra & "\", StringComparison.OrdinalIgnoreCase) Then
+            rel = f.Substring(obra.Length + 1)
+        Else
+            rel = System.IO.Path.Combine("_FUERA_DE_OBRA", System.IO.Path.GetFileName(f))
+        End If
+        Dim dest As String = System.IO.Path.Combine(rspTanda, rel)
+        System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(dest))
+        System.IO.File.Copy(f, dest, True)
+        System.IO.File.AppendAllText(System.IO.Path.Combine(rspTanda, "MANIFIESTO.csv"), f & ";" & dest & ";" & System.IO.File.GetLastWriteTime(f).ToString("yyyy-MM-dd HH:mm:ss") & ";" & regla & vbCrLf)
+        rspHechos.Add(f)
+        Return True
+    Catch
+        Return False
+    End Try
+End Function
+
+' El documento y todos sus dependientes modificados (antes de Save2(True))
+Sub RspRespaldarSucios(top As Document, regla As String)
+    RspRespaldar(top, regla)
+    For Each d As Document In top.AllReferencedDocuments
+        Try
+            If d.Dirty Then RspRespaldar(d, regla)
+        Catch
+        End Try
+    Next
+End Sub
+
+Function RspObra(f As String) As String
+    Dim x As String = System.IO.Path.GetDirectoryName(f)
+    For i As Integer = 0 To 8
+        If x Is Nothing OrElse x = "" Then Exit For
+        If System.IO.File.Exists(System.IO.Path.Combine(x, "_OBRA.txt")) Then Return x
+        x = System.IO.Path.GetDirectoryName(x)
+    Next
+    Return System.IO.Path.GetDirectoryName(f)
+End Function
+
+Function RspRaiz() As String
+    Try
+        For Each raiz As String In iLogicVb.Automation.FileOptions.ExternalRuleDirectories
+            If Not System.IO.Directory.Exists(raiz) Then Continue For
+            Dim cfg As String = System.IO.Path.Combine(raiz, "RESPALDOS.txt")
+            If System.IO.File.Exists(cfg) Then
+                Dim l As String = System.IO.File.ReadAllLines(cfg)(0).Trim()
+                If l <> "" Then Return l
+            End If
+            Dim p As System.IO.DirectoryInfo = System.IO.Directory.GetParent(raiz.TrimEnd("\"c))
+            If p IsNot Nothing AndAlso p.Parent IsNot Nothing Then Return System.IO.Path.Combine(p.Parent.FullName, "_RESPALDOS")
+        Next
+    Catch
+    End Try
+    Return System.IO.Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments), "COIMSER_RESPALDOS")
+End Function

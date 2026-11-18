@@ -1,0 +1,488 @@
+' =====================================================================
+'  CAMBIOS_PIEZAS  v1.1  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Detecta QUE piezas cambiaron en cada conjunto desde la ultima emision y deja un REGISTRO de
+'  cambios en Excel con FOTOS (antes / ahora).
+'
+'  Compara cada pieza (marca, material, volumen, cantidad, suprimida) contra la foto guardada en
+'     <conjunto>\PLANOS\_FOTO_PIEZAS.csv   y las imagenes en   <conjunto>\PLANOS\_FOTOS\
+'  Tipos: NUEVA / ELIMINADA / SUPRIMIDA / MODIFICADA (marca, material, volumen, cantidad, renombrada,
+'  reactivada) y una fila CONJUNTO por cada conjunto con cambios (foto del ensamble).
+'
+'  Argumentos (se corre en una FASE o en un CONJUNTO):
+'     (ninguno)        solo informa: <fase>\_CAMBIOS_PIEZAS.txt
+'     registrar=SI     ademas escribe el REGISTRO: <obra>\REPORTES_OBRA\REGISTRO_CAMBIOS.csv y
+'                      <COD>-REGISTRO_CAMBIOS.xlsx (con fotos); las fotos van a REPORTES_OBRA\_FOTOS_CAMBIOS
+'     motivo=<texto>   motivo del cambio (si no se da y no es silencioso, lo pregunta)
+'     guardar=SI       guarda la foto actual (datos + imagenes) como nueva referencia
+'     fotos=NO         no toma imagenes (mas rapido)
+'     silencioso
+'  Flujo: emitir planos -> guardar=SI.  Despues de modificar -> registrar=SI.  Tras reemitir -> guardar=SI.
+'  (registrar=SI y guardar=SI pueden ir juntos: primero registra y luego guarda.)
+' =====================================================================
+Imports System.Collections.Generic
+
+Sub Main()
+    Dim silencioso As Boolean = RuleArguments.Exists("silencioso")
+    Dim guardar As Boolean = (Arg("guardar").ToUpper() = "SI")
+    Dim registrar As Boolean = (Arg("registrar").ToUpper() = "SI")
+    Dim conFotos As Boolean = (Arg("fotos").ToUpper() <> "NO")
+    If Not silencioso AndAlso Not RuleArguments.Exists("guardar") AndAlso Not RuleArguments.Exists("registrar") Then
+        Dim ops As New List(Of String)
+        ops.Add("VER CAMBIOS (solo informe)")
+        ops.Add("REGISTRAR CAMBIOS (Excel con fotos)")
+        ops.Add("REGISTRAR Y GUARDAR REFERENCIA")
+        ops.Add("GUARDAR REFERENCIA (despues de emitir)")
+        Dim r As String = InputListBox("Que quieres hacer?", ops, ops(0), "CAMBIOS_PIEZAS", "Accion")
+        If r Is Nothing OrElse r = "" Then Exit Sub
+        registrar = r.StartsWith("REGISTRAR")
+        guardar = r.Contains("GUARDAR")
+    End If
+    Dim origen As Document = ThisApplication.ActiveDocument
+    Dim top As AssemblyDocument = TryCast(ThisApplication.ActiveDocument, AssemblyDocument)
+    If top Is Nothing Then top = TryCast(ThisDoc.Document, AssemblyDocument)
+    If top Is Nothing Then
+        MessageBox.Show("Abre una fase o un conjunto (ensamble).", "CAMBIOS_PIEZAS")
+        Exit Sub
+    End If
+    Dim lista As New List(Of Document)
+    If UProp(top, "TIPO_ENSAMBLE").ToUpper() = "PLANTA" Then
+        Try
+            For Each x As Document In top.AllReferencedDocuments
+                Try
+                    If x.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject AndAlso UProp(x, "PREFIJO") <> "" AndAlso UProp(x, "EQUIPO").ToUpper() <> "SI" AndAlso x.FullFileName <> top.FullFileName Then lista.Add(x)
+                Catch
+                End Try
+            Next
+        Catch
+        End Try
+        lista.Sort(Function(a As Document, b As Document) String.Compare(a.FullFileName, b.FullFileName, True))
+    Else
+        lista.Add(top)
+    End If
+    Dim fase As String = System.IO.Path.GetFileNameWithoutExtension(top.FullFileName)
+    Dim sb As New System.Text.StringBuilder
+    sb.AppendLine("CAMBIOS DE PIEZAS - " & top.DisplayName & "   " & DateTime.Now.ToString("yyyy-MM-dd HH:mm"))
+    Dim reemitir As New List(Of String)
+    Dim cambios As New List(Of String())
+    Dim docsPieza As New Dictionary(Of String, Document)
+    For Each c As Document In lista
+        Dim nom As String = System.IO.Path.GetFileNameWithoutExtension(c.FullFileName)
+        Dim actual As Dictionary(Of String, String) = Foto(CType(c, AssemblyDocument), docsPieza)
+        Dim dp As String = DirPlanos(c)
+        Dim ruta As String = System.IO.Path.Combine(dp, "_FOTO_PIEZAS.csv")
+        sb.AppendLine("")
+        sb.AppendLine(nom & "  (" & actual.Count & " piezas)")
+        If Not System.IO.File.Exists(ruta) Then
+            sb.AppendLine("   sin foto previa: no hay con que comparar" & If(guardar, " (se crea ahora)", " (corre con guardar=SI despues de emitir)"))
+        Else
+            Dim previa As Dictionary(Of String, String) = Leer(ruta)
+            Dim mios As List(Of String()) = Comparar(previa, actual)
+            If mios.Count = 0 Then
+                sb.AppendLine("   sin cambios")
+            Else
+                reemitir.Add(nom)
+                For Each m As String() In mios
+                    sb.AppendLine("   " & m(0).PadRight(11) & " " & m(1) & "   " & m(2))
+                    cambios.Add(New String() {nom, m(1), m(0), m(2), m(3)})
+                Next
+            End If
+        End If
+    Next
+    sb.AppendLine("")
+    If reemitir.Count = 0 Then
+        sb.AppendLine("CONJUNTOS A REEMITIR: ninguno")
+    Else
+        sb.AppendLine("CONJUNTOS A REEMITIR: " & String.Join(", ", reemitir.ToArray()))
+    End If
+
+    ' ---------- registro con fotos ----------
+    If registrar AndAlso cambios.Count > 0 Then
+        Dim motivo As String = Arg("motivo")
+        If motivo = "" AndAlso Not silencioso Then
+            Try
+                motivo = InputBox("Motivo del cambio (opcional):", "CAMBIOS_PIEZAS", "")
+            Catch
+            End Try
+        End If
+        Dim n As Integer = RegistrarCambios(top, fase, lista, cambios, docsPieza, motivo.Replace(";", ",").Replace(vbCrLf, " "), conFotos)
+        sb.AppendLine("REGISTRO: " & n & " filas agregadas a " & RegistroCsv(top))
+    ElseIf registrar Then
+        sb.AppendLine("REGISTRO: no hay cambios que registrar.")
+    End If
+
+    ' ---------- nueva referencia ----------
+    If guardar Then
+        For Each c As Document In lista
+            Dim dp As String = DirPlanos(c)
+            Dim actual As Dictionary(Of String, String) = Foto(CType(c, AssemblyDocument), docsPieza)
+            GuardarFoto(System.IO.Path.Combine(dp, "_FOTO_PIEZAS.csv"), actual)
+            If conFotos Then
+                Dim fd As String = System.IO.Path.Combine(dp, "_FOTOS")
+                Try
+                    System.IO.Directory.CreateDirectory(fd)
+                Catch
+                End Try
+                For Each k As String In actual.Keys
+                    If docsPieza.ContainsKey(k) Then Imagen(docsPieza(k), System.IO.Path.Combine(fd, System.IO.Path.GetFileNameWithoutExtension(k) & ".png"))
+                Next
+                Imagen(c, System.IO.Path.Combine(fd, "_CONJUNTO.png"))
+            End If
+        Next
+        sb.AppendLine("Referencia guardada en cada conjunto (_FOTO_PIEZAS.csv" & If(conFotos, " e imagenes en _FOTOS", "") & ").")
+    End If
+    VolverA(origen)
+    Dim inf As String = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(top.FullFileName), "_CAMBIOS_PIEZAS.txt")
+    Try
+        System.IO.File.WriteAllText(inf, sb.ToString(), System.Text.Encoding.UTF8)
+    Catch
+    End Try
+    If Not silencioso Then MessageBox.Show(sb.ToString(), "CAMBIOS_PIEZAS")
+End Sub
+
+' Devuelve filas (tipo, archivo, detalle, marca)
+Function Comparar(previa As Dictionary(Of String, String), actual As Dictionary(Of String, String)) As List(Of String())
+    Dim r As New List(Of String())
+    Dim nuevas As New List(Of String())
+    Dim elim As New List(Of String())
+    For Each k As String In actual.Keys
+        Dim a As String() = Campos(actual(k))
+        If Not previa.ContainsKey(k) Then
+            If CInt(a(3)) > 0 Then nuevas.Add(New String() {"NUEVA", k, "marca " & a(0) & "  " & a(1) & "  " & a(2) & " cm3  x" & a(3), a(0)})
+        Else
+            Dim p As String() = Campos(previa(k))
+            Dim cp As Integer = CInt(p(3))
+            Dim ca As Integer = CInt(a(3))
+            If cp > 0 AndAlso ca = 0 AndAlso CInt(a(4)) > 0 Then
+                r.Add(New String() {"SUPRIMIDA", k, "estaba x" & cp & " y ahora esta suprimida", p(0)})
+            ElseIf cp = 0 AndAlso ca > 0 Then
+                r.Add(New String() {"MODIFICADA", k, "reactivada (x" & ca & ")", a(0)})
+            ElseIf cp > 0 OrElse ca > 0 Then
+                Dim d As New List(Of String)
+                If p(0) <> a(0) Then d.Add("marca " & p(0) & " -> " & a(0))
+                If p(1) <> a(1) Then d.Add("material " & p(1) & " -> " & a(1))
+                If p(2) <> a(2) Then d.Add("volumen " & p(2) & " -> " & a(2) & " cm3")
+                If p(3) <> a(3) Then d.Add("cantidad " & p(3) & " -> " & a(3))
+                If d.Count > 0 Then r.Add(New String() {"MODIFICADA", k, String.Join(", ", d.ToArray()), a(0)})
+            End If
+        End If
+    Next
+    For Each k As String In previa.Keys
+        If Not actual.ContainsKey(k) Then
+            Dim p As String() = Campos(previa(k))
+            If CInt(p(3)) > 0 Then elim.Add(New String() {"ELIMINADA", k, "marca " & p(0) & "  " & p(1) & "  " & p(2) & " cm3  x" & p(3), p(0)})
+        End If
+    Next
+    ' renombrada: eliminada + nueva con la misma marca
+    For Each e As String() In elim.ToArray()
+        If e(3) = "" Then Continue For
+        For Each nw As String() In nuevas.ToArray()
+            If nw(3) = e(3) Then
+                r.Add(New String() {"MODIFICADA", nw(1), "renombrada: " & e(1) & " -> " & nw(1), nw(3)})
+                elim.Remove(e)
+                nuevas.Remove(nw)
+                Exit For
+            End If
+        Next
+    Next
+    r.AddRange(nuevas)
+    r.AddRange(elim)
+    Return r
+End Function
+
+Function Campos(v As String) As String()
+    Dim p As String() = v.Split("|"c)
+    Dim o(4) As String
+    For i As Integer = 0 To 4
+        o(i) = If(i < p.Length, p(i), If(i >= 3, "0", ""))
+    Next
+    If o(3) = "" Then o(3) = "0"
+    If o(4) = "" Then o(4) = "0"
+    Return o
+End Function
+
+' clave = archivo de la pieza ; valor = marca|material|volumen(cm3, 1 decimal)|cantidad activa|cantidad suprimida
+Function Foto(c As AssemblyDocument, docs As Dictionary(Of String, Document)) As Dictionary(Of String, String)
+    Dim cant As New Dictionary(Of String, Integer)
+    Dim supr As New Dictionary(Of String, Integer)
+    Try
+        For Each oc As ComponentOccurrence In c.ComponentDefinition.Occurrences.AllLeafOccurrences
+            Try
+                Dim d As Document = oc.Definition.Document
+                If d.DocumentType <> DocumentTypeEnum.kPartDocumentObject Then Continue For
+                Dim k As String = System.IO.Path.GetFileName(d.FullFileName)
+                If oc.Suppressed Then Continue For
+                docs(k) = d
+                If Not cant.ContainsKey(k) Then
+                    cant(k) = 0
+                    supr(k) = 0
+                End If
+                cant(k) += 1
+            Catch
+            End Try
+        Next
+    Catch
+    End Try
+    Suprimidas(c.ComponentDefinition.Occurrences, cant, supr)
+    Dim r As New Dictionary(Of String, String)
+    For Each k As String In cant.Keys
+        If Not docs.ContainsKey(k) Then
+            r(k) = "|?|?|0|" & supr(k)
+            Continue For
+        End If
+        Dim d As Document = docs(k)
+        Dim vol As String = "?"
+        Dim mat As String = "?"
+        Try
+            Dim pd As PartComponentDefinition = CType(d, PartDocument).ComponentDefinition
+            vol = String.Format(System.Globalization.CultureInfo.InvariantCulture, "{0:0.0}", pd.MassProperties.Volume)
+            mat = pd.Material.Name
+        Catch
+        End Try
+        r(k) = UProp(d, "MARCA").Replace("|", "/").Replace(";", ",") & "|" & mat.Replace(";", ",").Replace("|", "/") & "|" & vol & "|" & cant(k) & "|" & supr(k)
+    Next
+    Return r
+End Function
+
+' AllLeafOccurrences no devuelve las suprimidas: se buscan por nombre (<archivo>:n -> <archivo>.ipt)
+Sub Suprimidas(occs As ComponentOccurrences, cant As Dictionary(Of String, Integer), supr As Dictionary(Of String, Integer))
+    For Each oc As ComponentOccurrence In occs
+        Try
+            If oc.Suppressed Then
+                Dim k As String = oc.Name.Split(":"c)(0) & ".ipt"
+                If Not cant.ContainsKey(k) Then
+                    cant(k) = 0
+                    supr(k) = 0
+                End If
+                supr(k) += 1
+            ElseIf oc.DefinitionDocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+                Suprimidas(oc.SubOccurrences, cant, supr)
+            End If
+        Catch
+        End Try
+    Next
+End Sub
+
+Function Leer(ruta As String) As Dictionary(Of String, String)
+    Dim r As New Dictionary(Of String, String)
+    Try
+        For Each l As String In System.IO.File.ReadAllLines(ruta)
+            Dim p As Integer = l.IndexOf(";")
+            If p > 0 AndAlso Not l.StartsWith("ARCHIVO;") Then r(l.Substring(0, p)) = l.Substring(p + 1)
+        Next
+    Catch
+    End Try
+    Return r
+End Function
+
+Sub GuardarFoto(ruta As String, f As Dictionary(Of String, String))
+    Try
+        System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(ruta))
+        Dim sb As New System.Text.StringBuilder
+        sb.AppendLine("ARCHIVO;MARCA|MATERIAL|VOLUMEN_CM3|CANT|SUPR")
+        For Each k As String In f.Keys
+            sb.AppendLine(k & ";" & f(k))
+        Next
+        System.IO.File.WriteAllText(ruta, sb.ToString(), System.Text.Encoding.UTF8)
+    Catch
+    End Try
+End Sub
+
+' ---------------------------------------------------------------------
+'  REGISTRO
+' ---------------------------------------------------------------------
+Function RegistrarCambios(top As AssemblyDocument, fase As String, lista As List(Of Document), cambios As List(Of String()), docs As Dictionary(Of String, Document), motivo As String, conFotos As Boolean) As Integer
+    Dim obra As String = CarpetaObra(top.FullFileName)
+    If obra = "" Then obra = System.IO.Path.GetDirectoryName(top.FullFileName)
+    Dim dir As String = System.IO.Path.Combine(obra, "REPORTES_OBRA")
+    Dim fd As String = System.IO.Path.Combine(dir, "_FOTOS_CAMBIOS")
+    System.IO.Directory.CreateDirectory(fd)
+    Dim csv As String = RegistroCsv(top)
+    Dim sello As String = DateTime.Now.ToString("yyyyMMdd_HHmmss")
+    Dim fecha As String = DateTime.Now.ToString("yyyy-MM-dd")
+    Dim hora As String = DateTime.Now.ToString("HH:mm")
+    Dim usuario As String = System.Environment.UserName
+    Dim filas As New List(Of String)
+    Dim conj As New Dictionary(Of String, Document)
+    For Each c As Document In lista
+        conj(System.IO.Path.GetFileNameWithoutExtension(c.FullFileName)) = c
+    Next
+    Dim hechos As New List(Of String)
+    For Each ch As String() In cambios
+        ' ch = conjunto, archivo, tipo, detalle, marca
+        Dim cj As String = ch(0)
+        Dim dpl As String = DirPlanos(conj(cj))
+        If Not hechos.Contains(cj) Then
+            hechos.Add(cj)
+            Dim fa As String = ""
+            Dim fn As String = ""
+            If conFotos Then
+                fa = Copiar(System.IO.Path.Combine(System.IO.Path.Combine(dpl, "_FOTOS"), "_CONJUNTO.png"), System.IO.Path.Combine(fd, sello & "_" & cj & "_antes.png"))
+                fn = System.IO.Path.Combine(fd, sello & "_" & cj & "_ahora.png")
+                If Not Imagen(conj(cj), fn) Then fn = ""
+            End If
+            filas.Add(String.Join(";", New String() {fecha, hora, usuario, fase, cj, "", cj & ".iam", "CONJUNTO", "conjunto con cambios en piezas", motivo, Rel(dir, fa), Rel(dir, fn)}))
+        End If
+        Dim base As String = System.IO.Path.GetFileNameWithoutExtension(ch(1))
+        Dim fa2 As String = ""
+        Dim fn2 As String = ""
+        If conFotos Then
+            fa2 = Copiar(System.IO.Path.Combine(System.IO.Path.Combine(dpl, "_FOTOS"), base & ".png"), System.IO.Path.Combine(fd, sello & "_" & base & "_antes.png"))
+            If (ch(2) = "NUEVA" OrElse ch(2) = "MODIFICADA") AndAlso docs.ContainsKey(ch(1)) Then
+                fn2 = System.IO.Path.Combine(fd, sello & "_" & base & "_ahora.png")
+                If Not Imagen(docs(ch(1)), fn2) Then fn2 = ""
+            End If
+        End If
+        filas.Add(String.Join(";", New String() {fecha, hora, usuario, fase, cj, ch(4), ch(1), ch(2), ch(3).Replace(";", ","), motivo, Rel(dir, fa2), Rel(dir, fn2)}))
+    Next
+    Try
+        Dim sb As New System.Text.StringBuilder
+        Dim nuevo As Boolean = Not System.IO.File.Exists(csv)
+        If nuevo Then sb.AppendLine("FECHA;HORA;USUARIO;FASE;CONJUNTO;MARCA;ARCHIVO;TIPO;DETALLE;MOTIVO;FOTO ANTES;FOTO AHORA")
+        For Each f As String In filas
+            sb.AppendLine(f)
+        Next
+        If nuevo Then
+            System.IO.File.WriteAllText(csv, sb.ToString(), New System.Text.UTF8Encoding(True))
+        Else
+            System.IO.File.AppendAllText(csv, sb.ToString(), New System.Text.UTF8Encoding(False))
+        End If
+    Catch
+    End Try
+    ConstruirExcel(top, csv, dir)
+    Return filas.Count
+End Function
+
+Function RegistroCsv(top As AssemblyDocument) As String
+    Dim obra As String = CarpetaObra(top.FullFileName)
+    If obra = "" Then obra = System.IO.Path.GetDirectoryName(top.FullFileName)
+    Return System.IO.Path.Combine(System.IO.Path.Combine(obra, "REPORTES_OBRA"), "REGISTRO_CAMBIOS.csv")
+End Function
+
+Function Rel(dir As String, f As String) As String
+    If f = "" Then Return ""
+    If f.ToLower().StartsWith(dir.ToLower() & "\") Then Return f.Substring(dir.Length + 1)
+    Return f
+End Function
+
+Function Copiar(origen As String, destino As String) As String
+    Try
+        If System.IO.File.Exists(origen) Then
+            System.IO.File.Copy(origen, destino, True)
+            Return destino
+        End If
+    Catch
+    End Try
+    Return ""
+End Function
+
+Sub ConstruirExcel(top As AssemblyDocument, csv As String, dir As String)
+    Dim cod As String = UProp(top, "COD_PROYECTO")
+    If cod = "" Then cod = System.IO.Path.GetFileNameWithoutExtension(top.FullFileName).Split("-"c)(0)
+    Dim salida As String = System.IO.Path.Combine(dir, cod & "-REGISTRO_CAMBIOS.xlsx")
+    Try
+        Dim lineas As String() = System.IO.File.ReadAllLines(csv)
+        Dim xl As Object = CreateObject("Excel.Application")
+        xl.DisplayAlerts = False
+        Dim wb As Object = xl.Workbooks.Add()
+        Dim ws As Object = wb.Worksheets(1)
+        ws.Name = "CAMBIOS"
+        For r As Integer = 0 To lineas.Length - 1
+            Dim p As String() = lineas(r).Replace(ChrW(&HFEFF), "").Split(";"c)
+            For c As Integer = 0 To p.Length - 1
+                If r > 0 AndAlso c >= 10 Then Continue For
+                ws.Cells(r + 1, c + 1).NumberFormat = "@"
+                ws.Cells(r + 1, c + 1).Value = p(c)
+            Next
+        Next
+        ws.Rows(1).Font.Bold = True
+        ws.Rows(1).Interior.Color = RGB(31, 56, 100)
+        ws.Rows(1).Font.Color = RGB(255, 255, 255)
+        ws.Columns("A:J").AutoFit()
+        ws.Columns(9).ColumnWidth = 45
+        ws.Columns(9).WrapText = True
+        ws.Columns(11).ColumnWidth = 18
+        ws.Columns(12).ColumnWidth = 18
+        For r As Integer = 1 To lineas.Length - 1
+            Dim p As String() = lineas(r).Split(";"c)
+            ws.Rows(r + 1).RowHeight = 80
+            ws.Rows(r + 1).VerticalAlignment = -4108
+            For c As Integer = 10 To 11
+                If c < p.Length AndAlso p(c) <> "" Then
+                    Dim f As String = If(System.IO.Path.IsPathRooted(p(c)), p(c), System.IO.Path.Combine(dir, p(c)))
+                    If System.IO.File.Exists(f) Then
+                        Dim cel As Object = ws.Cells(r + 1, c + 1)
+                        ws.Shapes.AddPicture(f, False, True, cel.Left + 2, cel.Top + 2, 100, 75)
+                    End If
+                End If
+            Next
+        Next
+        ws.Range("A2").Select()
+        xl.ActiveWindow.FreezePanes = True
+        If System.IO.File.Exists(salida) Then
+            Try : System.IO.File.Delete(salida) : Catch : salida = salida.Replace(".xlsx", "_" & DateTime.Now.ToString("HHmmss") & ".xlsx") : End Try
+        End If
+        wb.SaveAs(salida)
+        wb.Close(False)
+        xl.Quit()
+    Catch
+    End Try
+End Sub
+
+' ---------------------------------------------------------------------
+'  Imagenes (camara de Inventor)
+' ---------------------------------------------------------------------
+Function Imagen(d As Document, ruta As String) As Boolean
+    Try
+        Dim v As Document = ThisApplication.Documents.Open(d.FullFileName, True)
+        v.Activate()
+        Dim vw As Object = v.Views.Item(1)
+        Dim cam As Object = vw.Camera
+        cam.ViewOrientationType = ViewOrientationTypeEnum.kIsoTopRightViewOrientation
+        cam.Fit()
+        cam.Apply()
+        vw.SaveAsBitmap(ruta, 240, 180)
+        Return System.IO.File.Exists(ruta)
+    Catch
+        Return False
+    End Try
+End Function
+
+Sub VolverA(d As Document)
+    Try
+        If d IsNot Nothing Then d.Activate()
+    Catch
+    End Try
+End Sub
+
+Function DirPlanos(c As Document) As String
+    Dim dir As String = System.IO.Path.GetDirectoryName(c.FullFileName)
+    Dim nom As String = System.IO.Path.GetFileNameWithoutExtension(c.FullFileName)
+    If String.Compare(System.IO.Path.GetFileName(dir), nom, True) = 0 Then Return dir & "\PLANOS"
+    Return dir & "\" & nom & "\PLANOS"
+End Function
+
+Function CarpetaObra(ruta As String) As String
+    Dim x As String = System.IO.Path.GetDirectoryName(ruta)
+    For i As Integer = 0 To 8
+        If x Is Nothing OrElse x = "" Then Exit For
+        If System.IO.File.Exists(System.IO.Path.Combine(x, "_OBRA.txt")) Then Return x
+        x = System.IO.Path.GetDirectoryName(x)
+    Next
+    Return ""
+End Function
+
+Function Arg(n As String) As String
+    Try
+        If RuleArguments.Exists(n) Then Return CStr(RuleArguments.Value(n))
+    Catch
+    End Try
+    Return ""
+End Function
+
+Function UProp(d As Document, n As String) As String
+    Try
+        Return CStr(d.PropertySets.Item("Inventor User Defined Properties").Item(n).Value).Trim()
+    Catch
+        Return ""
+    End Try
+End Function
