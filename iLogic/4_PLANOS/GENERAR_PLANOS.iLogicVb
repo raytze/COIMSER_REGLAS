@@ -1,5 +1,5 @@
 ' =====================================================================
-'  GENERAR_PLANOS  v2.17  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  GENERAR_PLANOS  v2.18  -  Regla externa iLogic (Inventor 2026) - COIMSER
 '  Genera el juego de planos de FABRICACION y HABILITADO de un ensamble
 '  ya numerado con TEKLA_NUMERACION, en un solo .idw con una hoja por plano,
 '  siguiendo la jerarquia:
@@ -34,7 +34,7 @@
 '         NOTAS DE FABRICACION leido de NOTAS_FABRICACION.txt (secciones [GENERAL],
 '         [CONJUNTO], [HABILITADO]); se edita el .txt y se vuelve a ejecutar la regla.
 '
-'  v2.17 - PLANO JERARQUICO (por defecto): cada ensamble lleva SU plano con su disposicion, los
+'  v2.18 - Antes de ACTUALIZAR un plano existente guarda copia del .idw en PLANOS\_SUPERADOS\<fecha>_ANTES.\n'  v2.17 - PLANO JERARQUICO (por defecto): cada ensamble lleva SU plano con su disposicion, los
 '         habilitados de SUS piezas y una hoja por subconjunto directo ("DETALLE Y HABILITADOS EN PLANO
 '         <sub>-FAB"). En la misma corrida se genera el plano de CADA conjunto y subconjunto (cualquier
 '         nivel, con PREFIJO y MARCA) en su carpeta <conjunto>\PLANOS. La fase queda corta (general +
@@ -184,6 +184,16 @@ Function GenerarUno(asm As AssemblyDocument, dwg As DrawingDocument, existia As 
             dwg = ThisApplication.Documents.Add(DocumentTypeEnum.kDrawingDocumentObject, tpl, visible)
         Else
             resumen.AppendLine("Actualizando: " & ruta)
+            ' v2.18: copia del plano tal como estaba guardado ANTES de actualizarlo (no se pierde el trabajo a mano)
+            Try
+                If System.IO.File.Exists(dwg.FullFileName) Then
+                    Dim supA As String = System.IO.Path.Combine(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(dwg.FullFileName), "_SUPERADOS"), DateTime.Now.ToString("yyyyMMdd_HHmmss") & "_ANTES")
+                    System.IO.Directory.CreateDirectory(supA)
+                    System.IO.File.Copy(dwg.FullFileName, System.IO.Path.Combine(supA, System.IO.Path.GetFileName(dwg.FullFileName)), True)
+                    resumen.AppendLine("Copia previa del plano: " & supA)
+                End If
+            Catch
+            End Try
         End If
         SetTag(dwg, "ENSAMBLE", asm.FullFileName)
 

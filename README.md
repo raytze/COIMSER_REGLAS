@@ -11,6 +11,8 @@ pernos, cambios de material y revisiones de planos.
 3. En Inventor: Herramientas > Opciones de iLogic > Directorios de reglas externas -> agregar
    `...\COIMSER_REGLAS\iLogic` (y quitar las carpetas viejas para no tener reglas repetidas).
 4. Reiniciar Inventor. Ejecutar la regla externa **MENU_COIMSER**.
+5. Para 8_CALCULO (MEMORIA_EJE): instalar Python 3 (python.org, sin librerias extra) y MiKTeX
+   (miktex.org, con instalacion automatica de paquetes). El programa esta en `iLogic\8_CALCULO\memoria_ejes`.
 
 ## Mantener al dia
 - `herramientas\ACTUALIZAR_REGLAS.bat` -> trae la ultima version (git pull). Reiniciar Inventor.

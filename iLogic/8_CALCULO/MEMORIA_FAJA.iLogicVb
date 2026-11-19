@@ -1,0 +1,290 @@
+' =====================================================================
+'  MEMORIA_FAJA  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Memoria de calculo de una transmision por correas trapezoidales hecha con el
+'  generador de correas del Design Accelerator.
+'  Lee de la transmision: correa, poleas, geometria, potencia, factores y fuerzas.
+'  Calcula con Python (8_CALCULO\memoria_fajas\main.py) por PASOS independientes:
+'     2 datos       XML -> <faja>_datos.json (mm, rpm, kW, N, N.m)
+'     3 verificar   recalculo vs Inventor + criterios -> <faja>_verificacion.json
+'     4 cargas_eje  T y Fr de cada polea para el eje  -> <faja>_cargas_eje.json
+'     5 memoria     Memoria_<faja>.tex / .pdf (secciones segun datos_<faja>.ini)
+'  Uso: abrir el ensamble que contiene la transmision (seleccionarla si hay varias) y ejecutar.
+'       Se pregunta que pasos ejecutar (Todo / Solo cargas para el eje / Solo verificar).
+'  Salida: <carpeta del ensamble de la transmision>\CALCULOS\
+'     datos_<faja>.ini   proyecto, cliente, codigo, firmas y secciones de la memoria.
+'                        La primera vez se crea con valores por defecto y se abre.
+'     Memoria_<faja>.tex / .pdf  (la anterior pasa a CALCULOS\_SUPERADOS)
+'  Antes de ejecutar: pulsar Calcular en el generador de correas (la memoria compara
+'  su recalculo con los resultados de Inventor).
+'  Argumentos: silencioso (sin ventanas; informe en CALCULOS\_MEMORIA_FAJA.log y avisos en
+'              %TEMP%\_MEMORIA_FAJA_AVISO.txt), faja=<nombre>, pasos="2 3 4 5",
+'              secciones="verificacion cargas_eje"
+'  Requiere: Python 3 y MiKTeX en la PC.
+' =====================================================================
+Imports System.Collections.Generic
+
+Sub Main()
+    Dim silencioso As Boolean = RuleArguments.Exists("silencioso")
+    Dim d As Document = Nothing
+    Try
+        d = ThisApplication.ActiveDocument
+    Catch
+    End Try
+    If d Is Nothing OrElse d.DocumentType <> DocumentTypeEnum.kAssemblyDocumentObject Then
+        Avisar("Abre el ensamble que contiene la transmision por correas y vuelve a ejecutar.", silencioso)
+        Exit Sub
+    End If
+    Dim asm As AssemblyDocument = CType(d, AssemblyDocument)
+    If asm.FullFileName = "" Then
+        Avisar("Guarda el ensamble antes de calcular.", silencioso)
+        Exit Sub
+    End If
+
+    ' ---------- elegir la transmision ----------
+    Dim fajas As New List(Of ComponentOccurrence)
+    BuscarFajas(asm.ComponentDefinition.Occurrences, fajas)
+    Dim occ As ComponentOccurrence = Nothing
+    Try
+        For Each o As Object In asm.SelectSet
+            If TypeOf o Is ComponentOccurrence AndAlso EsFaja(CType(o, ComponentOccurrence)) Then
+                occ = CType(o, ComponentOccurrence)
+                Exit For
+            End If
+        Next
+    Catch
+    End Try
+    If occ Is Nothing AndAlso RuleArguments.Exists("faja") Then
+        Dim pedido As String = CStr(RuleArguments.Value("faja")).ToUpper()
+        For Each e As ComponentOccurrence In fajas
+            If e.Name.ToUpper() = pedido OrElse e.Name.ToUpper().StartsWith(pedido & ":") Then
+                occ = e
+                Exit For
+            End If
+        Next
+    End If
+    If occ Is Nothing Then
+        If fajas.Count = 0 Then
+            Avisar("No hay transmisiones por correa trapezoidal (Design Accelerator) en " & asm.DisplayName & ".", silencioso)
+            Exit Sub
+        ElseIf fajas.Count = 1 OrElse silencioso Then
+            occ = fajas(0)
+        Else
+            Dim nombres As New List(Of String)
+            For Each e As ComponentOccurrence In fajas
+                nombres.Add(e.Name)
+            Next
+            Dim r As String = InputListBox("Hay " & fajas.Count & " transmisiones. Elige cual calcular:", nombres, nombres(0), "MEMORIA_FAJA", "Transmisiones")
+            If r Is Nothing OrElse r = "" Then Exit Sub
+            occ = fajas(nombres.IndexOf(r))
+        End If
+    End If
+
+    ' ---------- pasos a ejecutar ----------
+    Dim pasos As String = "2 3 4 5"
+    Dim secciones As String = ""
+    If RuleArguments.Exists("pasos") Then pasos = CStr(RuleArguments.Value("pasos"))
+    If RuleArguments.Exists("secciones") Then secciones = CStr(RuleArguments.Value("secciones"))
+    If Not silencioso AndAlso Not RuleArguments.Exists("pasos") Then
+        Dim ops As New List(Of String)
+        ops.Add("TODO: verificacion, cargas para el eje y memoria PDF")
+        ops.Add("SOLO CARGAS para el eje (T y Fr de cada polea)")
+        ops.Add("SOLO VERIFICAR (sin memoria)")
+        ops.Add("SOLO MEMORIA con las secciones del .ini")
+        Dim r As String = InputListBox("Que quieres calcular para " & occ.Name & "?", ops, ops(0), "MEMORIA_FAJA", "Pasos")
+        If r Is Nothing OrElse r = "" Then Exit Sub
+        Select Case ops.IndexOf(r)
+            Case 1 : pasos = "2 4"
+            Case 2 : pasos = "2 3"
+            Case 3 : pasos = "2 5"
+        End Select
+    End If
+
+    ' ---------- XML de la transmision en la carpeta CALCULOS ----------
+    Dim nat As ComponentOccurrence = Nativa(occ)
+    Dim dirEns As String = System.IO.Path.GetDirectoryName(asm.FullFileName)
+    Try
+        Dim cont As Document = CType(nat.ContextDefinition.Document, Document)
+        If cont.FullFileName <> "" Then dirEns = System.IO.Path.GetDirectoryName(cont.FullFileName)
+    Catch
+    End Try
+    Dim carpeta As String = System.IO.Path.Combine(dirEns, "CALCULOS")
+    System.IO.Directory.CreateDirectory(carpeta)
+    Dim nombreFaja As String = LimpiarNombre(occ.Name.Split(":"c)(0))
+    Dim xmlRuta As String = System.IO.Path.Combine(carpeta, nombreFaja & ".xml")
+    System.IO.File.WriteAllText(xmlRuta, XmlDe(nat), System.Text.Encoding.Unicode)
+
+    ' ---------- Python, programa y logo ----------
+    Dim py As String = BuscarPython()
+    If py = "" Then
+        Avisar("No encuentro Python 3 en esta PC. Instalalo (python.org) y vuelve a ejecutar.", silencioso)
+        Exit Sub
+    End If
+    Dim script As String = BuscarEnReglas("main.py", "\memoria_fajas\")
+    If script = "" Then
+        Avisar("No encuentro 8_CALCULO\memoria_fajas\main.py en la carpeta de reglas (ACTUALIZAR_REGLAS.bat).", silencioso)
+        Exit Sub
+    End If
+    Dim logo As String = BuscarEnReglas("LOGO_COIMSER.png", "")
+    Dim logRuta As String = System.IO.Path.Combine(carpeta, "_MEMORIA_FAJA.log")
+
+    Dim args As String = Q(script) & " --xml " & Q(xmlRuta) & " --log " & Q(logRuta) & " --pasos " & pasos
+    If secciones.Trim() <> "" Then args &= " --secciones " & secciones
+    If logo <> "" Then args &= " --logo " & Q(logo)
+    If silencioso Then
+        args &= " --silencioso"
+    Else
+        args &= " --abrir"
+    End If
+    Dim psi As New System.Diagnostics.ProcessStartInfo(py, args)
+    psi.UseShellExecute = False
+    psi.CreateNoWindow = True
+    psi.WorkingDirectory = carpeta
+    psi.EnvironmentVariables("PYTHONIOENCODING") = "utf-8"
+    Dim p As System.Diagnostics.Process = System.Diagnostics.Process.Start(psi)
+    If Not p.WaitForExit(300000) Then
+        Try : p.Kill() : Catch : End Try
+        Avisar("El calculo tardo mas de 5 minutos y se detuvo. Revisa " & logRuta, silencioso)
+        Exit Sub
+    End If
+    Dim codigo As Integer = p.ExitCode
+    Dim txt As String = ""
+    Try
+        txt = System.IO.File.ReadAllText(logRuta, System.Text.Encoding.UTF8)
+    Catch
+    End Try
+
+    If silencioso Then Exit Sub
+    If codigo = 2 Then
+        MessageBox.Show("Primera vez para la transmision " & occ.Name & ":" & vbCrLf & vbCrLf & _
+            "Se creo " & System.IO.Path.Combine(carpeta, "datos_" & nombreFaja & ".ini") & " y se abrio." & vbCrLf & _
+            "Completa proyecto, cliente, codigo, firmas y secciones de la memoria;" & vbCrLf & _
+            "guarda el archivo y vuelve a ejecutar MEMORIA_FAJA.", "MEMORIA_FAJA")
+    ElseIf codigo = 0 Then
+        MessageBox.Show(txt, "MEMORIA_FAJA - " & occ.Name)
+    Else
+        MessageBox.Show("No se pudo completar el calculo:" & vbCrLf & vbCrLf & txt, "MEMORIA_FAJA", MessageBoxButtons.OK, MessageBoxIcon.Warning)
+    End If
+End Sub
+
+Sub Avisar(msg As String, silencioso As Boolean)
+    If Not silencioso Then
+        MessageBox.Show(msg, "MEMORIA_FAJA")
+    Else
+        Try
+            System.IO.File.WriteAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "_MEMORIA_FAJA_AVISO.txt"), _
+                DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") & " " & msg, System.Text.Encoding.UTF8)
+        Catch
+        End Try
+    End If
+End Sub
+
+Function Q(s As String) As String
+    Return """" & s & """"
+End Function
+
+Function LimpiarNombre(s As String) As String
+    Dim t As String = s.Trim()
+    For Each ch As Char In System.IO.Path.GetInvalidFileNameChars()
+        t = t.Replace(ch, "_"c)
+    Next
+    t = t.Replace(" ", "_")
+    If t = "" Then t = "Faja"
+    Return t
+End Function
+
+' El atributo FDesign vive en la ocurrencia nativa (dentro de su subensamble)
+Function Nativa(oc As ComponentOccurrence) As ComponentOccurrence
+    Try
+        If TypeOf oc Is ComponentOccurrenceProxy Then Return CType(CType(oc, ComponentOccurrenceProxy).NativeObject, ComponentOccurrence)
+    Catch
+    End Try
+    Return oc
+End Function
+
+Function XmlDe(oc As ComponentOccurrence) As String
+    Try
+        Dim n As ComponentOccurrence = Nativa(oc)
+        If Not n.AttributeSets.NameIsUsed("FDesign") Then Return ""
+        Return CStr(n.AttributeSets.Item("FDesign").Item("Data").Value)
+    Catch
+        Return ""
+    End Try
+End Function
+
+Function EsFaja(oc As ComponentOccurrence) As Boolean
+    Dim x As String = XmlDe(oc)
+    Return x.Length > 0 AndAlso x.Contains("Class=""CAVBelts""")
+End Function
+
+Sub BuscarFajas(occs As ComponentOccurrences, lista As List(Of ComponentOccurrence))
+    For Each oc As ComponentOccurrence In occs
+        If oc.Suppressed Then Continue For
+        If EsFaja(oc) Then
+            lista.Add(oc)
+        ElseIf oc.DefinitionDocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+            BuscarFajasSub(oc.SubOccurrences, lista)
+        End If
+    Next
+End Sub
+
+Sub BuscarFajasSub(occs As ComponentOccurrencesEnumerator, lista As List(Of ComponentOccurrence))
+    For Each oc As ComponentOccurrence In occs
+        If oc.Suppressed Then Continue For
+        If EsFaja(oc) Then
+            lista.Add(oc)
+        ElseIf oc.DefinitionDocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+            BuscarFajasSub(oc.SubOccurrences, lista)
+        End If
+    Next
+End Sub
+
+' Archivo dentro de las carpetas de reglas externas (subcarpetas incluidas)
+Function BuscarEnReglas(archivo As String, debeContener As String) As String
+    Try
+        For Each raiz As String In iLogicVb.Automation.FileOptions.ExternalRuleDirectories
+            If Not System.IO.Directory.Exists(raiz) Then Continue For
+            For Each f As String In System.IO.Directory.GetFiles(raiz, archivo, System.IO.SearchOption.AllDirectories)
+                Dim x As String = f.ToLower()
+                If x.Contains("\_to_delete\") OrElse x.Contains("\oldversions\") Then Continue For
+                If debeContener <> "" AndAlso Not x.Contains(debeContener.ToLower()) Then Continue For
+                Return f
+            Next
+        Next
+    Catch
+    End Try
+    Return ""
+End Function
+
+' Python 3 instalado (no el acceso directo de la tienda de Windows)
+Function BuscarPython() As String
+    Dim local As String = System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData)
+    Dim prog As String = System.Environment.GetFolderPath(System.Environment.SpecialFolder.ProgramFiles)
+    Dim candidatos As New List(Of String)
+    For Each patron As String() In New String()() { _
+        New String() {System.IO.Path.Combine(local, "Python"), "pythoncore-3*"}, _
+        New String() {System.IO.Path.Combine(local, "Programs\Python"), "Python3*"}, _
+        New String() {prog, "Python3*"}}
+        Try
+            If System.IO.Directory.Exists(patron(0)) Then
+                For Each dirPy As String In System.IO.Directory.GetDirectories(patron(0), patron(1))
+                    Dim exe As String = System.IO.Path.Combine(dirPy, "python.exe")
+                    If System.IO.File.Exists(exe) Then candidatos.Add(exe)
+                Next
+            End If
+        Catch
+        End Try
+    Next
+    If candidatos.Count > 0 Then
+        candidatos.Sort()
+        Return candidatos(candidatos.Count - 1)
+    End If
+    Try
+        For Each dirPath As String In System.Environment.GetEnvironmentVariable("PATH").Split(";"c)
+            If dirPath.ToLower().Contains("windowsapps") Then Continue For
+            Dim exe As String = System.IO.Path.Combine(dirPath.Trim(), "python.exe")
+            If System.IO.File.Exists(exe) Then Return exe
+        Next
+    Catch
+    End Try
+    Return ""
+End Function

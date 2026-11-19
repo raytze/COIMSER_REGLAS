@@ -11,3 +11,6 @@ OldVersions/
 *.xlsx
 *.pdf
 *.dxf
+# Python
+__pycache__/
+*.pyc

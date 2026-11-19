@@ -55,7 +55,8 @@ El avance se sigue con la propiedad ESTADO de cada conjunto y el TABLERO_OBRA. C
 5. **Piezas** - dentro del conjunto: Frame Generator (perfiles), NUEVA_PIEZA (planchas, chapas, mecanizadas),
    PIEZA_ASOCIADA (pieza que sigue al skeleton u otra pieza; CONGELAR cuando ya esta emitida).
    Equipos comprados: INSERTAR_EQUIPO.
-6. **Repetir un conjunto en otra fase** - COPIAR_CONJUNTO (nunca insertar el mismo archivo en dos fases).
+6. **Ensamble hecho fuera de la obra** - ADOPTAR_ENSAMBLE (con la fase abierta): copia el ensamble y sus piezas a la fase con nombres de obra, lo define como conjunto (BS, V, C...) y lo inserta fijo; el original no se toca. Luego CAMBIAR_NATURALEZA a las piezas sin naturaleza, guardar la fase y TEKLA_NUMERACION. Si el conjunto usa archivos externos: ADOPTAR_ENSAMBLE accion externos (TRAER A LA OBRA); REVISAR_JERARQUIA los marca como ERROR y EMITIR_PLANOS no emite hasta corregirlos.
+   **Repetir un conjunto en otra fase** - COPIAR_CONJUNTO (nunca insertar el mismo archivo en dos fases).
    **Cambiar el nombre de un conjunto** - RENOMBRAR_CONJUNTO (antes del check-in en Vault; con check-in usar COPIAR_CONJUNTO + LIMPIAR_OBSOLETOS).
 7. **Revisar** - REVISAR_JERARQUIA: piezas sueltas, conjuntos sin prefijo, referencias mal puestas.
 8. **Numerar** - TEKLA_NUMERACION. Configuracion: 1 INICIAL (solo antes de emitir), 2 ANTES DE PLANOS,

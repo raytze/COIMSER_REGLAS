@@ -1,0 +1,53 @@
+MEMORIA_EJE - programa de calculo (Python) de la regla 8_CALCULO\MEMORIA_EJE
+=============================================================================
+Requisitos en cada PC: Python 3 (sin librerias extra) y MiKTeX (pdflatex).
+La regla busca este programa dentro de la carpeta de reglas; se comparte por Git.
+
+Archivos
+  main.py     programa principal (la regla lo llama con --xml, --log, --logo)
+  modelo.py   lectura del XML del generador de ejes (unidades internas y posiciones relativas)
+  calculo.py  viga por elementos finitos (Timoshenko) y criterios ASME, Von Mises, Soderberg, rigidez
+  datos.py    datos de diseno (plantilla .ini) y tablas de las fuentes (Bavaresco, PDF 7-A, CEMA)
+  memoria.py  plantilla LaTeX (pgfplots/TikZ)
+
+Uso sin Inventor
+  python main.py --xml eje.xml [--datos datos.ini] [--salida carpeta] [--sin-pdf]
+
+v1.3 - Casos de carga adicionales y ranuras
+  En datos_<eje>.ini:
+  [casos]   caso_1..caso_4 = nombre | f.torque | f.radial | f.axial | FS minimo  (fluencia estatica, Von Mises).
+            Por defecto: arranque del motor con 2x torque y 2x cargas radiales. Ajustar segun el motor.
+  [ranuras] kf_ranura / kf_desahogo / kf_rosca y profundidad (mm) para calcular con el diametro del fondo.
+            profundidad = 0 usa el diametro nominal (no conservador en ranuras profundas).
+  Los ini creados con versiones anteriores siguen funcionando: los valores nuevos toman el defecto.
+
+v1.4 - Excel de verificacion
+  Junto a la memoria se crea Verificacion_<eje>.xlsx (sin librerias extra; escritor propio xlsxmin.py).
+  Hojas: Resumen, Datos, Secciones, Torsion, Casos. Solicitaciones (My, Mz, T, N) = datos azules del modelo FE;
+  esfuerzos, ASME, Von Mises, Soderberg, torsion y casos = formulas vivas. La columna Dif. % compara con la memoria.
+  Archivos: excel.py (contenido), xlsxmin.py (escritor .xlsx). Si falla, la memoria se genera igual.
+
+v1.4.1 - ranuras y desahogos con ancho y profundidad leidos de Inventor (RetainingRingGroove: M y D1; NeckA..D: b y h).
+
+v1.5 - velocidades criticas
+  Seccion [velocidades] del .ini: rpm, margen (%), incluir_eje, masa_N = nombre | x | kg | Ip.
+  Lateral: autovalores del modelo FE (masa concentrada) en planos XY y XZ, 3 modos. Torsional: 2 inercias (con Ip).
+  Sin masas declaradas el resultado es COTA SUPERIOR (los engranes/poleas no tienen masa en Inventor).
+  Con rpm > 0 se agrega el criterio de separacion respecto de las criticas. Archivo: velocidades.py.
+
+v1.6 - correcciones de la revision independiente
+  - Axial: cada seccion se evalua en ambos lados y se toma el peor (incluye N); se agregan secciones en los puntos con Fx.
+  - Torsion: ademas de la suma, se verifica cada tramo entre torsores; gobierna el peor.
+  - Salida de torque 'auto' sin cargas radiales: extremo mas lejano + aviso. Cargas radiales similares: aviso.
+  - Roscas externas: diametro de nucleo d3 (TR: ISO 2904; M: ISO 262). Rosca en agujero: solo aviso.
+  - .ini: acepta '%' y mayusculas/espacios; valores invalidos avisan (confiabilidad no tabulada usa la mayor).
+  - Datos por defecto (.ini creado en modo silencioso): banner 'NO VALIDO PARA APROBAR'. Una sola rpm: la de [operacion].
+  - Aviso si Sy/Su < 0.5 o > 0.95. Ranura mas profunda que el agujero: se omite con aviso.
+  Pendiente de decision: Co por defecto (1.3 laminado) y Kf de hombro por r/d.
+
+v1.7 - criterios de fatiga (decididos tras la revision)
+  - Co por defecto = 1.0 (estado = mecanizado). 'laminado'/'estirado' (1.3) siguen disponibles y avisan.
+  - Von Mises: Sn se multiplica por el factor de tamano Kb de cada seccion (tamano_en_von_mises = si | no).
+  - Kf de hombros con empalme por r/d y D/d (Peterson, Shigley tabla 7-1) con sensibilidad q; kf_hombro = auto | fijo.
+  - Excel: Kb en Von Mises incluido (celda editable en Datos); hoja Resumen compara la suma de tramos de torsion.
+  Nota: la tabla de Kt de Peterson esta transcrita de Shigley; verificar con el libro.

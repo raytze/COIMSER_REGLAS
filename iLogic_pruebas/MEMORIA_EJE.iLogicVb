@@ -1,0 +1,264 @@
+' =====================================================================
+'  MEMORIA_EJE  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Memoria de calculo de un eje hecho con el generador de ejes (Design Accelerator).
+'  Lee del eje: tramos, empalmes, chaveteros, material, apoyos y cargas (radial, axial,
+'  distribuida, torsor). Calcula con Python (8_CALCULO\memoria_ejes\main.py): viga por
+'  elementos finitos, ASME, fatiga Von Mises (Bavaresco) y Soderberg, flecha, pendiente
+'  y torsion. Escribe la memoria en LaTeX y la compila a PDF con MiKTeX.
+'  Uso: abrir el ensamble que contiene el eje (seleccionarlo si hay varios) y ejecutar.
+'  Salida: <carpeta del ensamble del eje>\CALCULOS\
+'     datos_<eje>.ini   datos de diseno (rpm, tipo de carga, confiabilidad, limites).
+'                       La primera vez se crea con valores por defecto y se abre.
+'     Memoria_<eje>.tex / .pdf   (la anterior pasa a CALCULOS\_SUPERADOS)
+'  Antes de ejecutar: pulsar Calcular en el generador de ejes (la memoria compara
+'  reacciones y flecha con las de Inventor).
+'  Argumentos: silencioso (sin ventanas; informe en CALCULOS\_MEMORIA_EJE.log y avisos en
+'              %TEMP%\_MEMORIA_EJE_AVISO.txt), eje=<nombre>
+'  Requiere: Python 3 y MiKTeX en la PC.
+' =====================================================================
+Imports System.Collections.Generic
+
+Sub Main()
+    Dim silencioso As Boolean = RuleArguments.Exists("silencioso")
+    Dim d As Document = Nothing
+    Try
+        d = ThisApplication.ActiveDocument
+    Catch
+    End Try
+    If d Is Nothing OrElse d.DocumentType <> DocumentTypeEnum.kAssemblyDocumentObject Then
+        Avisar("Abre el ensamble que contiene el eje del generador de ejes y vuelve a ejecutar.", silencioso)
+        Exit Sub
+    End If
+    Dim asm As AssemblyDocument = CType(d, AssemblyDocument)
+    If asm.FullFileName = "" Then
+        Avisar("Guarda el ensamble antes de calcular.", silencioso)
+        Exit Sub
+    End If
+
+    ' ---------- elegir el eje ----------
+    Dim ejes As New List(Of ComponentOccurrence)
+    BuscarEjes(asm.ComponentDefinition.Occurrences, ejes)
+    Dim occ As ComponentOccurrence = Nothing
+    Try
+        For Each o As Object In asm.SelectSet
+            If TypeOf o Is ComponentOccurrence AndAlso EsEje(CType(o, ComponentOccurrence)) Then
+                occ = CType(o, ComponentOccurrence)
+                Exit For
+            End If
+        Next
+    Catch
+    End Try
+    If occ Is Nothing AndAlso RuleArguments.Exists("eje") Then
+        Dim pedido As String = CStr(RuleArguments.Value("eje")).ToUpper()
+        For Each e As ComponentOccurrence In ejes
+            If e.Name.ToUpper() = pedido OrElse e.Name.ToUpper().StartsWith(pedido & ":") Then
+                occ = e
+                Exit For
+            End If
+        Next
+    End If
+    If occ Is Nothing Then
+        If ejes.Count = 0 Then
+            Avisar("No hay ejes del generador de ejes (Design Accelerator) en " & asm.DisplayName & ".", silencioso)
+            Exit Sub
+        ElseIf ejes.Count = 1 OrElse silencioso Then
+            occ = ejes(0)
+        Else
+            Dim nombres As New List(Of String)
+            For Each e As ComponentOccurrence In ejes
+                nombres.Add(e.Name)
+            Next
+            Dim r As String = InputListBox("Hay " & ejes.Count & " ejes. Elige cual calcular:", nombres, nombres(0), "MEMORIA_EJE", "Ejes")
+            If r Is Nothing OrElse r = "" Then Exit Sub
+            occ = ejes(nombres.IndexOf(r))
+        End If
+    End If
+
+    ' ---------- XML del eje en la carpeta CALCULOS ----------
+    Dim nat As ComponentOccurrence = Nativa(occ)
+    Dim dirEns As String = System.IO.Path.GetDirectoryName(asm.FullFileName)
+    Try
+        Dim cont As Document = CType(nat.ContextDefinition.Document, Document)
+        If cont.FullFileName <> "" Then dirEns = System.IO.Path.GetDirectoryName(cont.FullFileName)
+    Catch
+    End Try
+    Dim carpeta As String = System.IO.Path.Combine(dirEns, "CALCULOS")
+    System.IO.Directory.CreateDirectory(carpeta)
+    Dim nombreEje As String = LimpiarNombre(occ.Name.Split(":"c)(0))
+    Dim xmlRuta As String = System.IO.Path.Combine(carpeta, nombreEje & ".xml")
+    System.IO.File.WriteAllText(xmlRuta, XmlDe(nat), System.Text.Encoding.Unicode)
+
+    ' ---------- Python, programa y logo ----------
+    Dim py As String = BuscarPython()
+    If py = "" Then
+        Avisar("No encuentro Python 3 en esta PC. Instalalo (python.org) y vuelve a ejecutar.", silencioso)
+        Exit Sub
+    End If
+    Dim script As String = BuscarEnReglas("main.py", "\memoria_ejes\")
+    If script = "" Then
+        Avisar("No encuentro 8_CALCULO\memoria_ejes\main.py en la carpeta de reglas (ACTUALIZAR_REGLAS.bat).", silencioso)
+        Exit Sub
+    End If
+    Dim logo As String = BuscarEnReglas("LOGO_COIMSER.png", "")
+    Dim logRuta As String = System.IO.Path.Combine(carpeta, "_MEMORIA_EJE.log")
+
+    Dim args As String = Q(script) & " --xml " & Q(xmlRuta) & " --log " & Q(logRuta)
+    If logo <> "" Then args &= " --logo " & Q(logo)
+    If silencioso Then
+        args &= " --silencioso"
+    Else
+        args &= " --abrir"
+    End If
+    Dim psi As New System.Diagnostics.ProcessStartInfo(py, args)
+    psi.UseShellExecute = False
+    psi.CreateNoWindow = True
+    psi.WorkingDirectory = carpeta
+    psi.EnvironmentVariables("PYTHONIOENCODING") = "utf-8"
+    Dim p As System.Diagnostics.Process = System.Diagnostics.Process.Start(psi)
+    If Not p.WaitForExit(300000) Then
+        Try : p.Kill() : Catch : End Try
+        Avisar("El calculo tardo mas de 5 minutos y se detuvo. Revisa " & logRuta, silencioso)
+        Exit Sub
+    End If
+    Dim codigo As Integer = p.ExitCode
+    Dim txt As String = ""
+    Try
+        txt = System.IO.File.ReadAllText(logRuta, System.Text.Encoding.UTF8)
+    Catch
+    End Try
+
+    If silencioso Then Exit Sub
+    If codigo = 2 Then
+        MessageBox.Show("Primera vez para el eje " & occ.Name & ":" & vbCrLf & vbCrLf & _
+            "Se creo " & System.IO.Path.Combine(carpeta, "datos_" & nombreEje & ".ini") & " y se abrio." & vbCrLf & _
+            "Completa rpm, tipo de carga, confiabilidad, limites, proyecto y cliente;" & vbCrLf & _
+            "guarda el archivo y vuelve a ejecutar MEMORIA_EJE.", "MEMORIA_EJE")
+    ElseIf codigo = 0 Then
+        MessageBox.Show(txt, "MEMORIA_EJE - " & occ.Name)
+    Else
+        MessageBox.Show("No se pudo generar la memoria:" & vbCrLf & vbCrLf & txt, "MEMORIA_EJE", MessageBoxButtons.OK, MessageBoxIcon.Warning)
+    End If
+End Sub
+
+Sub Avisar(msg As String, silencioso As Boolean)
+    If Not silencioso Then
+        MessageBox.Show(msg, "MEMORIA_EJE")
+    Else
+        Try
+            System.IO.File.WriteAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "_MEMORIA_EJE_AVISO.txt"), _
+                DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") & " " & msg, System.Text.Encoding.UTF8)
+        Catch
+        End Try
+    End If
+End Sub
+
+Function Q(s As String) As String
+    Return """" & s & """"
+End Function
+
+Function LimpiarNombre(s As String) As String
+    Dim t As String = s.Trim()
+    For Each ch As Char In System.IO.Path.GetInvalidFileNameChars()
+        t = t.Replace(ch, "_"c)
+    Next
+    t = t.Replace(" ", "_")
+    If t = "" Then t = "Eje"
+    Return t
+End Function
+
+' El atributo FDesign vive en la ocurrencia nativa (dentro de su subensamble)
+Function Nativa(oc As ComponentOccurrence) As ComponentOccurrence
+    Try
+        If TypeOf oc Is ComponentOccurrenceProxy Then Return CType(CType(oc, ComponentOccurrenceProxy).NativeObject, ComponentOccurrence)
+    Catch
+    End Try
+    Return oc
+End Function
+
+Function XmlDe(oc As ComponentOccurrence) As String
+    Try
+        Dim n As ComponentOccurrence = Nativa(oc)
+        If Not n.AttributeSets.NameIsUsed("FDesign") Then Return ""
+        Return CStr(n.AttributeSets.Item("FDesign").Item("Data").Value)
+    Catch
+        Return ""
+    End Try
+End Function
+
+Function EsEje(oc As ComponentOccurrence) As Boolean
+    Dim x As String = XmlDe(oc)
+    Return x.Length > 0 AndAlso x.Contains("Class=""CAShaft""")
+End Function
+
+Sub BuscarEjes(occs As ComponentOccurrences, lista As List(Of ComponentOccurrence))
+    For Each oc As ComponentOccurrence In occs
+        If oc.Suppressed Then Continue For
+        If EsEje(oc) Then
+            lista.Add(oc)
+        ElseIf oc.DefinitionDocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+            BuscarEjesSub(oc.SubOccurrences, lista)
+        End If
+    Next
+End Sub
+
+Sub BuscarEjesSub(occs As ComponentOccurrencesEnumerator, lista As List(Of ComponentOccurrence))
+    For Each oc As ComponentOccurrence In occs
+        If oc.Suppressed Then Continue For
+        If EsEje(oc) Then
+            lista.Add(oc)
+        ElseIf oc.DefinitionDocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
+            BuscarEjesSub(oc.SubOccurrences, lista)
+        End If
+    Next
+End Sub
+
+' Archivo dentro de las carpetas de reglas externas (subcarpetas incluidas)
+Function BuscarEnReglas(archivo As String, debeContener As String) As String
+    Try
+        For Each raiz As String In iLogicVb.Automation.FileOptions.ExternalRuleDirectories
+            If Not System.IO.Directory.Exists(raiz) Then Continue For
+            For Each f As String In System.IO.Directory.GetFiles(raiz, archivo, System.IO.SearchOption.AllDirectories)
+                Dim x As String = f.ToLower()
+                If x.Contains("\_to_delete\") OrElse x.Contains("\oldversions\") Then Continue For
+                If debeContener <> "" AndAlso Not x.Contains(debeContener.ToLower()) Then Continue For
+                Return f
+            Next
+        Next
+    Catch
+    End Try
+    Return ""
+End Function
+
+' Python 3 instalado (no el acceso directo de la tienda de Windows)
+Function BuscarPython() As String
+    Dim local As String = System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData)
+    Dim prog As String = System.Environment.GetFolderPath(System.Environment.SpecialFolder.ProgramFiles)
+    Dim candidatos As New List(Of String)
+    For Each patron As String() In New String()() { _
+        New String() {System.IO.Path.Combine(local, "Python"), "pythoncore-3*"}, _
+        New String() {System.IO.Path.Combine(local, "Programs\Python"), "Python3*"}, _
+        New String() {prog, "Python3*"}}
+        Try
+            If System.IO.Directory.Exists(patron(0)) Then
+                For Each dirPy As String In System.IO.Directory.GetDirectories(patron(0), patron(1))
+                    Dim exe As String = System.IO.Path.Combine(dirPy, "python.exe")
+                    If System.IO.File.Exists(exe) Then candidatos.Add(exe)
+                Next
+            End If
+        Catch
+        End Try
+    Next
+    If candidatos.Count > 0 Then
+        candidatos.Sort()
+        Return candidatos(candidatos.Count - 1)
+    End If
+    Try
+        For Each dirPath As String In System.Environment.GetEnvironmentVariable("PATH").Split(";"c)
+            If dirPath.ToLower().Contains("windowsapps") Then Continue For
+            Dim exe As String = System.IO.Path.Combine(dirPath.Trim(), "python.exe")
+            If System.IO.File.Exists(exe) Then Return exe
+        Next
+    Catch
+    End Try
+    Return ""
+End Function

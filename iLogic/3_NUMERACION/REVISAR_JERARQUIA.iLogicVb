@@ -1,5 +1,5 @@
 ' =====================================================================
-'  REVISAR_JERARQUIA  v1.4  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  REVISAR_JERARQUIA  v1.5  -  Regla externa iLogic (Inventor 2026) - COIMSER
 '  Se corre en el ensamble de PLANTA antes de TEKLA_NUMERACION.
 '
 '  1) REVISA todo el arbol y escribe _REVISION_JERARQUIA.txt en la carpeta de la obra:
@@ -24,6 +24,9 @@
 '              pieza a FABRICAR fuera de la obra (TRAER A LA OBRA); AVISO propiedad ESPESOR desactualizada,
 '              material sin definir, piezas sin fijar ni restringir, misma geometria con marcas distintas,
 '              rutas largas (ERROR desde 250 caracteres, AVISO desde 225)
+'            - v1.5 EXTERNOS: ENSAMBLE a fabricar fuera de la obra = ERROR (antes solo aviso); los mensajes de
+'              piezas y ensambles externos dicen en que conjunto estan y la correccion de una vez:
+'              ADOPTAR_ENSAMBLE -> TRAER A LA OBRA los archivos externos de ese conjunto
 '  2) CORRIGE desde un menu (solo propiedades; mover piezas: Reestructurar de Inventor):
 '     cambiar tipo de conjunto, volver transparente (Fantasma), igualar PLANTA/PROYECTO,
 '     forzar CODIGO de pieza, bloquear / desbloquear marcas.
@@ -396,7 +399,9 @@ Sub Recorrer(occs As Object, conjPadre As String, prefPadre As String)
                 If Not esEquipo AndAlso Not comprado Then avisos.Add(nom & ": viene de \Librerias y no tiene EQUIPO = SI ni estructura Comprado.")
             ElseIf d.DocumentType = DocumentTypeEnum.kPartDocumentObject AndAlso Not comprado AndAlso Not esEquipo AndAlso bs <> BOMStructureEnum.kPhantomBOMStructure AndAlso TieneSolidos(d) Then
                 ' v1.4: pieza a FABRICAR fuera de la obra: TEKLA escribiria la marca en el archivo original
-                errores.Add(nom & ": pieza a fabricar FUERA de la obra (" & System.IO.Path.GetDirectoryName(d.FullFileName) & "). Al numerar se escribiria la marca en ese archivo original. Traela con COPIAR_PIEZA -> TRAER A LA OBRA (si es skeleton o equipo: NUEVA_REFERENCIA opcion 3).")
+                errores.Add(nom & ": pieza a fabricar FUERA de la obra (" & System.IO.Path.GetDirectoryName(d.FullFileName) & "). Al numerar se escribiria la marca en ese archivo original [conjunto " & conjPadre & "]. Traela con COPIAR_PIEZA -> TRAER A LA OBRA, o todas las del conjunto con ADOPTAR_ENSAMBLE -> TRAER A LA OBRA (si es skeleton o equipo: NUEVA_REFERENCIA opcion 3)." & If(ruta.Contains("\design accelerator\"), " Es una pieza del DESIGN ACCELERATOR: tambien la trae ADOPTAR_ENSAMBLE -> TRAER A LA OBRA a la carpeta de su conjunto.", ""))
+            ElseIf d.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject AndAlso Not comprado AndAlso Not esEquipo AndAlso bs <> BOMStructureEnum.kPhantomBOMStructure Then
+                errores.Add(nom & ": ENSAMBLE fuera de la obra (" & System.IO.Path.GetDirectoryName(d.FullFileName) & ") [conjunto " & conjPadre & "]. Sus piezas se numerarian dentro de los archivos originales. Corrige con ADOPTAR_ENSAMBLE -> TRAER A LA OBRA los archivos externos de ese conjunto.")
             Else
                 avisos.Add(nom & ": esta fuera de la carpeta de la obra (" & System.IO.Path.GetDirectoryName(d.FullFileName) & "). Si es skeleton o equipo de referencia: NUEVA_REFERENCIA opcion 3.")
             End If

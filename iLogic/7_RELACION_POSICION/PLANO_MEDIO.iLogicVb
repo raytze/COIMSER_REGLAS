@@ -1,0 +1,350 @@
+' =====================================================================
+'  PLANO_MEDIO  v1.0  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  Restriccion de PLANO MEDIO (como "Width" / ancho de SolidWorks): centra una pieza respecto
+'  a otra usando el plano imaginario que queda entre DOS caras de cada pieza, sin crear planos
+'  medios a mano en las piezas.
+'
+'     Pieza 1 = la que SE MUEVE   (caras 1 y 2 -> su plano medio)
+'     Pieza 2 = la de REFERENCIA  (caras 3 y 4 -> su plano medio)
+'     El plano medio de la pieza 1 queda sobre el de la pieza 2.
+'
+'  Como se usa (ensamble abierto o editado en el sitio):
+'   1) Ejecuta la regla.   2) Elige las 2 caras planas de la pieza 1 y luego las 2 de la pieza 2.
+'      Cada cara elegida se resalta en AZUL (igual que al elegir en una restriccion).
+'      (Tambien puedes dejar las 4 caras preseleccionadas, en ese orden, antes de ejecutar.)
+'   3) Elige ALINEADOS (flush: las direcciones de los planos apuntan igual) o CONTRARIOS (mate).
+'
+'  Como lo hace: una sola restriccion Flush (direcciones iguales) o Mate (contrarias) entre la cara 1
+'  de la pieza 1 y la cara 3 de la pieza 2, con el desfase que deja los planos medios de las dos
+'  piezas sobre el mismo plano:  Flush (e1 - e2)/2   |   Mate (e1 + e2)/2   (e = separacion entre las
+'  2 caras de cada pieza). Quita 1 traslacion y 2 giros, como el Width de SolidWorks, sin crear
+'  planos de trabajo ni tocar los archivos de las piezas (el ensamble no los deja crear sobre caras).
+'  Verifica el resultado con numeros (plano medio de la pieza 1 sobre el de la pieza 2) y, si algo
+'  no cuadra, prueba el otro signo o deshace la restriccion y lo dice.
+'  Limites: el desfase usa los espesores actuales; si una pieza cambia de espesor, borra la restriccion
+'  PM_... y vuelve a ejecutar la regla. La pieza 1 no puede estar fija (si lo esta, ofrece intercambiar).
+'  Argumentos: silencioso, modo=flush|mate, auto=SI + p1=<ocurrencia que se mueve> + p2=<ocurrencia
+'  de referencia> (elige solas las 2 caras planas paralelas mas grandes de cada una; sirve para pruebas).
+' =====================================================================
+
+Sub Main()
+    silencioso = RuleArguments.Exists("silencioso")
+    Dim asm As AssemblyDocument = TryCast(ThisApplication.ActiveDocument, AssemblyDocument)
+    If asm Is Nothing Then
+        MessageBox.Show("Abre un ensamble y ejecuta la regla ahi.", "PLANO_MEDIO")
+        Exit Sub
+    End If
+    Try
+        Dim ed As AssemblyDocument = TryCast(ThisApplication.ActiveEditDocument, AssemblyDocument)
+        If ed IsNot Nothing Then asm = ed
+    Catch
+    End Try
+    Dim cd As AssemblyComponentDefinition = asm.ComponentDefinition
+
+    ' ---------- elegir las 4 caras ----------
+    Dim f(3) As FaceProxy
+    Dim hs As HighlightSet = Nothing
+    Try
+        hs = asm.CreateHighlightSet()
+        hs.Color = ThisApplication.TransientObjects.CreateColor(0, 128, 255)
+    Catch
+        hs = Nothing
+    End Try
+    If Arg("auto").ToUpper() = "SI" Then
+        Dim o1 As ComponentOccurrence = BuscarOcc(cd, Arg("p1"))
+        Dim o2 As ComponentOccurrence = BuscarOcc(cd, Arg("p2"))
+        If o1 Is Nothing OrElse o2 Is Nothing Then
+            Fin(hs, "auto: no encuentro la ocurrencia p1 o p2.")
+            Exit Sub
+        End If
+        If Not ParAuto(o1, f(0), f(1)) OrElse Not ParAuto(o2, f(2), f(3)) Then
+            Fin(hs, "auto: no encuentro 2 caras planas paralelas en p1 o p2.")
+            Exit Sub
+        End If
+    ElseIf asm.SelectSet.Count = 4 Then
+        For i As Integer = 0 To 3
+            f(i) = TryCast(asm.SelectSet.Item(i + 1), FaceProxy)
+            If f(i) Is Nothing Then
+                Fin(hs, "Las 4 caras preseleccionadas deben ser planas de piezas del ensamble.")
+                Exit Sub
+            End If
+        Next
+        asm.SelectSet.Clear()
+    Else
+        Dim msg() As String = {"PIEZA 1 (la que se mueve): elige la cara plana 1 de 2", "PIEZA 1: elige la cara plana 2 de 2", "PIEZA 2 (referencia): elige la cara plana 1 de 2", "PIEZA 2: elige la cara plana 2 de 2"}
+        For i As Integer = 0 To 3
+            Dim o As Object = Nothing
+            Try
+                o = ThisApplication.CommandManager.Pick(SelectionFilterEnum.kPartFacePlanarFilter, msg(i))
+            Catch
+                o = Nothing
+            End Try
+            f(i) = TryCast(o, FaceProxy)
+            If f(i) Is Nothing Then
+                Fin(hs, "Cancelado.")
+                Exit Sub
+            End If
+            If hs IsNot Nothing Then
+                Try
+                    hs.AddItem(f(i))
+                Catch
+                End Try
+            End If
+        Next
+    End If
+
+    ' ---------- validar ----------
+    Dim occ1 As ComponentOccurrence = f(0).ContainingOccurrence
+    Dim occ2 As ComponentOccurrence = f(2).ContainingOccurrence
+    If occ1 Is Nothing OrElse occ2 Is Nothing OrElse f(1).ContainingOccurrence Is Nothing OrElse f(3).ContainingOccurrence Is Nothing Then
+        Fin(hs, "Las caras deben ser de piezas del ensamble.")
+        Exit Sub
+    End If
+    If occ1.Name <> f(1).ContainingOccurrence.Name Then
+        Fin(hs, "Las caras 1 y 2 deben ser de la MISMA pieza.")
+        Exit Sub
+    End If
+    If occ2.Name <> f(3).ContainingOccurrence.Name Then
+        Fin(hs, "Las caras 3 y 4 deben ser de la MISMA pieza.")
+        Exit Sub
+    End If
+    If occ1.Name = occ2.Name Then
+        Fin(hs, "La pieza 1 y la pieza 2 deben ser distintas.")
+        Exit Sub
+    End If
+    Dim p1() As Double = Plano(f(0))
+    Dim p2() As Double = Plano(f(1))
+    Dim p3() As Double = Plano(f(2))
+    Dim p4() As Double = Plano(f(3))
+    If p1 Is Nothing OrElse p2 Is Nothing OrElse p3 Is Nothing OrElse p4 Is Nothing Then
+        Fin(hs, "Las 4 caras deben ser planas.")
+        Exit Sub
+    End If
+    If Not Paralelos(p1, p2) Then
+        Fin(hs, "Las caras 1 y 2 no son paralelas.")
+        Exit Sub
+    End If
+    If Not Paralelos(p3, p4) Then
+        Fin(hs, "Las caras 3 y 4 no son paralelas.")
+        Exit Sub
+    End If
+    If Math.Abs(Sep(p1, p2)) < 0.00001 OrElse Math.Abs(Sep(p3, p4)) < 0.00001 Then
+        Fin(hs, "Las dos caras de una misma pieza estan en el mismo plano.")
+        Exit Sub
+    End If
+
+    ' ---------- direccion: alineados (flush) o contrarios (mate) ----------
+    Dim flush As Boolean = True
+    Dim modo As String = Arg("modo").ToLower()
+    If modo = "" Then
+        If silencioso Then
+            modo = "flush"
+        Else
+            Dim ops As New List(Of String)
+            ops.Add("ALINEADOS (flush: direcciones iguales)")
+            ops.Add("CONTRARIOS (mate: direcciones opuestas)")
+            Dim r As String = InputListBox("Direccion de los planos medios:", ops, ops(0), "PLANO_MEDIO", "Direccion")
+            If r Is Nothing OrElse r = "" Then
+                Fin(hs, "Cancelado.")
+                Exit Sub
+            End If
+            modo = If(r.StartsWith("CONTRARIOS"), "mate", "flush")
+        End If
+    End If
+    flush = (modo <> "mate")
+
+    ' ---------- la pieza 1 es la que se mueve: si esta fija, intercambiar ----------
+    Dim mov As ComponentOccurrence = occ1
+    Dim fm1 As FaceProxy = f(0)
+    Dim fm2 As FaceProxy = f(1)
+    Dim fr1 As FaceProxy = f(2)
+    Dim fr2 As FaceProxy = f(3)
+    Dim pm1() As Double = p1
+    Dim pr1() As Double = p3
+    If occ1.Grounded Then
+        If occ2.Grounded Then
+            Fin(hs, "Las dos piezas estan fijas (grounded): una debe poder moverse.")
+            Exit Sub
+        End If
+        If Not silencioso Then
+            If MessageBox.Show(occ1.Name & " esta FIJA. Se movera " & occ2.Name & " hacia ella. Continuar?", "PLANO_MEDIO", MessageBoxButtons.YesNo, MessageBoxIcon.Question) <> DialogResult.Yes Then
+                Fin(hs, "Cancelado.")
+                Exit Sub
+            End If
+        End If
+        mov = occ2
+        fm1 = f(2) : fm2 = f(3) : fr1 = f(0) : fr2 = f(1)
+        pm1 = p3 : pr1 = p1
+    End If
+    Dim pm2() As Double = Plano(fm2)
+    Dim pr2() As Double = Plano(fr2)
+    Dim tMov As Double = Math.Abs(Sep(pm1, pm2))
+    Dim tRef As Double = Math.Abs(Sep(pr1, pr2))
+
+    ' ---------- restriccion: cara 1 de la pieza que se mueve contra cara 1 de la referencia ----------
+    ' El plano medio de la que se mueve queda sobre el de la referencia cuando el desfase vale:
+    '   Flush (direcciones iguales):    (e_mov - e_ref) / 2
+    '   Mate  (direcciones contrarias): (e_ref + e_mov) / 2        (e = separacion entre las 2 caras)
+    ' El signo depende de como Inventor mide el desfase: se prueba y se verifica con numeros.
+    Dim nomC As String = "PM_" & NombreCorto(mov.Name) & "_" & NombreCorto(fr1.ContainingOccurrence.Name)
+    Dim c As AssemblyConstraint = Nothing
+    Dim estado As String = ""
+    Dim ok As Boolean = False
+    Dim valor As Double = If(flush, (tMov - tRef) / 2.0, (tRef + tMov) / 2.0)
+    Dim quiero As Double = If(flush, 1.0, -1.0)
+    For intento As Integer = 0 To 1
+        Try
+            If c IsNot Nothing Then
+                c.Delete()
+                c = Nothing
+            End If
+            Dim off As Double = If(intento = 0, -valor, valor)   ' Inventor mide el desfase al reves: el 1er signo suele acertar
+            If flush Then
+                c = cd.Constraints.AddFlushConstraint(fm1, fr1, off)
+            Else
+                c = cd.Constraints.AddMateConstraint(fm1, fr1, off)
+            End If
+            Try
+                c.Name = nomC
+            Catch
+            End Try
+            asm.Update()
+            Dim res() As Double = Residuo(fm1, fm2, fr1, fr2)
+            If res(0) < 0.0001 AndAlso res(1) * quiero > 0.5 Then
+                ok = True
+                estado = If(flush, "Flush", "Mate") & ", desfase " & Math.Round(off * 10.0, 3) & " mm"
+                Exit For
+            End If
+            estado = "sin cuadrar: error de centrado " & Math.Round(res(0) * 10.0, 4) & " mm, direccion " & Math.Round(res(1), 2)
+        Catch ex As Exception
+            estado = "error: " & ex.Message
+        End Try
+    Next
+    If Not ok Then
+        Try
+            If c IsNot Nothing Then c.Delete()
+        Catch
+        End Try
+        Fin(hs, "No se pudo centrar (" & estado & ")." & vbCrLf & "Revisa que " & mov.Name & " no tenga otras restricciones que lo impidan y que las caras sean las correctas. No deje cambios.")
+        Exit Sub
+    End If
+    Fin(hs, "Plano medio de " & mov.Name & " sobre el de " & fr1.ContainingOccurrence.Name & " (" & estado & ")." & vbCrLf & _
+        "Restriccion " & nomC & ". El desfase usa el espesor actual de las dos piezas." & vbCrLf & "Guarda el ensamble.")
+End Sub
+
+Private silencioso As Boolean
+
+Sub Fin(hs As HighlightSet, t As String)
+    Try
+        If hs IsNot Nothing Then hs.Clear()
+    Catch
+    End Try
+    If Not silencioso Then MessageBox.Show(t, "PLANO_MEDIO")
+    Try
+        Dim lg As String = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "PLANO_MEDIO.log")
+        System.IO.File.AppendAllText(lg, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") & " | " & t.Replace(vbCrLf, " / ") & vbCrLf)
+    Catch
+    End Try
+End Sub
+
+Function NombreCorto(n As String) As String
+    Return n.Replace(":", "_").Replace(" ", "_")
+End Function
+
+Function BuscarOcc(cd As AssemblyComponentDefinition, nombre As String) As ComponentOccurrence
+    For Each oc As ComponentOccurrence In cd.Occurrences
+        If oc.Name.ToLower() = nombre.ToLower() Then Return oc
+    Next
+    Return Nothing
+End Function
+
+' Para pruebas: las 2 caras planas paralelas (normales opuestas) de mayor area
+Function ParAuto(oc As ComponentOccurrence, ByRef a As FaceProxy, ByRef b As FaceProxy) As Boolean
+    Dim caras As New List(Of FaceProxy)
+    For Each sb As SurfaceBodyProxy In oc.SurfaceBodies
+        For Each fc As FaceProxy In sb.Faces
+            If fc.SurfaceType = SurfaceTypeEnum.kPlaneSurface Then caras.Add(fc)
+        Next
+    Next
+    Dim mejor As Double = 0
+    For i As Integer = 0 To caras.Count - 1
+        For j As Integer = i + 1 To caras.Count - 1
+            Dim pi() As Double = Plano(caras(i))
+            Dim pj() As Double = Plano(caras(j))
+            If pi Is Nothing OrElse pj Is Nothing Then Continue For
+            If Paralelos(pi, pj) AndAlso Math.Abs(Sep(pi, pj)) > 0.00001 Then
+                Dim ar As Double = AreaCara(caras(i)) + AreaCara(caras(j))
+                If ar > mejor Then
+                    mejor = ar
+                    a = caras(i)
+                    b = caras(j)
+                End If
+            End If
+        Next
+    Next
+    Return mejor > 0
+End Function
+
+Function AreaCara(fc As FaceProxy) As Double
+    Try
+        Return fc.Evaluator.Area
+    Catch
+        Return 0
+    End Try
+End Function
+
+' {px,py,pz, nx,ny,nz}: punto de la cara y su normal EXTERIOR (espacio del ensamble)
+Function Plano(fc As FaceProxy) As Double()
+    Try
+        Dim pl As Plane = TryCast(fc.Geometry, Plane)
+        If pl Is Nothing Then Return Nothing
+        Dim k As Double = 1.0
+        If fc.IsParamReversed Then k = -1.0
+        Return New Double() {pl.RootPoint.X, pl.RootPoint.Y, pl.RootPoint.Z, k * pl.Normal.X, k * pl.Normal.Y, k * pl.Normal.Z}
+    Catch
+        Return Nothing
+    End Try
+End Function
+
+Function Dot(a() As Double, b() As Double) As Double
+    Return a(0) * b(0) + a(1) * b(1) + a(2) * b(2)
+End Function
+
+Function Paralelos(a() As Double, b() As Double) As Boolean
+    Dim na() As Double = New Double() {a(3), a(4), a(5)}
+    Dim nb() As Double = New Double() {b(3), b(4), b(5)}
+    Return Math.Abs(Math.Abs(Dot(na, nb)) - 1.0) < 0.0001
+End Function
+
+' Distancia con signo del plano de a al plano de b, medida con la normal exterior de a
+Function Sep(a() As Double, b() As Double) As Double
+    Dim d() As Double = New Double() {b(0) - a(0), b(1) - a(1), b(2) - a(2)}
+    Dim na() As Double = New Double() {a(3), a(4), a(5)}
+    Return Dot(na, d)
+End Function
+
+' {distancia entre el plano medio de las caras a-b (pieza que se mueve) y el de las caras c-d (referencia) ;
+'  dot(normal exterior de a, normal exterior de c)}
+Function Residuo(a As FaceProxy, b As FaceProxy, c As FaceProxy, d As FaceProxy) As Double()
+    Dim pa() As Double = Plano(a)
+    Dim pb() As Double = Plano(b)
+    Dim pc() As Double = Plano(c)
+    Dim pd() As Double = Plano(d)
+    Dim h1 As Double = Sep(pa, pb) / 2.0
+    Dim h2 As Double = Sep(pc, pd) / 2.0
+    Dim ma() As Double = New Double() {pa(0) + pa(3) * h1, pa(1) + pa(4) * h1, pa(2) + pa(5) * h1}
+    Dim mc() As Double = New Double() {pc(0) + pc(3) * h2, pc(1) + pc(4) * h2, pc(2) + pc(5) * h2}
+    Dim nc() As Double = New Double() {pc(3), pc(4), pc(5)}
+    Dim na() As Double = New Double() {pa(3), pa(4), pa(5)}
+    Dim dm() As Double = New Double() {ma(0) - mc(0), ma(1) - mc(1), ma(2) - mc(2)}
+    Return New Double() {Math.Abs(Dot(nc, dm)), Dot(na, nc)}
+End Function
+
+' ===================== comunes COIMSER =====================
+Function Arg(n As String) As String
+    Try
+        If RuleArguments.Exists(n) Then Return CStr(RuleArguments.Value(n))
+    Catch
+    End Try
+    Return ""
+End Function

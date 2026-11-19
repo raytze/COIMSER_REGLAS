@@ -1,5 +1,5 @@
 ' =====================================================================
-'  EMITIR_PLANOS  v1.2  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  EMITIR_PLANOS  v1.3  -  Regla externa iLogic (Inventor 2026) - COIMSER
 '  CONTROL DE REVISIONES de los planos de una fase (Vault Basic no maneja revisiones):
 '
 '   1) Eliges los planos: TODOS, PENDIENTES (nunca emitidos o cuyo modelo cambio despues de
@@ -14,7 +14,11 @@
 '            PLANOS\VIGENTES\_SUPERADOS\). Lo que va al taller sale SIEMPRE de VIGENTES.
 '   5) TRANSMITTAL_T<nnn>.xlsx (hoja de envio con firmas) en la carpeta del envio,
 '      registro PLANOS\_REGISTRO_EMISIONES.csv y LISTA DE PLANOS <fase>-LISTA_PLANOS.xlsx.
-'  Ejecutar desde la FASE (o desde un plano).  Argumentos: silencioso, motivo=, para=, planos=TODOS|PENDIENTES
+'  v1.3 - BLOQUEO: antes de emitir revisa la jerarquia (REVISAR_JERARQUIA en silencio); si tiene ERRORES
+'         (piezas o ensambles fuera de la obra, espesores que no cuadran, piezas sin marca clasificadas
+'         como error...) no emite y dice cuales son. Desde un plano usa el ultimo informe de la obra.
+'         sin_revision=SI lo salta. El motivo queda en PLANOS\EMITIR_PLANOS.log.
+'  Ejecutar desde la FASE (o desde un plano).  Argumentos: silencioso, motivo=, para=, planos=TODOS|PENDIENTES, sin_revision=SI
 ' =====================================================================
 
 Sub Main()
@@ -32,6 +36,7 @@ Sub Main()
         lista.Add(act.FullFileName)
         dirPlanos = System.IO.Path.GetDirectoryName(act.FullFileName)
         fase = System.IO.Path.GetFileName(System.IO.Path.GetDirectoryName(dirPlanos))
+        If Not SinErroresJerarquia(Nothing, dirPlanos) Then Exit Sub
     ElseIf act.DocumentType = DocumentTypeEnum.kAssemblyDocumentObject Then
         If EsGeneral(act) Then
             MessageBox.Show("Este es el GENERAL. Abre una fase o usa EJECUTAR_FASES -> EMITIR_PLANOS.", "EMITIR_PLANOS")
@@ -39,6 +44,7 @@ Sub Main()
         End If
         dirPlanos = CarpetaSalida(CType(act, AssemblyDocument))
         fase = System.IO.Path.GetFileNameWithoutExtension(act.FullFileName)
+        If Not SinErroresJerarquia(CType(act, AssemblyDocument), dirPlanos) Then Exit Sub
         If Not System.IO.Directory.Exists(dirPlanos) Then
             MessageBox.Show("No hay carpeta PLANOS en la fase. Corre GENERAR_PLANOS primero.", "EMITIR_PLANOS")
             Exit Sub
@@ -345,6 +351,73 @@ Sub ListaPlanos(dirPlanos As String, fase As String)
     Tabla(ws, 3, filas)
     GuardarLibro(wb, System.IO.Path.Combine(dirPlanos, fase & "-LISTA_PLANOS.xlsx"))
 End Sub
+
+' ===================== control previo: la jerarquia no debe tener ERRORES =====================
+' asm = fase abierta (se corre REVISAR_JERARQUIA en silencio) o Nothing (desde un plano: se lee el ultimo informe)
+Function SinErroresJerarquia(asm As AssemblyDocument, dirPlanos As String) As Boolean
+    If Arg("sin_revision").ToUpper() = "SI" Then Return True
+    Dim obra As String = ""
+    Try
+        If asm IsNot Nothing Then
+            obra = CarpetaObra(asm.FullFileName)
+        Else
+            obra = CarpetaObra(dirPlanos)
+        End If
+    Catch
+    End Try
+    If obra = "" Then Return True
+    Dim inf As String = System.IO.Path.Combine(obra, "_REVISION_JERARQUIA.txt")
+    If asm IsNot Nothing Then
+        Dim rj As String = RutaRegla("REVISAR_JERARQUIA")
+        If rj <> "" Then
+            Try
+                Dim nvr As NameValueMap = ThisApplication.TransientObjects.CreateNameValueMap()
+                nvr.Add("silencioso", "1")
+                iLogicVb.Automation.RunExternalRuleWithArguments(asm, rj, nvr)
+            Catch
+            End Try
+        End If
+    End If
+    If Not System.IO.File.Exists(inf) Then Return True
+    Dim txt As String = System.IO.File.ReadAllText(inf)
+    If txt.Contains("ERRORES (0)") Then Return True
+    ' primeros errores del informe
+    Dim lineas As New List(Of String)
+    Dim enErrores As Boolean = False
+    For Each ln As String In txt.Split(New String() {vbCrLf, vbLf}, StringSplitOptions.None)
+        If ln.StartsWith("ERRORES (") Then
+            enErrores = True
+            Continue For
+        End If
+        If ln.StartsWith("AVISOS (") Then Exit For
+        If enErrores AndAlso ln.StartsWith("  - ") Then lineas.Add(ln)
+    Next
+    Dim muestra As String = String.Join(vbCrLf, lineas.GetRange(0, Math.Min(lineas.Count, 8)).ToArray())
+    Dim msg As String = "NO SE EMITE: la jerarquia tiene " & lineas.Count & " ERROR(ES)." & vbCrLf & vbCrLf & muestra
+    If lineas.Count > 8 Then msg &= vbCrLf & "  ... (+" & (lineas.Count - 8) & " mas)"
+    msg &= vbCrLf & vbCrLf & "Informe completo: " & inf & vbCrLf & "Corrigelos y vuelve a emitir (o sin_revision=SI para saltarse el control)."
+    Try
+        System.IO.File.AppendAllText(System.IO.Path.Combine(dirPlanos, "EMITIR_PLANOS.log"), DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") & " | BLOQUEADO por ERRORES de jerarquia (" & lineas.Count & ")" & vbCrLf)
+    Catch
+    End Try
+    Aviso(msg)
+    Return False
+End Function
+
+Function RutaRegla(archivo As String) As String
+    If Not archivo.Contains(".") Then archivo &= ".iLogicVb"
+    Try
+        For Each raiz As String In iLogicVb.Automation.FileOptions.ExternalRuleDirectories
+            If Not System.IO.Directory.Exists(raiz) Then Continue For
+            For Each f As String In System.IO.Directory.GetFiles(raiz, archivo, System.IO.SearchOption.AllDirectories)
+                If f.ToLower().Contains("\_to_delete\") OrElse f.ToLower().Contains("\oldversions\") Then Continue For
+                Return f
+            Next
+        Next
+    Catch
+    End Try
+    Return ""
+End Function
 
 Sub Aviso(t As String)
     If Not silencioso Then MessageBox.Show(t, "EMITIR_PLANOS")

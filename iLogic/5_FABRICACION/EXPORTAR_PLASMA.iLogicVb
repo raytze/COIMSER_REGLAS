@@ -1,5 +1,6 @@
 ' =====================================================================
-'  EXPORTAR_PLASMA  v2.5  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  EXPORTAR_PLASMA  v2.6  -  Regla externa iLogic (Inventor 2026) - COIMSER
+'  v2.6 - Si hay marcas BLOQUEADAS (misma marca, otra geometria) pregunta si exportarlas igual (forzar) sin pasar argumentos.
 '  v2.4 - El conjunto pasa a ESTADO = EN CORTE al enviar piezas a corte (SubirEstado).
 '  v2.3 - En un conjunto que se repite en la fase (CH-001 x2) las cantidades salen TOTALES (x2): _x6 y no _x3.
 '  v2.2 - PAQUETE POR CONJUNTO: en un conjunto, DXF e historial van a <conjunto>\PLANOS\PLASMA; lo ya enviado a corte desde la fase u otro conjunto cuenta como cortado.
@@ -99,6 +100,7 @@ Sub Main()
                 ElseIf huAntes <> "" AndAlso huAntes <> hu AndAlso Not forzar.Contains(mk.ToUpper()) Then
                     ' misma marca, otra geometria: lo cortado ya no coincide -> no se exporta
                     bloqueadas.Add(mk & "  (" & System.IO.Path.GetFileName(p.FullFileName) & ")")
+                    marcasBloq.Add(mk)
                     For Each f0 As String In DxfDeMarca(mk)
                         vigentes.Add(f0)
                     Next
@@ -200,7 +202,7 @@ Sub Main()
                 msg.AppendLine("  " & t0)
             Next
             msg.AppendLine("  -> corre TEKLA_NUMERACION (les da marca nueva) o, si el cambio no afecta")
-            msg.AppendLine("     lo ya cortado, exporta con el argumento forzar=<marca>.")
+            msg.AppendLine("     lo ya cortado, acepta el cambio en la pregunta que sigue (forzar).")
         End If
         If anuladas.Count > 0 Then
             msg.AppendLine("")
@@ -230,7 +232,36 @@ Sub Main()
         Catch
         End Try
     End Try
+    ' v2.6: pregunta si se acepta el cambio de geometria con la misma marca (equivale a forzar=<marcas>)
+    If marcasBloq.Count > 0 AndAlso Not silencioso Then
+        Dim r As DialogResult = MessageBox.Show("Las marcas bloqueadas (" & String.Join(", ", marcasBloq) & ") ya se cortaron con otra geometria." & vbCrLf & vbCrLf & "Exportarlas IGUAL con la geometria actual y la MISMA marca?" & vbCrLf & "(Avisa al taller: el archivo nuevo reemplaza al anterior.)", "EXPORTAR_PLASMA", MessageBoxButtons.YesNo, MessageBoxIcon.Question)
+        If r = DialogResult.Yes Then
+            Dim ruta As String = RutaRegla("EXPORTAR_PLASMA")
+            If ruta <> "" Then
+                Dim nv As NameValueMap = ThisApplication.TransientObjects.CreateNameValueMap()
+                nv.Add("forzar", String.Join(",", marcasBloq))
+                iLogicVb.Automation.RunExternalRuleWithArguments(asm, ruta, nv)
+            Else
+                MessageBox.Show("No encuentro EXPORTAR_PLASMA en las carpetas de reglas externas.", "EXPORTAR_PLASMA")
+            End If
+        End If
+    End If
 End Sub
+
+Function RutaRegla(archivo As String) As String
+    If Not archivo.Contains(".") Then archivo &= ".iLogicVb"
+    Try
+        For Each raiz As String In iLogicVb.Automation.FileOptions.ExternalRuleDirectories
+            If Not System.IO.Directory.Exists(raiz) Then Continue For
+            For Each f As String In System.IO.Directory.GetFiles(raiz, archivo, System.IO.SearchOption.AllDirectories)
+                If f.ToLower().Contains("\_to_delete\") OrElse f.ToLower().Contains("\oldversions\") Then Continue For
+                Return f
+            Next
+        Next
+    Catch
+    End Try
+    Return ""
+End Function
 
 Private planta As String = ""
 Private carpeta As String = ""
@@ -245,6 +276,7 @@ Private histHuella As New Dictionary(Of String, String)
 Private histEstado As New Dictionary(Of String, String)
 Private histFila As New Dictionary(Of String, String())
 Private bloqueadas As New List(Of String)
+Private marcasBloq As New List(Of String)
 Private reducidas As New List(Of String)
 Private porEstado As New List(Of String)
 Private ensamble As String = ""

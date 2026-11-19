@@ -1,0 +1,48 @@
+MEMORIA_FAJA - programa de calculo (Python) de la regla 8_CALCULO\MEMORIA_FAJA
+=============================================================================
+Transmision por correas trapezoidales del Design Accelerator (generador de correas).
+Requisitos en cada PC: Python 3 (sin librerias extra) y MiKTeX (pdflatex).
+La regla busca este programa dentro de la carpeta de reglas; se comparte por Git.
+
+Pasos (cada uno se puede ejecutar solo; leen y escriben archivos en CALCULOS)
+  1 leer        la regla guarda el XML de la ocurrencia (FDesign/Data, clase CAVBelts) en <faja>.xml
+  2 datos       modelo.py      XML -> <faja>_datos.json (unidades internas cm-kg-s-rad -> mm, rpm, kW, N, N.m)
+  3 verificar   verificar.py   recalculo propio vs Inventor (tolerancia 0.5 %) y criterios con los
+                               limites Min/Max del XML -> <faja>_verificacion.json
+  4 cargas_eje  cargas_eje.py  T, Fr, Fv (linea de centros) y Fperp de cada polea -> <faja>_cargas_eje.json
+  5 memoria     memoria.py     Memoria_<faja>.tex / .pdf (misma plantilla que memoria_ejes)
+  Si un paso no se ejecuta, los siguientes usan el .json existente o lo calculan al vuelo.
+
+Archivos
+  main.py        programa principal (la regla lo llama con --xml, --log, --logo, --pasos, --secciones)
+  modelo.py      lectura del XML y conversion de unidades
+  verificar.py   recalculo y criterios
+  cargas_eje.py  cargas de cada polea sobre su eje
+  datos.py       plantilla datos_<faja>.ini (proyecto, secciones de la memoria, angulo minimo)
+  memoria.py     plantilla LaTeX; una funcion por seccion
+  ejemplo_faja.xml  XML real (correa B112, poleas B-9.4 / B-16, 10 kW, 1450 rpm) para probar
+
+Uso sin Inventor
+  python main.py --xml ejemplo_faja.xml                     (todo)
+  python main.py --xml faja.xml --pasos 2 4                 (solo cargas para el eje)
+  python main.py --xml faja.xml --pasos 2 3                 (solo verificar)
+  python main.py --xml faja.xml --pasos 5 --secciones verificacion cargas_eje
+  opciones: --datos archivo.ini  --salida carpeta  --sin-pdf  --abrir
+
+Secciones de la memoria: datos, correa, geometria, cinematica, potencia, fuerzas, verificacion, cargas_eje
+  (en datos_<faja>.ini: [memoria] secciones = todas | lista separada por comas)
+
+Criterios de verificacion
+  Cpr >= minimo del generador (factor de seguridad de potencia)   n correas >= requeridas
+  v <= v max de la correa      fb <= f max de flexion      F1/nb <= tension max por correa
+  Dw >= Dw min de la seccion   angulo de contacto polea menor >= 120 deg (editable en el .ini)
+
+Notas
+  - Pulsar Calcular en el generador de correas antes de ejecutar: si el recalculo difiere de
+    Inventor en mas de 0.5 % se avisa en el informe y en la memoria.
+  - Inventor usa Dp (diametro efectivo) para velocidad, par, fuerza periferica y relacion iD,
+    y Dw (primitivo) para la longitud de correa y el angulo de contacto.
+  - C4 y C5 se muestran con el valor de Inventor; verificar su definicion en la ayuda del generador.
+  - Las cargas de <faja>_cargas_eje.json son las que se declaran en el generador de ejes.
+
+v1.0 - primera version: pasos 2 a 5, menu MENU_COIMSER (actividad 8).

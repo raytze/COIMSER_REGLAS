@@ -141,3 +141,12 @@ y el resto de reglas nuevas (MENU, EJECUTAR_FASES, REORGANIZAR_OBRA, PERNERIA, C
 - Nota Claude: una corrida de mas de 80 s por execute_python se corta y las reglas siguientes fallan con "Interfaz no registrada"; lanzar PRUEBA_TST en un hilo (codigo de arriba) y consultar despues. PRUEBA_TST usa el documento ACTIVO.
 - Sin probar: RESTAURAR_RESPALDO con archivos protegidos en Vault; TRAER A LA OBRA con pieza derivada externa.
 - GENERAR_PLANOS v2.17 plano jerarquico: corrido en PLCAY-CP1 (fase 9 hojas + 7 planos de conjunto). PROBADO en TST-ALM (fase 5 hojas; planos de CH-001, CH-002, BS-001, PB-001 y L-001 con lo suyo; hojas trasladadas con copia en _SUPERADOS; 2da corrida sin cambios). EJECUTAR_FASES v1.5 y PRUEBA_TST v1.2 solo compilados.
+
+## Estado al 2026-11-19 (calculo mecanico)
+- MEMORIA_EJE v1.0 (nueva, 8_CALCULO): compilada con vbc real y PROBADA con argumento silencioso en
+  CALEST-GENERAL (eje del generador de ejes dentro del subensamble CALEST-EJE): crea CALCULOS junto a
+  CALEST-EJE.iam, datos_Eje.ini, Memoria_Eje.tex/.pdf con logo (3.3 s). Reacciones y flecha iguales a las
+  del generador de ejes (0.00 %). Ojo: RunExternalRuleWithArguments necesita la RUTA COMPLETA de la
+  regla cuando esta en una subcarpeta (con solo el nombre devuelve 0 sin ejecutar).
+  Sin probar: ventanas (primera vez con el .ini, eleccion entre varios ejes) y una PC sin MiKTeX.
+- MENU_COIMSER v2.11: grupo 8 CALCULO MECANICO. Solo compilado.

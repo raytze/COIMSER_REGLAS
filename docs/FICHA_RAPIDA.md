@@ -5,12 +5,13 @@
 | Carpeta | Para que | Reglas |
 |---|---|---|
 | (raiz) | Menu y datos | MENU_COIMSER, TABLA_MARCAS.csv, FORMATOS_PLANCHA.csv, NOTAS_FABRICACION.txt |
-| 1_OBRA | Obra, fases y conjuntos | NUEVO_PROYECTO, INICIAR_CONJUNTO, AGRUPAR_EN_CONJUNTO, COPIAR_CONJUNTO, RENOMBRAR_CONJUNTO, REORGANIZAR_OBRA |
+| 1_OBRA | Obra, fases y conjuntos | NUEVO_PROYECTO, INICIAR_CONJUNTO, AGRUPAR_EN_CONJUNTO, COPIAR_CONJUNTO, ADOPTAR_ENSAMBLE, RENOMBRAR_CONJUNTO, REORGANIZAR_OBRA |
 | 2_MODELADO | Crear y cambiar piezas | NUEVA_REFERENCIA, NUEVA_PIEZA, EXTRAER_PIEZA, PIEZA_ASOCIADA, PERFIL_A_OBRA, COPIAR_PIEZA, ESPEJO_PIEZA, CAMBIAR_NATURALEZA, INSERTAR_EQUIPO |
 | 3_NUMERACION | Revisar y marcar | REVISAR_JERARQUIA, REVISAR_PERFILES, TEKLA_NUMERACION, TAG_EQUIPOS |
 | 4_PLANOS | Planos | GENERAR_PLANOS, TITULO_PLANO, ESTILO_PLANO, EMITIR_PLANOS |
 | 5_FABRICACION | Reportes y corte | CUT_LIST, EXPORTAR_PLASMA, REPORTE_PERNERIA, REPORTE_ENSAMBLES, REPORTE_COSTO, CAMBIOS_MATERIAL |
 | 6_UTILIDADES | Ayudas | EJECUTAR_FASES, TABLERO_OBRA, CAMBIOS_PIEZAS, PRUEBA_TST, LIMPIAR_VISTA, OCULTAR_SUPERFICIES, LIMPIAR_OBSOLETOS |
+| 7_RELACION_POSICION | Restricciones de posicion entre piezas | PLANO_MEDIO (centrar por plano medio, tipo Width de SolidWorks) |
 
 En iLogic solo hace falta la carpeta raiz (`...\iLogic`) en Opciones de iLogic: el menu y las reglas
 buscan en las subcarpetas. MENU_COIMSER pregunta primero la ACTIVIDAD y luego la regla.
@@ -27,7 +28,9 @@ Empieza siempre con **MENU_COIMSER**: muestra solo las reglas del nivel donde es
 | 5 | CONJUNTO | Frame Generator / NUEVA_PIEZA / PIEZA_ASOCIADA | Perfiles, planchas, piezas que siguen al skeleton |
 | 6 | CONJUNTO | INSERTAR_EQUIPO | Motores, reductores, comprados |
 | 7 | FASE | COPIAR_CONJUNTO | El mismo conjunto en otra fase (copia con nombres propios) |
+| 7b | FASE | ADOPTAR_ENSAMBLE | Ensamble hecho FUERA de la obra: lo copia a la fase con nombres de obra, lo re-enlaza, lo define (PREFIJO/tipo) y lo inserta fijo; el externo no se toca. Despues CAMBIAR_NATURALEZA y TEKLA |
 | - | CONJUNTO / FASE | ESPEJO_PIEZA | Simetria de piezas: derivada espejo con el siguiente numero en Piezas; QUIRAL=SI -> marca nueva |
+| - | CONJUNTO / FASE | PLANO_MEDIO | Centrar piezas como el Width de SolidWorks: 2 caras de la pieza 1 (azul) + 2 de la pieza 2; flush/mate. Una restriccion Flush o Mate con el desfase que alinea los planos medios; no crea planos. Pieza 1 se mueve; el desfase usa los espesores actuales |
 | - | CONJUNTO | EXTRAER_PIEZA | Cuerpo del STEP de referencia -> pieza real (plancha = chapa con desarrollo), misma posicion |
 | - | CONJUNTO / FASE | PERFIL_A_OBRA | Perfil de Content Center en estandar -> pieza personalizada <CONJ>-PF-nnn en Piezas (mismo tamano y largo) |
 | - | PIEZA / CONJUNTO | CAMBIAR_NATURALEZA | Cambia NATURALEZA, CODIGO, GRADO, ESPESOR de piezas ya creadas; convierte a chapa si hace falta |
